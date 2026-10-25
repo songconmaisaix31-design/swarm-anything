@@ -844,7 +844,9 @@ CLI/HTTP 复用 App 的项目主体、批准及动作准入；具体原生源码
 
 完整成果沿准确d7已审[方案§5.5](https://github.com/songconmaisaix31-design/swarm-anything/blob/d7f21242259739cfb49a4f68a19a1a8f28bcec32/docs/standards/swa-cli-headless-20261020.md)、§21.1.2及T07/T13实施。`worker read`保留原生有界预览与游标；`task result`从已核所属的实际原生journal及对应Agent自产transcript取得内容，采用成熟严格解析，检查身份、格式、读取一致性、单源12MiB及完整多Worker结果96MiB上限，不迁移、修补或换源。terminal只有有界输出时明确标注，不能作为完整成果通过。指定停止一项Worker时分别返回真实状态、已有部分和incomplete/unavailable/unknown；坏源或来源变化明确失败。其余Worker的完整成果、预定业务成功判据和全部相关资源退出/归档/释放仍为根Task完成条件；指定停止项保持停止状态，不追加其成功完成条件。旧A/B用例保留其原范围。本轮N=3须验证停止一项后其余至少两项保留原身份继续及一次同session追加输入，额度是上限，不强迫创建满额Worker。实际项目执行目标来自稳定AgentSelection并核现有批准；新数据根不预置Grant，服务启动不签发token。候选携带真实首次人工授权步骤及必要使用说明，真实结果按同一安装候选核验。
 
-多Worker完整结果按[容量任务](../tasks/swa-result-capacity-20261023.md)区分单源、汇总和实际传输：每个journal按UTF-8字节保持12MiB/100000行，完整结果JSON为96MiB，task.result/run.export响应为128MiB；其他动作响应保持16MiB。run/wait --export消费同一完整导出界。Go默认转义和实际run_view/envelope也计入响应字节，两个总界分别拒绝，不截断或自动重发。当前容量选择基于原四份真实来源；完整N6及第二轮峰值仍须实际验证。
+`run.export` 默认 `export_mode=results`，返回同一事务中已记录的任务结果快照：`schema=swa.recorded-results.v1`、`source=native_task_records`，逐任务标记 `available/missing`，保留 Run 的原状态、`complete`、`observed_at` 与 `acceptance=unreviewed`。`completeness` 仅描述任务结果是否全部存在；`audit=not_requested`。普通导出不读取原生日志，不等待整个 Run 结算；全部 Dispatch 必须有可核实的原会话绑定和凭据来源，最终完整响应经过所有相关账号的密钥过滤。读取日志期间整组记录不变的要求不适用于此快照。
+
+`export_mode=audit`（CLI `swa export --audit`）保持完整原生成果及来源核验。`task.result` 保持原语义。多Worker完整结果按[容量任务](../tasks/swa-result-capacity-20261023.md)区分单源、汇总和实际传输：每个journal按UTF-8字节保持12MiB/100000行，结果JSON为96MiB，task.result/run.export响应为128MiB；其他动作响应保持16MiB。run/wait --export使用普通结果快照。Go默认转义和实际run_view/envelope也计入响应字节，两个总界分别拒绝，不截断或自动重发。当前容量选择基于原四份真实来源；完整N6及第二轮峰值仍须实际验证。
 
 CLI输出和所属生命周期依准确b3f0e229已审方案§7.5及C01—C09实施。`--json`在stdout只发布一个完整结果，stderr保存诊断；已成功解析并校验的原请求ID及实际selector须在失败或取消时保留，未知身份省略。真实HTTP ErrorV1转换为既有CLI envelope，完整HTTP原件保存在既有`error.data`，HTTP trace与命令原请求ID各保留其来源；原生结果及错误数据保持。真实网络效果未知时只查询原请求，不重发；取消当前CLI等待返回130，不据此停止Worker。stdout实际不可写时将已知关联和实际影响保留到stderr并非零退出，不再次发布结果。
 

@@ -22,6 +22,18 @@ const dispatchSchema = z.object({
   release_state: z.string().nullable(), runtime_epoch: z.string().nullable()
 })
 const terminalTask = (status: string) => status === 'completed' || status === 'failed'
+
+// 使用已读事务快照，导出成功不改变执行状态或人工验收状态。
+export function recordedRunResults(view: RunView) {
+  const tasks = view.tasks.map(task => ({ task_id: task.id, status: task.status,
+    availability: task.result === null ? 'missing' as const : 'available' as const,
+    result: task.result }))
+  return { schema: 'swa.recorded-results.v1' as const, source: 'native_task_records' as const,
+    run_id: view.run_id, root_task_id: view.root_task_id, status: view.status,
+    complete: view.complete, acceptance: view.acceptance, observed_at: view.observed_at,
+    completeness: tasks.every(task => task.availability === 'available') ? 'complete' as const : 'partial' as const,
+    audit: 'not_requested' as const, tasks }
+}
 const terminalDispatch = (status: string) => ['completed', 'failed', 'circuit_broken'].includes(status)
 function fail(message: string): never { throw new OrchestrationError('evidence_missing', message) }
 

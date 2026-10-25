@@ -97,6 +97,7 @@ func runWorkflow(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	flags.Lookup("endpoint").DefValue = ""
 	asJSON := flags.Bool("json", false, "输出一个最终 JSON")
 	var exportPath string
+	var audit bool
 	timeout := 30 * time.Minute
 	onInput := "exit"
 	strict := false
@@ -119,6 +120,7 @@ func runWorkflow(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	}
 	if verb == "export" {
 		flags.StringVar(&exportPath, "output-dir", "", "不存在的绝对导出目录")
+		flags.BoolVar(&audit, "audit", false, "收集完整原生来源；默认只导出已记录任务成果")
 	} else {
 		flags.StringVar(&exportPath, "export", "", "完成后导出的新绝对目录")
 		flags.DurationVar(&timeout, "timeout", timeout, "等待上限，如 90s、5m、2h")
@@ -126,6 +128,9 @@ func runWorkflow(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		flags.BoolVar(&strict, "strict", false, "任一递归子任务失败即返回失败")
 	}
 	parseErr := flags.Parse(args[1:])
+	if audit {
+		command.ExportMode = "audit"
+	}
 	output.parsedRequest(command)
 	output.pretty = !*asJSON
 	if errors.Is(parseErr, flag.ErrHelp) {
@@ -490,9 +495,6 @@ func writeRunExport(path string, reply workspaceapp.OrcaEnvelope) error {
 	if err != nil {
 		return err
 	}
-	if !view.Complete {
-		return errors.New("Run 尚未完整结算，不能导出最终成果")
-	}
 	var content struct {
 		Native struct {
 			View   json.RawMessage `json:"run_view"`
@@ -507,7 +509,19 @@ func writeRunExport(path string, reply workspaceapp.OrcaEnvelope) error {
 		return err
 	}
 	if len(content.Native.Result) == 0 || bytes.Equal(content.Native.Result, []byte("null")) {
-		return errors.New("后端未返回完整原生成果")
+		return errors.New("后端未返回任务成果")
+	}
+	var resultKind struct {
+		Schema string `json:"schema"`
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal(content.Native.Result, &resultKind); err != nil {
+		return err
+	}
+	if resultKind.Schema != "swa.recorded-results.v1" || resultKind.Source != "native_task_records" {
+		if !view.Complete {
+			return errors.New("Run 尚未完整结算，不能导出完整审计结果")
+		}
 	}
 	type textArtifact struct {
 		TaskID string `json:"task_id"`

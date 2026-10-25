@@ -89,6 +89,82 @@ func TestRunExportPreflightUsesRealFilesystem(t *testing.T) {
 	}
 }
 
+func recordedExportRuleReply(status string, complete bool) workspaceapp.OrcaEnvelope {
+	// 纯格式输入用于实际文件写入测试，不代表服务、进程或模型已执行。
+	rootStatus := "ready"
+	if status == "failed" {
+		rootStatus = "failed"
+	}
+	view := map[string]any{
+		"schema": "swa.run-view.v1", "controller": "rule-controller", "run_id": "rule-run", "root_task_id": "rule-root",
+		"status": status, "complete": complete, "acceptance": "unreviewed", "observed_at": "2026-10-25T00:00:00Z",
+		"root":  map[string]any{"id": "rule-root", "status": rootStatus, "result": nil},
+		"tasks": []map[string]any{{"id": "rule-root", "status": rootStatus, "result": nil}, {"id": "rule-child", "status": "completed", "result": "已保存的任务成果"}},
+	}
+	for _, field := range []string{"dispatches", "questions", "answered_questions", "blockers", "failures", "deliverables", "handoffs"} {
+		view[field] = []any{}
+	}
+	result := map[string]any{
+		"schema": "swa.recorded-results.v1", "source": "native_task_records", "run_id": "rule-run", "root_task_id": "rule-root",
+		"status": status, "complete": complete, "acceptance": "unreviewed", "completeness": "partial", "audit": "not_requested",
+		"tasks": []map[string]any{{"task_id": "rule-root", "status": rootStatus, "availability": "missing", "result": nil}, {"task_id": "rule-child", "status": "completed", "availability": "available", "result": "已保存的任务成果"}},
+	}
+	return workspaceapp.OrcaEnvelope{Controller: "rule-controller", RunID: "rule-run", TaskID: "rule-root", Result: map[string]any{"native": map[string]any{"run_view": view, "result": result}}}
+}
+
+func TestRunExportWritesRecordedPartialResults(t *testing.T) {
+	for _, status := range []string{"active", "unknown", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			reply := recordedExportRuleReply(status, status == "failed")
+			path := filepath.Join(t.TempDir(), "export")
+			if err := writeRunExport(path, reply); err != nil {
+				t.Fatal("部分成果无法导出", err)
+			}
+			var savedView runView
+			body, err := os.ReadFile(filepath.Join(path, "run.json"))
+			if err != nil || json.Unmarshal(body, &savedView) != nil || savedView.Status != status || savedView.Complete != (status == "failed") || savedView.Acceptance != "unreviewed" {
+				t.Fatal("导出改写了运行或验收状态", err)
+			}
+			var savedResult struct {
+				Completeness string `json:"completeness"`
+				Tasks        []struct {
+					Availability string          `json:"availability"`
+					Result       json.RawMessage `json:"result"`
+				} `json:"tasks"`
+			}
+			body, err = os.ReadFile(filepath.Join(path, "result.json"))
+			if err != nil || json.Unmarshal(body, &savedResult) != nil || savedResult.Completeness != "partial" || len(savedResult.Tasks) != 2 || savedResult.Tasks[0].Availability != "missing" || string(savedResult.Tasks[0].Result) != "null" {
+				t.Fatal("缺失成果没有保持明确状态", err)
+			}
+			var index []struct {
+				TaskID string `json:"task_id"`
+				File   string `json:"file"`
+			}
+			body, err = os.ReadFile(filepath.Join(path, "results", "index.json"))
+			if err != nil || json.Unmarshal(body, &index) != nil || len(index) != 1 || index[0].TaskID != "rule-child" {
+				t.Fatal("导出索引包含缺失成果或遗漏现有成果", err)
+			}
+			body, err = os.ReadFile(filepath.Join(path, filepath.FromSlash(index[0].File)))
+			if err != nil || string(body) != "已保存的任务成果\n" {
+				t.Fatal("成果文件未保留正文", err)
+			}
+		})
+	}
+}
+
+func TestRunExportAuditRequiresCompleteRun(t *testing.T) {
+	reply := recordedExportRuleReply("active", false)
+	native := reply.Result.(map[string]any)["native"].(map[string]any)
+	native["result"] = map[string]any{"source": "native_journal_and_native_cli_session"}
+	path := filepath.Join(t.TempDir(), "audit")
+	if err := writeRunExport(path, reply); err == nil {
+		t.Fatal("未结算的运行被导出为完整审计结果")
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Fatal("拒绝审计导出后创建了目标目录", err)
+	}
+}
+
 func TestRunQuestionCommandUsesOriginalSelectors(t *testing.T) {
 	view := runView{Controller: "rule-controller's value", RunID: "rule-run", RootTaskID: "rule-root"}
 	question := runQuestion{ID: "rule-question", TaskID: "rule-child", DispatchID: "rule-dispatch", Question: "保留原问题"}

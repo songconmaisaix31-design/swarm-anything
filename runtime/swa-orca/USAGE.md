@@ -61,7 +61,13 @@ swa wait --project "$project_id" --controller "$controller" --task "$root_task_i
 
 已答记录区分 `answer_saved`、`read_unconfirmed`、`read_observed`、`continuation_required` 和 `interrupted`；仅 `continuation_required` 提供明确继续入口。等待仍返回9并保留原 Run 身份；未知读取不能被当作交付完成。用户明确停止 Worker 后，原停止与退出证据确认才允许回收，已存答案仍进入历史。当前问答实现的局部类型、表单和记录检查不替代安装后的真实提问、回答、超时继续及成果验收；真实模型、GUI点击和 Windows 问答链的已验范围以交付记录为准。既定 ToolsOff N4/N6 测试继续使用原模式。
 
-导出包含 `run.json` 的完整后端任务视图、`result.json` 的完整原生成果与会话记录，以及 `results/` 内实际任务结果文本；`results/index.json` 关联原 Task ID 与文本文件。CLI 不跟随回复中的任意链接读取文件，不复制账号配置或私有目录。尚未结算、原生成果不完整或导出写入失败时不会报告交付成功；部分写入的独占目录保留供检查，下一次导出选择另一个新目录。
+普通导出包含 `run.json` 的任务视图、`result.json` 的已记录任务结果快照，以及 `results/` 内已有结果文本；`results/index.json` 关联 Task ID 与文本文件。任务仍在执行或状态未知时可以导出已有结果，缺失结果逐项标记 `missing`，保留原 Run 状态和 `acceptance: unreviewed`。这不会从会话日志补取尚未写入任务记录的内容，也不表示任务已经完成或验收通过。
+
+需要完整原生会话、日志和进程证据时使用 `swa export ... --audit`，沿用完整结算与来源核验要求。`run/wait --export` 使用普通结果快照。两种模式都验证当前项目授权、原会话归属与账号来源，并过滤全部相关 Worker 的凭据；启动中尚无可核实绑定的 Worker 或凭据来源失效会拒绝导出。普通导出不读取原生日志，日志缺失或继续增长不阻断已有结果的交付。
+
+普通导出支持当前每会话独立账号的 Pi、Codex、Claude 和 OpenCode 接入；历史 `pi-native-api-key` 共享账号形式仍使用原审计路径。
+
+CLI 不跟随回复中的任意链接读取文件，不复制账号配置或私有目录。导出写入失败时不会报告成功；部分写入的独占目录保留供检查，下一次导出选择另一个新目录。
 
 ## Windows安装
 

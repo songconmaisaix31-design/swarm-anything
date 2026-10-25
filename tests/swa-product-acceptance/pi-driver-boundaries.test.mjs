@@ -1,41 +1,28 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { isLinuxPiTarget, readPiPrivateJson, validatePiEventView, validatePiLaunchRecord } from './pi-event-view.mjs'
 import { validateLinuxServiceReady } from './codex-event-view.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
-const protocolPath = process.env.SWA_PI_DRIVER_PROTOCOL_MODULE
-const protocolSha = process.env.SWA_PI_DRIVER_PROTOCOL_SHA256
-const reviewedProtocolPath = join(root, '.verification/cloud-setup/pi-shared-bundle-r1/run-um80b1/2-rpc-protocol.ts.cjs')
-const reviewedProtocolSha = '563dc4d56af7bb8713c5e9812fb010ade298c1f5b21515e49fd33869328c181e'
-const support = '/workspace/swa-linux-installs/swa-linux-combined-8752ec99-common-dir-01'
+const missingProtocolCandidate = process.env.SWA_PI_MISSING_PROTOCOL_CANDIDATE
 
-// 仅为 development 纯 module 组件；不能称装内同 S 或原生链路通过。
-assert.equal(process.platform, 'linux', 'pi_driver_boundaries_require_linux')
-assert.ok(protocolPath && protocolSha, 'pi_driver_boundaries_require_SWA_PI_DRIVER_PROTOCOL_MODULE_and_SWA_PI_DRIVER_PROTOCOL_SHA256')
-assert.ok(isAbsolute(protocolPath), 'pi_driver_boundaries_require_absolute_protocol_module')
-assert.equal(protocolPath, reviewedProtocolPath, 'pi_driver_boundaries_require_reviewed_development_protocol')
-assert.equal(protocolSha, reviewedProtocolSha, 'pi_driver_boundaries_require_reviewed_protocol_sha256')
-
-function actualStrictParser() {
-  assert.equal(realpathSync(protocolPath), protocolPath)
-  const before = lstatSync(protocolPath, { bigint: true })
-  assert.ok(before.isFile() && !before.isSymbolicLink())
-  assert.equal(createHash('sha256').update(readFileSync(protocolPath)).digest('hex'), protocolSha)
-  // 后继 runner 显式准入这个真实纯产物；不编译或回退仓库 parser。
-  const api = createRequire(import.meta.url)(protocolPath)
-  assert.equal(typeof api.parseStrictPiJson, 'function')
-  const identity = info => [info.dev, info.ino, info.birthtimeNs, info.mtimeNs, info.ctimeNs, info.size, info.mode, info.uid, info.nlink]
-  assert.deepEqual(identity(lstatSync(protocolPath, { bigint: true })), identity(before))
-  assert.equal(createHash('sha256').update(readFileSync(protocolPath)).digest('hex'), protocolSha)
-  return api.parseStrictPiJson
+function actualStrictParser(directory) {
+  const requireRuntime = createRequire(join(root, 'runtime/swa-orca/package.json'))
+  const { buildSync } = requireRuntime('esbuild')
+  const output = join(directory, 'rpc-protocol.cjs')
+  // 直接构建当前生产解析器，纯边界检查不依赖历史安装或验收产物。
+  buildSync({
+    stdin: { contents: "export { parseStrictPiJson } from './third_party/orca-v1.4.230/src/main/pi/rpc-protocol';", resolveDir: root, loader: 'ts' },
+    outfile: output, bundle: true, platform: 'node', format: 'cjs', target: 'node24', logLevel: 'error',
+    nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'node_modules')],
+    alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') },
+  })
+  return createRequire(output)(output).parseStrictPiJson
 }
 
 async function publicDirectory() {
@@ -68,9 +55,9 @@ test('the actual public package JSON is neither an owned launch record nor a Pi 
   assert.throws(() => validateLinuxServiceReady(actual, {}), /linux_service_ready_fields/)
 })
 
-test('real private public files use the driver FD reader and reviewed strict parser', async () => {
-  const parse = actualStrictParser()
+test('private files use the driver FD reader and current production parser', { skip: process.platform !== 'linux' && 'Linux file ownership and permission checks' }, async () => {
   const directory = await publicDirectory()
+  const parse = actualStrictParser(directory)
   const bytes = await readFile(new URL('../../package.json', import.meta.url))
   const publicFile = join(directory, 'public-package.json')
   await writeFile(publicFile, bytes, { flag: 'wx', mode: 0o600 })
@@ -107,8 +94,12 @@ test('real private public files use the driver FD reader and reviewed strict par
   assert.throws(() => readPiPrivateJson(duplicate, 1024, parse), /native_pi_duplicate_json_key/)
 })
 
-test('the actual 875 installation refuses the Pi observer before any product CLI or build', async () => {
-  assert.equal((await readFile(join(support, 'VERSION'), 'utf8')).trim(), '8752ec991668071d59ff5fca4cf99690568ff90c')
+test('an explicitly selected installation without the Pi protocol refuses observer preparation', {
+  skip: process.platform !== 'linux' ? 'Linux installation check' : !missingProtocolCandidate && 'Set SWA_PI_MISSING_PROTOCOL_CANDIDATE to an installation without runtime/pi-protocol.cjs',
+}, async () => {
+  const support = missingProtocolCandidate
+  assert.ok(isAbsolute(support), 'SWA_PI_MISSING_PROTOCOL_CANDIDATE must be an absolute installation path')
+  assert.match((await readFile(join(support, 'VERSION'), 'utf8')).trim(), /^[0-9a-f]{40}$/)
   await assert.rejects(lstat(join(support, 'runtime/pi-protocol.cjs')), { code: 'ENOENT' })
   const directory = await publicDirectory()
   const result = spawnSync(join(support, 'node/node'), [

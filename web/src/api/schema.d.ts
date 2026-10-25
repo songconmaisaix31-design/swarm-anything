@@ -7773,6 +7773,11 @@ export interface components {
             input_file?: string;
             result_file?: string;
             output_dir?: string;
+            /**
+             * @description run.export only. results (default) exports recorded task results; audit collects complete native sources.
+             * @enum {unknown}
+             */
+            export_mode?: "results" | "audit";
             name?: string;
             agent?: string;
             model?: string;

@@ -82,7 +82,7 @@ function RunProgress({ project, selected, disabled, useAnswerCommand }: { projec
   useEffect(() => { active.current = true; return () => { active.current = false; exportAbort.current?.abort(); }; }, [project.id, project.settings.revision]);
   const view = useReadApi(async signal => readSwaRun(await swaApi.command(project.id, { action: 'run.show', controller: selected.controller, task_id: selected.taskID, run_id: selected.runID }, signal), project.id, selected), { key: `${project.id}:${project.settings.revision}:${selected.runID}`, enabled: !disabled, refreshMs: following ? 3000 : undefined });
   async function exportRun() {
-    if (disabled || exporting || !view.data?.complete || view.loading || view.stale) return;
+    if (disabled || exporting || !view.data || view.loading || view.stale) return;
     setExporting(true); setExportError(null);
     const abort = new AbortController();
     exportAbort.current = abort;
@@ -91,10 +91,9 @@ function RunProgress({ project, selected, disabled, useAnswerCommand }: { projec
       const output = `${project.root}${project.root.endsWith(separator) ? '' : separator}swa-export-${crypto.randomUUID()}`;
       const reply = await swaApi.command(project.id, { action: 'run.export', controller: selected.controller, task_id: selected.taskID, run_id: selected.runID, output_dir: output }, abort.signal);
       if (!active.current || abort.signal.aborted) return;
-      const actual = readSwaRun(reply, project.id, selected);
-      if (!actual.complete) throw new Error('Run 已变化，完整成果尚未确认');
+      readSwaRun(reply, project.id, selected);
       const native = (reply.result as { native: { result?: unknown } }).native;
-      if (native.result === undefined || native.result === null) throw new Error('服务未提供完整原生成果');
+      if (native.result === undefined || native.result === null) throw new Error('服务未提供任务结果快照');
       download(`swa-run-${selected.runID}.json`, JSON.stringify(reply, null, 2), 'application/json');
     } catch (error) { if (active.current && !abort.signal.aborted) setExportError(formatError(error)); }
     finally { if (active.current) setExporting(false); }
@@ -112,8 +111,8 @@ function RunProgress({ project, selected, disabled, useAnswerCommand }: { projec
       <section aria-label="真实交接记录"><h4>实际交接与返回</h4><p className={styles.note}>观察此列表不会标记消息已读。恢复请求排队后，仍以父 Agent 的实际输入完成记录确认读取。</p>{data.handoffs.length ? <ul className={styles.workers}>{data.handoffs.map(handoff => <li key={handoff.id} className={styles.message}><p className={styles.identity}>{handoff.from} → {handoff.to} · {handoff.read ? '已确认读取' : '尚未确认读取'}</p>{handoff.text && <pre className={styles.output}>{handoff.text}</pre>}<details><summary>交接合同与实际来源</summary><pre className={styles.output}>{JSON.stringify(handoff.record, null, 2)}</pre></details></li>)}</ul> : <p className={styles.note}>本次完整快照没有交接消息。</p>}</section>
       <section aria-label="完整递归任务"><h4>全部任务与交接</h4><ul className={styles.workers}>{data.tasks.map(task => <li key={task.id} className={styles.message}><strong>{task.title || task.id}</strong><p>{task.status} · {task.parentID ? `父任务 ${task.parentID}` : '根任务'}</p><p className={styles.identity}>Task {task.id}{task.dependencies.length > 0 && ` · 等待 ${task.dependencies.join('、')}`}</p>{data.dispatches.filter(dispatch => dispatch.taskID === task.id).map(dispatch => <p className={styles.identity} key={dispatch.id}>Dispatch {dispatch.id} · 业务 {dispatch.status} · Worker {dispatch.workerState ?? '未观察'} · 资源 {dispatch.releaseState ?? '未观察'}{dispatch.parentDispatch && ` · 交接来源 ${dispatch.parentDispatch}`}{dispatch.sessionID && ` · 会话 ${dispatch.sessionID}`}</p>)}{task.result !== null && <details><summary>实际任务成果</summary><pre className={styles.output}>{task.result}</pre><button type="button" className="ac-button secondary compact" disabled={view.stale || view.loading} onClick={() => download(`swa-task-${task.id}.txt`, task.result!, 'text/plain')}>下载此任务成果文本</button></details>}</li>)}</ul></section>
       {data.failures.length > 0 && <details open><summary>实际失败记录</summary><ul>{data.failures.map((failure, index) => <li key={`${failure.taskID}:${index}`}>{failure.taskID} · {failure.reason}{failure.dispatchID && ` · ${failure.dispatchID}`}</li>)}</ul></details>}
-      <button type="button" className="ac-button compact" disabled={disabled || view.stale || view.loading || !data.complete || exporting} onClick={() => { void exportRun(); }}>{exporting ? '正在核查完整成果…' : '下载完整任务记录'}</button>
-      <p className={styles.note}>完整下载由服务核查全部原生成果后生成；包含任务、实际会话记录与结果。最近观察：{data.observedAt}</p>
+      <button type="button" className="ac-button compact" disabled={disabled || view.stale || view.loading || exporting} onClick={() => { void exportRun(); }}>{exporting ? '正在导出已有结果…' : '下载已有任务结果'}</button>
+      <p className={styles.note}>下载当前任务记录和已有结果，缺失结果会单独标记。导出成功不表示任务已完成或通过验收。最近观察：{data.observedAt}</p>
     </>}</QueryState>
     <div aria-live="polite">{answer.pending && <p role="status">正在处理问题或核查原请求…</p>}{answer.error && <p role="alert">{answer.error}</p>}{answer.unresolved && <div role="alert"><p>问题 {answer.unresolved.questionID} 的原操作 {answer.unresolved.action} 尚未确认 · {answer.unresolved.requestID}。后续仅查询此请求。</p><button type="button" className="ac-button secondary compact" disabled={disabled || answer.pending} onClick={() => { const action = answer.unresolved?.action; void answer.inspect(() => { setQuestionAction(action === 'question.resume' ? 'question.resume' : 'question.answer'); view.retry(); }); }}>查询原问题请求</button></div>}{answer.reply?.ok && !answer.unresolved && <p role="status">{questionAction === 'question.resume' ? '继续指令已投递；原答案是否已被模型读取，以此 Run 的实际记录为准。' : '回答已保存；正在等待的原工具可继续，已结束等待的问题会显示明确的继续入口。'}</p>}</div>
     {exportError && <p role="alert">{exportError}</p>}

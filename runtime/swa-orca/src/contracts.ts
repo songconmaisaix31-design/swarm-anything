@@ -31,7 +31,7 @@ export const commandSchema = z.strictObject({
   project_id: z.string().optional(), controller: z.string().optional(), task_id: z.string().optional(), run_id: z.string().optional(),
   dispatch_id: z.string().optional(), question_id: z.string().optional(), request_id: z.string().optional(), workdir: z.string().optional(),
   spec_file: z.string().optional(), input_file: z.string().optional(), result_file: z.string().optional(),
-  output_dir: z.string().optional(), name: z.string().optional(), agent: z.string().optional(), model: z.string().optional(),
+  output_dir: z.string().optional(), export_mode: z.enum(['results', 'audit']).optional(), name: z.string().optional(), agent: z.string().optional(), model: z.string().optional(),
   source: z.string().optional(), cursor: z.string().optional(), limit: z.number().int().optional(),
   parent_task_id: z.string().min(1).optional(), handoff_mode: z.enum(['work', 'consult']).optional(), reply_mode: z.enum(['resume', 'poll']).optional(),
   completion_criteria: z.array(z.string().trim().min(1)).optional(), role_id: z.string().min(1).optional(), conversation_id: z.string().min(1).optional(),
@@ -40,6 +40,7 @@ export const commandSchema = z.strictObject({
   role: roleDefinitionSchema.optional(),
   conversation: z.strictObject({ title: z.string().trim().min(1).max(200), role_id: z.string().min(1).optional() }).optional(), text: z.string().optional()
 }).superRefine((command, context) => {
+  if (command.export_mode !== undefined && command.action !== 'run.export') context.addIssue({ code: 'custom', path: ['export_mode'], message: 'Only run.export accepts export_mode' })
   if (command.text !== undefined) {
     const text = (command.action === 'question.answer' ? answerTextSchema : normalizedTextSchema).safeParse(command.text)
     if (!text.success) context.addIssue({ code: 'custom', path: ['text'], message: 'The command text does not meet its content and size requirements' })

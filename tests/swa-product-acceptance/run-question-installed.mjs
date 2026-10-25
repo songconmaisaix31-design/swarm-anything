@@ -467,7 +467,7 @@ async function finishPhase(phase, expectedCode = 0) {
   if (expectedCode === 0) assert.equal(view.failures.length, 0)
   for (const worker of phase.workers) await workerSources(phase, worker)
   await gui.call('observe')
-  const exported = await cli(['export', '--controller', phase.controller, '--task', phase.root_task_id, '--run', phase.run_id, '--output-dir', join(inputRoot, `result-${phase.name}-${randomUUID()}`)])
+  const exported = await cli(['export', '--audit', '--controller', phase.controller, '--task', phase.root_task_id, '--run', phase.run_id, '--output-dir', join(inputRoot, `result-${phase.name}-${randomUUID()}`)])
   const exportedView = exactRun(exported.reply, phase), { observed_at: _at, ...stable } = view, { observed_at: _exportAt, ...exportedStable } = exportedView
   assert.deepEqual(exportedStable, stable)
   phase.exported = exported.reply
