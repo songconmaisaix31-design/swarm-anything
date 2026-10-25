@@ -149,7 +149,7 @@
         "allowed_actions": {"type": ["array", "null"], "items": {"type": "string"}},
         "allowed_tools": {"type": ["array", "null"], "items": {"type": "string"}},
         "grant_actions": {"type": ["array", "null"], "items": {"type": "string"}},
-        "external_model_cli": {"type": "string"}, "allow_agent_control": {"type": "boolean"}
+        "external_model_cli": {"type": "string"}, "external_model_clis": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "allow_agent_control": {"type": "boolean"}
       }
     },
     "nativeConfigurationSource": {

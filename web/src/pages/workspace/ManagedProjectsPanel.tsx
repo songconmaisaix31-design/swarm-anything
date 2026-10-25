@@ -11,6 +11,7 @@ import { QueryState } from '../../components/QueryState';
 import { CommandState } from '../../components/CommandState';
 import { SelectField, TextField } from '../../components/FormControls';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
+import { allowedModelCLIs } from './modelCLIPermission';
 import { NativeProjectPanel } from './NativeProjectPanel';
 import { ProjectAgentAccess } from './ProjectAgentAccess';
 import { ProjectProgressPanel } from './ProjectProgressPanel';
@@ -39,7 +40,7 @@ export function ManagedProjectsPanel({ agents, query, initialRoot = '', initialN
       { label: '已登记项目', value: projects.data ? projects.data.items.length : projects.loading ? '加载中' : '未知' },
     ]}><p className={styles.note}>已允许从 Orca 登记范围发现项目，候选由你逐项登记，也可手动填写具体目录。</p><div className={styles.controls}><label>排序<select aria-label="项目排序" value={sort} onChange={event => setSort(event.target.value)}><option value="source">服务返回顺序</option><option value="name">项目名称</option><option value="activity" disabled>最近活动 · 未提供</option></select></label></div></CollectionOverview>
     <button className="ac-button secondary compact" type="button" disabled={projects.loading} onClick={projects.retry}>重载登记项目</button>
-    <QueryState state={projects} empty={() => !visible.length} emptyTitle={projects.data?.items.length ? '没有匹配的本地项目' : '暂无本地项目'}>{() => <ul className={styles.cards}>{visible.map(project => <li key={project.id} className={styles.card}><button className={styles.open} type="button" onClick={() => setSelectedID(project.id)}><h3>{project.name}</h3><span>查看项目与权限 →</span></button><p>来源目录</p><code className={styles.path}>{project.root}</code><p>模型客户端 · {project.settings.external_model_cli || '尚未许可'}</p><p>A 主动纳入资料 · 默认；B 目录 · {project.settings.allow_directory ? '已打开' : '关闭'}；C 引用展开 · {project.settings.expand_references ? '已打开' : '关闭'}</p></li>)}</ul>}</QueryState>
+    <QueryState state={projects} empty={() => !visible.length} emptyTitle={projects.data?.items.length ? '没有匹配的本地项目' : '暂无本地项目'}>{() => <ul className={styles.cards}>{visible.map(project => <li key={project.id} className={styles.card}><button className={styles.open} type="button" onClick={() => setSelectedID(project.id)}><h3>{project.name}</h3><span>查看项目与权限 →</span></button><p>来源目录</p><code className={styles.path}>{project.root}</code><p>模型客户端 · {allowedModelCLIs(project.settings).join('、') || '尚未许可'} · 默认 {project.settings.external_model_cli || '无'}</p><p>A 主动纳入资料 · 默认；B 目录 · {project.settings.allow_directory ? '已打开' : '关闭'}；C 引用展开 · {project.settings.expand_references ? '已打开' : '关闭'}</p></li>)}</ul>}</QueryState>
     <details className="ac-discovery"><summary>从 Orca 登记目录选择项目</summary><RegisteredProjectsPanel query={query} registeredRoots={projects.data?.items.map(project => project.root) ?? []} onSelect={candidate => { setName(candidate.name); setRoot(candidate.root); setCandidates(null); if (registration.current) { registration.current.open = true; registration.current.scrollIntoView({ block: 'nearest' }); } }} /></details>
     <details ref={registration} open={initialRoot && !selected ? true : undefined}><summary>登记项目 / 发现子项目</summary><form className={formStyles.form} onSubmit={event => {
       event.preventDefault(); const request = command.prepare({ expected_version: 1, name: name.trim(), root: root.trim(), space_id: spaceID });

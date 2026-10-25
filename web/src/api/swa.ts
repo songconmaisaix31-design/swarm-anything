@@ -17,15 +17,26 @@ export class SwaRuntimeUnavailableError extends ApiError {
   }
 }
 
+/** 人工会话检查未通过，命令 POST 尚未发出。 */
+export class SwaCommandNotSubmittedError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : '人工会话检查失败，命令尚未提交', { cause });
+    this.name = 'SwaCommandNotSubmittedError';
+  }
+}
+
 /** 浏览器沿人工会话访问同一产品命令；任何 POST 均不自动重发。 */
 export function createSwaApi(client = api) {
   return {
     async command(projectID: string, body: SwaCommand, signal?: AbortSignal): Promise<SwaEnvelope> {
       signal?.throwIfAborted();
-      const session = await client.GET('/auth/session', { signal });
-      if (session.error) throw new ApiError(session.response.status, session.error);
-      if (!session.data) throw new Error('执行操作需要当前人工会话');
-      signal?.throwIfAborted();
+      let session;
+      try {
+        session = await client.GET('/auth/session', { signal });
+        if (session.error) throw new ApiError(session.response.status, session.error);
+        if (!session.data) throw new Error('执行操作需要当前人工会话');
+        signal?.throwIfAborted();
+      } catch (failure) { throw new SwaCommandNotSubmittedError(failure); }
       const result = await client.POST('/local-projects/{id}/orca/commands', {
         params: { path: { id: projectID }, header: { 'X-CSRF-Token': session.data.csrf_token, ...(body.request_id ? { 'Idempotency-Key': body.request_id } : {}) } },
         body, signal,

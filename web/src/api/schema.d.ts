@@ -6637,7 +6637,10 @@ export interface components {
             expand_references: boolean;
             allowed_actions: string[];
             allowed_tools: string[];
+            /** @description Default model CLI; an empty value revokes project model processing permission. */
             external_model_cli: string;
+            /** @description Explicit permitted model CLIs, including the default. Omitted or empty keeps the legacy single-default permission. */
+            external_model_clis?: string[];
             allow_agent_control: boolean;
             history_roots: {
                 [key: string]: string;
@@ -7945,6 +7948,7 @@ export interface components {
             allowed_tools: string[] | null;
             grant_actions: string[] | null;
             external_model_cli: string;
+            external_model_clis?: string[];
             allow_agent_control: boolean;
         };
         capabilities: {

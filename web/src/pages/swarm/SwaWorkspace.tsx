@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../api/schema';
 import { workspaceApi as localProjectsApi } from '../../api/workspace';
-import { swaApi, SwaCommandError, SwaRuntimeUnavailableError, type SwaCommand, type SwaEnvelope } from '../../api/swa';
+import { swaApi, SwaCommandError, SwaCommandNotSubmittedError, SwaRuntimeUnavailableError, type SwaCommand, type SwaEnvelope } from '../../api/swa';
 import { useReadApi, formatError } from '../../hooks/useReadState';
 import { QueryState } from '../../components/QueryState';
 import { SectionCard } from '../../components/SectionCard';
@@ -10,6 +10,8 @@ import { SwaAgentCapabilities, SwaQuestionModeField, SwaRunWorkspace } from './S
 import { SwaRoles, type SelectedSwaRole } from './SwaRolesPanel';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
 import { inspectSwaRunSubmission } from './swaRunView';
+import { modelCLIAllowed } from '../workspace/modelCLIPermission';
+import { readRunConnection } from './swaRunConnection';
 import styles from './SwaWorkspace.module.css';
 
 type Project = components['schemas']['LocalProjectV1'];
@@ -33,8 +35,8 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
   const snapshotKey = `${project.id}:${project.settings.revision}`;
   const status = useReadApi(signal => swaApi.command(project.id, { action: 'status' }, signal), { key: snapshotKey, enabled: !disabled });
   const capabilities = useReadApi(signal => swaApi.command(project.id, { action: 'capabilities' }, signal), { key: snapshotKey, enabled: !disabled && !!status.data && !status.error });
-  const [controller, setController] = useState(''), [taskID, setTaskID] = useState('');
-  const [attached, setAttached] = useState<{ controller: string; taskID: string } | null>(null);
+  const [attached, setAttached] = useState<{ controller: string; taskID: string } | null>(() => readRunConnection(project.id).selection);
+  const [controller, setController] = useState(attached?.controller ?? ''), [taskID, setTaskID] = useState(attached?.taskID ?? '');
   const [workdir, setWorkdir] = useState(project.root);
   const [selectedRole, setSelectedRole] = useState<SelectedSwaRole | null>(null), [conversationID, setConversationID] = useState('');
   const open = useSwaCommand(project.id, 'controller.open');
@@ -48,7 +50,7 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
     {!!status.data && <QueryState state={capabilities}>{reply => <><SwaAgentCapabilities reply={reply} /><details><summary>实际能力来源原件</summary><pre className={styles.output}>{observationJSON(reply.result)}</pre></details></>}</QueryState>}
     <SwaRoles key={project.id} project={project} disabled={disabled} onRoleSelected={setSelectedRole} onConversationSelected={setConversationID} />
     {(selectedRole || conversationID) && <div className={styles.form}>{selectedRole && <button type="button" className="ac-button secondary compact" onClick={() => setSelectedRole(null)}>清除本次角色选择</button>}{conversationID && <button type="button" className="ac-button secondary compact" onClick={() => setConversationID('')}>清除本次讨论关联</button>}</div>}
-    <SwaRunWorkspace project={project} capabilities={capabilities.data} disabled={disabled || !status.data || status.loading || status.stale || !!status.error} startDisabled={!available} command={submitRun} useAnswerCommand={useSwaCommand} role={selectedRole} conversationID={conversationID} onAttached={selection => { setController(selection.controller); setTaskID(selection.taskID); setAttached({ controller: selection.controller, taskID: selection.taskID }); }} />
+    <SwaRunWorkspace project={project} capabilities={capabilities.data} disabled={disabled || !status.data || status.loading || status.stale || !!status.error} startDisabled={!available} command={submitRun} useAnswerCommand={useSwaCommand} role={selectedRole} conversationID={conversationID} onAttached={selection => { setController(selection.controller); setTaskID(selection.taskID); setAttached({ controller: selection.controller, taskID: selection.taskID }); }} onForgotten={() => { setAttached(null); setController(''); setTaskID(''); }} />
     <details><summary>新建 Controller 与固定任务</summary><p className={styles.note}>以下路径指向当前服务机器。页面不上传文件或修改项目批准；任务规格文件中的 max_workers 限制总创建和预留名额，释放 Worker 不归还名额。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); void open.run({ action: 'controller.open', project_id: project.id, workdir: workdir.trim() }, reply => { if (!reply.controller) throw new Error('回执缺少真实 Controller，请查询原请求'); setController(reply.controller); }); }}><label>已批准的服务端工作目录<input required value={workdir} onChange={event => setWorkdir(event.target.value)} /></label><button className="ac-button secondary compact" type="submit" disabled={!canStart || open.pending || !!open.unresolved}>创建 Controller</button></form><OperationState command={open} onRecovered={reply => { if (reply.controller) setController(reply.controller); }} />
       {controller.trim() && <TaskCreateForm key={controller.trim()} projectID={project.id} controller={controller.trim()} disabled={!canStart} onCreated={id => { setTaskID(id); setAttached({ controller: controller.trim(), taskID: id }); }} />}
     </details>
@@ -114,8 +116,8 @@ function WorkerWorkspace({ project, controller, runID, dispatchID, onChanged }: 
 
 function WorkerStartForm({ project, controller, taskID, capabilities, disabled, onStarted }: { project: Project; controller: string; taskID: string; capabilities: SwaEnvelope; disabled: boolean; onStarted: () => void }) {
   let agents: ReturnType<typeof readSwaAgents> = [], capabilityError: string | null = null;
-  try { agents = readSwaAgents(capabilities).filter(agent => agent.id === project.settings.external_model_cli); } catch (error) { capabilityError = formatError(error); }
-  const [agentID, setAgentID] = useState(''), [name, setName] = useState(''), [inputFile, setInputFile] = useState('');
+  try { agents = readSwaAgents(capabilities).filter(agent => modelCLIAllowed(project.settings, agent.id)); } catch (error) { capabilityError = formatError(error); }
+  const [agentID, setAgentID] = useState(project.settings.external_model_cli), [name, setName] = useState(''), [inputFile, setInputFile] = useState('');
   const [questionMode, setQuestionMode] = useState<'disabled' | 'native'>('disabled');
   const agent = agents.find(item => item.id === agentID);
   const command = useSwaCommand(project.id, `worker.start:${controller}:${taskID}`);
@@ -152,6 +154,11 @@ function useSwaCommand(projectID: string, scope: string) {
   });
   const active = useRef(false), busy = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  function clearSavedRequest() {
+    if (active.current) setUnresolved(null);
+    try { sessionStorage.removeItem(storageKey); }
+    catch { if (active.current) setError('原请求已确认，但浏览器未能清除保存的请求身份；刷新后可再查询原请求。'); }
+  }
   async function run(body: SwaCommand, onSuccess?: (reply: SwaEnvelope) => void) {
     if (busy.current || unresolved) return;
     busy.current = true;
@@ -159,25 +166,27 @@ function useSwaCommand(projectID: string, scope: string) {
     const questionMutation = body.action === 'question.answer' || body.action === 'question.resume';
     const requestID = mutation ? crypto.randomUUID() : undefined;
     const original: PendingSwaRequest | null = requestID ? { requestID, action: body.action, ...(body.controller ? { controller: body.controller } : {}), ...(body.task_id ? { taskID: body.task_id } : {}), ...(body.dispatch_id ? { dispatchID: body.dispatch_id } : {}), ...(body.run_id ? { runID: body.run_id } : {}), ...(body.question_id ? { questionID: body.question_id } : {}) } : null;
+    let commandReturned = false;
     setPending(true); setError(null); setReply(null);
     try {
       if (original) { sessionStorage.setItem(storageKey, JSON.stringify(original)); setUnresolved(original); }
       let result = await swaApi.command(projectID, { ...body, ...(requestID ? { request_id: requestID } : {}) });
+      commandReturned = true;
       if (questionMutation && original) {
         const queried = await swaApi.command(projectID, { action: 'request.show', controller: original.controller, request_id: original.requestID });
         const recovered = recoverSwaRequest(queried, projectID, original);
         if (!recovered?.ok) throw new Error('原问题操作尚未取得完整成功回执，请继续查询原请求');
         result = recovered;
       }
-      if (active.current) { setReply(result); onSuccess?.(result); sessionStorage.removeItem(storageKey); setUnresolved(null); }
+      if (active.current) { setReply(result); onSuccess?.(result); clearSavedRequest(); }
     } catch (failure) {
-      if (failure instanceof SwaRuntimeUnavailableError && !questionMutation) sessionStorage.removeItem(storageKey);
+      const notSubmitted = !commandReturned && (failure instanceof SwaCommandNotSubmittedError || failure instanceof SwaRuntimeUnavailableError && !questionMutation);
       if (active.current) {
         setError(formatError(failure));
         if (failure instanceof SwaCommandError) setReply(failure.reply);
-        if (failure instanceof SwaRuntimeUnavailableError && !questionMutation) setUnresolved(null);
         // 其余不确定错误保留原请求，不推断已执行效果。
       }
+      if (notSubmitted) clearSavedRequest();
     } finally { busy.current = false; if (active.current) setPending(false); }
   }
   async function inspect(onRecovered?: (reply: SwaEnvelope) => void) {
@@ -186,7 +195,7 @@ function useSwaCommand(projectID: string, scope: string) {
     try {
       if (unresolved.action === 'run.submit') {
         const recovered = await inspectSwaRunSubmission(projectID, unresolved);
-        if (active.current && recovered) { setReply(recovered); onRecovered?.(recovered); sessionStorage.removeItem(storageKey); setUnresolved(null); setError(null); }
+        if (active.current && recovered) { setReply(recovered); onRecovered?.(recovered); setError(null); clearSavedRequest(); }
         return;
       }
       const result = await swaApi.command(projectID, { action: 'request.show', ...(unresolved.controller ? { controller: unresolved.controller } : { project_id: projectID }), request_id: unresolved.requestID });
@@ -195,8 +204,9 @@ function useSwaCommand(projectID: string, scope: string) {
         const recovered = recoverSwaRequest(result, projectID, unresolved);
         if (recovered) {
           if (recovered.ok) onRecovered?.(recovered);
-          sessionStorage.removeItem(storageKey); setUnresolved(null); setReply(recovered);
+          setReply(recovered);
           setError(recovered.ok ? null : recovered.error?.message ?? '原操作已明确拒绝且没有效果，可修正后重新提交');
+          clearSavedRequest();
         }
       }
     } catch (failure) { if (active.current) setError(formatError(failure)); }

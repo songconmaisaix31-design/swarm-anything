@@ -23,10 +23,19 @@ const triggers = new WeakMap<OrcaRuntimeService, (scope: Scope) => void>()
 const cleanupGuards = new WeakMap<OrcaRuntimeService, Map<string, () => void>>()
 const completionMailSchema = z.object({ schema: z.literal('swa.handoff-completion.v1'), source_task_id: z.string(), source_dispatch_id: z.string(), parent_task_id: z.string(), parent_dispatch_id: z.string(), reply: z.enum(['poll', 'resume']), outcome: z.string(), resume_request_id: z.uuid().nullable() })
 function fail(message: string): never { throw new OrchestrationError('operation_unknown', message) }
-class QuestionSettlementWaiting extends Error {}
+// 完整回滚的只读前置等待可重新观察；已经可能产生效果的未知状态仍保留原回执。
+export class RunSettlementWaiting extends Error {}
+
+export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }): Invocation {
+  const h = mail.handoff, marker = `native-handoff:${mail.id}`
+  // 新输入沿用原调用者和账号；首次提交、问题工具等字段只属于原操作。
+  return invocationSchema.parse({ caller: original.caller, project: original.project, selection: original.selection, context: original.context,
+    command: { action: 'worker.send', controller: scope.controller, task_id: scope.root_task_id, dispatch_id: h.parent_dispatch_id, request_id: h.resume_request_id, input_file: marker }, scope,
+    input: { path: marker, version: mail.id, text: mail.body }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id } })
+}
 
 export function assertTaskQuestionSettlementReady(runtime: OrcaRuntimeService, scope: Scope, taskId: string, dispatchId: string) {
-  if (hasTaskQuestionSettlementBlock(runtime, scope, taskId, dispatchId)) throw new QuestionSettlementWaiting('The original Task is waiting for its native question')
+  if (hasTaskQuestionSettlementBlock(runtime, scope, taskId, dispatchId)) throw new RunSettlementWaiting('The original Task is waiting for its native question')
 }
 
 export function requestRunSettlement(runtime: OrcaRuntimeService, scope: Scope) { triggers.get(runtime)?.(scope) }
@@ -132,8 +141,8 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
     }
     const starts = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts WHERE method='swa.controllerDeliver' AND state='completed' AND caller_fingerprint=? AND json_valid(receipt)=1 AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.run_id')=? AND json_extract(receipt,'$.native.dispatchId')=?`).all(authority(runtime), scope.run_id, h.parent_dispatch_id))
     if (starts.length !== 1) fail('The original parent Worker input authorization is unavailable')
-    const original = invocationSchema.parse(nativeObject(JSON.parse(starts[0]!.receipt)).invocation), message = db.getMessageById(mail.id)!, marker = `native-handoff:${mail.id}`
-    const invocation = invocationSchema.parse({ ...original, command: { action: 'worker.send', controller: scope.controller, task_id: scope.root_task_id, dispatch_id: h.parent_dispatch_id, request_id: h.resume_request_id, input_file: marker }, scope, input: { path: marker, version: mail.id, text: message.body }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id } })
+    const original = invocationSchema.parse(nativeObject(JSON.parse(starts[0]!.receipt)).invocation), message = db.getMessageById(mail.id)!
+    const invocation = handoffResumeInvocation(original, scope, { ...mail, body: message.body })
     validateHandoffInput(runtime, invocation)
     await deliver(invocation)
   }
@@ -174,7 +183,7 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
         db.db.exec('BEGIN IMMEDIATE')
         try {
           assertTaskQuestionSettlementReady(runtime, scope, task.id, worker.dispatchId)
-          if (!ownerAlive() || !isDeepStrictEqual(nativeTurn(runtime, worker.dispatchId, scope), turn) || pending(scope) || readRootResultInventory(db, scope, workers(scope)).signature !== inventory) fail('The Run changed before its execution settlement')
+          if (!ownerAlive() || !isDeepStrictEqual(nativeTurn(runtime, worker.dispatchId, scope), turn) || pending(scope) || readRootResultInventory(db, scope, workers(scope)).signature !== inventory) throw new RunSettlementWaiting('The Run changed before its execution settlement')
           if (turn.outcome === 'success') {
             const settled = db.settleWorkerReportInTransaction({ taskId: task.id, dispatchId: worker.dispatchId, outcome: 'succeeded', result })
             if (settled.action !== 'settled') fail('The original Worker lifecycle refused its observed native completion')
@@ -191,7 +200,7 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
           const receipt = { project_id: scope.project_id, controller: scope.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, task_id: task.id, phase: 'execution_completed', acceptance: 'unreviewed', turn, result, mail_id: mailId }
           mutation.recordReceipt(receipt); db.db.exec('COMMIT'); return receipt
         } catch (error) { db.db.exec('ROLLBACK'); throw error }
-      }) } catch (error) { if (error instanceof QuestionSettlementWaiting) continue; throw error }
+      }) } catch (error) { if (error instanceof RunSettlementWaiting) continue; throw error }
       changed.add(scope.run_id)
       await cleanup(scope, worker.dispatchId, turn.session_id, `${base}/${worker.dispatchId}/release`, false)
       for (const mail of mails(scope)) await resume(scope, mail)
@@ -203,10 +212,10 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
       if (!mutation) fail('The original native delivery settlement identity is unavailable')
       db.db.exec('BEGIN IMMEDIATE')
       try {
-        if (hasQuestionSettlementBlock(runtime, scope)) throw new QuestionSettlementWaiting('The original Run is waiting for its native question')
-        if (!ownerAlive() || pending(scope) || readRootResultInventory(db, scope, fleet).signature !== inventory) fail('The complete Run changed before delivery settlement')
+        if (hasQuestionSettlementBlock(runtime, scope)) throw new RunSettlementWaiting('The original Run is waiting for its native question')
+        if (!ownerAlive() || pending(scope) || readRootResultInventory(db, scope, fleet).signature !== inventory) throw new RunSettlementWaiting('The complete Run changed before delivery settlement')
         const actual = readRunTaskTree(db, scope)
-        if (actual.tasks.some(task => task.id !== scope.root_task_id && !['completed', 'failed'].includes(task.status)) || fleet.some(row => db.getWorkerTerminalResourceByOwner(row.dispatchId)?.release_state !== 'released')) fail('The Run still has an incomplete descendant or retained Worker')
+        if (actual.tasks.some(task => task.id !== scope.root_task_id && !['completed', 'failed'].includes(task.status)) || fleet.some(row => db.getWorkerTerminalResourceByOwner(row.dispatchId)?.release_state !== 'released')) throw new RunSettlementWaiting('The Run still has an incomplete descendant or retained Worker')
         const lead = submittedLead(scope), text = actual.tasks.filter(task => task.id !== scope.root_task_id).map(task => `${task.title ?? task.id}\n\n${task.result ?? ''}`).join('\n\n')
         db.updateTaskStatus(scope.root_task_id, lead.status === 'completed' ? 'completed' : 'failed', text)
         const observation = db.getMessageById(`${base}/unconfirmed`)
@@ -214,7 +223,7 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
         const receipt = { project_id: scope.project_id, controller: scope.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, phase: 'delivery_completed', acceptance: 'unreviewed', workers: complete.workers.map(row => row.worker.dispatchId) }
         mutation.recordReceipt(receipt); db.db.exec('COMMIT'); return receipt
       } catch (error) { db.db.exec('ROLLBACK'); throw error }
-    }) } catch (error) { if (error instanceof QuestionSettlementWaiting) return; throw error }
+    }) } catch (error) { if (error instanceof RunSettlementWaiting) return; throw error }
   }
   const trigger = (scope: Scope) => {
     if (closed) return

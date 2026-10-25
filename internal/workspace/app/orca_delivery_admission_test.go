@@ -29,7 +29,7 @@ type deliveryAdmissionInput struct {
 	link       workspace.OrcaExecutionLink
 }
 
-func newDeliveryAdmissionInput(t *testing.T, creator string) *deliveryAdmissionInput {
+func newDeliveryAdmissionInput(t *testing.T, creator string, configure ...func(*domain.ProjectSettings)) *deliveryAdmissionInput {
 	t.Helper()
 	ctx := context.Background()
 	directory := t.TempDir()
@@ -66,6 +66,9 @@ func newDeliveryAdmissionInput(t *testing.T, creator string) *deliveryAdmissionI
 	settings.AllowedSubdirs = []string{"."}
 	settings.AllowedActions = []string{"observe", "read_context", "start", "send", "stop"}
 	settings.ExternalModelCLI = "pi"
+	for _, apply := range configure {
+		apply(&settings)
+	}
 	project = saveAdmissionSettings(t, db, project, settings)
 	human.ProjectID = project.ID
 	packet, err := projects.ReadProjectContext(ctx, human, project.ID, domain.ContextRequest{Files: []string{"context.txt"}})

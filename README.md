@@ -32,6 +32,8 @@ swa export --project "$project_id" --controller "$controller" \
 
 GUI 的角色选择保存准确版本，讨论追加只保存要求；向实际 Worker 追加模型输入使用独立发送操作，并按当前项目的人类权限重新授权。声明支持、已安装、配置、认证、能启动和真实执行结果分别显示，未知状态不会解释为成功。
 
+项目设置可明确许可多个 CLI，并选择一个默认客户端。同一 Run 的 Worker 可分别使用获准的 Pi、Codex、Claude 或 OpenCode；旧项目仍只允许原默认客户端。浏览器按项目保存 Run 连接，刷新后继续观察，忘记连接不会停止后台任务。
+
 ## 开发环境
 
 使用 Node **24.16.0**、pnpm **11.27.0**、Go **1.27.2**。依赖使用精确版本，见 `pnpm-lock.yaml`、`go.mod`、`go.sum` 和 [依赖清单](dependencies.lock.json)。脚本通过既有 `ASTROCYTE_GO` 工具链覆盖或 PATH 查找 Go；该工具链变量不选择产品数据。

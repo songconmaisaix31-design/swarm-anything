@@ -157,6 +157,7 @@ type OrcaCapabilityRequirements struct {
 	AllowedActions    []string `json:"allowed_actions"`
 	AllowedTools      []string `json:"allowed_tools"`
 	ExternalModelCLI  string   `json:"external_model_cli"`
+	ExternalModelCLIs []string `json:"external_model_clis,omitempty"`
 	AllowAgentControl bool     `json:"allow_agent_control"`
 }
 
@@ -710,7 +711,7 @@ func (s *OrcaExecutionService) executeOrcaCommand(ctx context.Context, caller do
 		if err != nil || root != p.Root {
 			return reply, projectError(apierrors.ContextStale, "registered project root changed before native discovery")
 		}
-		requirements := OrcaCapabilityRequirements{SettingsRevision: p.Settings.Revision, AllowDirectory: p.Settings.AllowDirectory, AllowedSubdirs: p.Settings.AllowedSubdirs, AllowedActions: p.Settings.AllowedActions, AllowedTools: p.Settings.AllowedTools, ExternalModelCLI: p.Settings.ExternalModelCLI, AllowAgentControl: p.Settings.AllowAgentControl}
+		requirements := OrcaCapabilityRequirements{SettingsRevision: p.Settings.Revision, AllowDirectory: p.Settings.AllowDirectory, AllowedSubdirs: p.Settings.AllowedSubdirs, AllowedActions: p.Settings.AllowedActions, AllowedTools: p.Settings.AllowedTools, ExternalModelCLI: p.Settings.ExternalModelCLI, ExternalModelCLIs: p.Settings.ExternalModelCLIs, AllowAgentControl: p.Settings.AllowAgentControl}
 		if caller.Kind == "agent" {
 			grant, err := s.projects.LoadGrant(ctx, projectID, caller.ID)
 			if err != nil {

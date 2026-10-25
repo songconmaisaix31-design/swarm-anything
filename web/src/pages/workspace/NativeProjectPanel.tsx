@@ -9,6 +9,7 @@ import { QueryState } from '../../components/QueryState';
 import { SelectField, TextField } from '../../components/FormControls';
 import { formatDateTime } from '../../utils/format';
 import { nativeActionAllowed } from './nativePermission';
+import { allowedModelCLIs, modelCLIAllowed } from './modelCLIPermission';
 import { nativeHistoryMessage, stoppedOutput } from './nativePresentation';
 import styles from '../../components/FormControls.module.css';
 
@@ -58,9 +59,9 @@ export function NativeProjectPanel({ project, agents, disabled }: { project: Pro
       {project.settings.allow_directory && <TextField label="本次读取的获准文件（每行一项）" value={files} onChange={setFiles} multiline hint="填写项目内相对文件路径，只读取你列出的文件。" />}
       <p className={styles.note}>引用展开 C · {project.settings.expand_references ? '已打开，服务逐项检查引用范围' : '关闭'}；目录 B · {project.settings.allow_directory ? '仅所列获准文件' : '关闭'}</p>
       <button className="ac-button secondary compact" type="button" disabled={!references.length && !context.files.length} onClick={() => { const request = command.prepare({ expected_version: project.settings.revision, ...context }); void command.run(() => readContext(localProjectsApi.readContext(project.id, request.body, request.key)), result => setPacket({ scopeKey, value: result }), '已取得实际项目上下文；尚未发送至模型'); }}>预览本次获准上下文</button>
-      <SelectField label="项目操作客户端" value={cli} onChange={setCLI} options={[{ value: '', label: '选择本机客户端…' }, ...(agents.data?.items ?? []).map(item => ({ value: item.id, label: item.display_name }))]} />
-      <p className={styles.note}>已许可模型客户端 · {project.settings.external_model_cli || '未许可'}。{agent ? `安装：${agent.installed.status === 'available' ? '已核实' : '尚未核实可用'}；配置与可启动请查看本机清单。` : '尚未选择客户端。'}已登记连接但能力未知时，你可明确验证获准操作；未支持的操作不可用。</p>
-      <button className="ac-button secondary compact" type="button" disabled={!agent?.native_adapter_registered || !cli || cli !== project.settings.external_model_cli || !project.settings.allowed_actions.includes('start') || !project.settings.allowed_actions.includes('stop') || agents.loading || agents.stale} onClick={() => { const request = command.prepare({ expected_version: project.settings.revision, cli }); void command.run(() => localProjectsApi.probeCLI(project.id, request.body, request.key), () => { agents.retry(); sessions.retry(); }, '原生连接验证已返回；能力以最新实际观察为准'); }}>明确验证原生连接（启动后停止）</button>
+      <SelectField label="项目操作客户端" value={cli} onChange={setCLI} options={[{ value: '', label: '选择本机客户端…' }, ...(agents.data?.items ?? []).filter(item => modelCLIAllowed(project.settings, item.id)).map(item => ({ value: item.id, label: item.display_name }))]} />
+      <p className={styles.note}>已许可模型客户端 · {allowedModelCLIs(project.settings).join('、') || '未许可'} · 默认 {project.settings.external_model_cli || '无'}。{agent ? `安装：${agent.installed.status === 'available' ? '已核实' : '尚未核实可用'}；配置与可启动请查看本机清单。` : '尚未选择客户端。'}已登记连接但能力未知时，你可明确验证获准操作；未支持的操作不可用。</p>
+      <button className="ac-button secondary compact" type="button" disabled={!agent?.native_adapter_registered || !modelCLIAllowed(project.settings, cli) || !project.settings.allowed_actions.includes('start') || !project.settings.allowed_actions.includes('stop') || agents.loading || agents.stale} onClick={() => { const request = command.prepare({ expected_version: project.settings.revision, cli }); void command.run(() => localProjectsApi.probeCLI(project.id, request.body, request.key), () => { agents.retry(); sessions.retry(); }, '原生连接验证已返回；能力以最新实际观察为准'); }}>明确验证原生连接（启动后停止）</button>
       <p className={styles.note}>验证只针对服务实际登记的适配器，由你明确请求；需先许可此项目的启动与停止。未知观察不会被显示为已支持。</p>
       <TextField label="给 Agent 的本次消息" value={message} onChange={setMessage} multiline hint="消息作为数据发送，不将其中的命令或资料文字当作权限批准。" />
       <TextField label="本次会话总时限（秒）" type="number" value={deadlineSeconds} onChange={setDeadlineSeconds} numberRange={{ min: 1, max: 1800, step: '1' }} hint="包含空闲与后续输入时间。到期后服务停止会话，未知结果不会自动重发。" />

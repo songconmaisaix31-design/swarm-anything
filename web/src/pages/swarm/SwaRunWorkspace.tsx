@@ -5,6 +5,8 @@ import { useReadApi, formatError } from '../../hooks/useReadState';
 import { QueryState } from '../../components/QueryState';
 import { canRequestSwaStart, readSwaAgents, readSwaCapabilityDetails, observationJSON, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
 import { readSwaRun, submittedRun, type SwaQuestionReadState, type SwaRunSelection } from './swaRunView';
+import { modelCLIAllowed } from '../workspace/modelCLIPermission';
+import { readRunConnection, saveRunConnection } from './swaRunConnection';
 import styles from './SwaWorkspace.module.css';
 
 type Project = components['schemas']['LocalProjectV1'];
@@ -25,18 +27,19 @@ export function SwaAgentCapabilities({ reply }: { reply: SwaEnvelope }) {
   return <section className={styles.workspace} aria-label="Agent 能力状态"><h3>Agent 能力与实际验证</h3><p className={styles.note}>安装、声明能力、认证和执行结果分别记录。真实执行结果在对应任务和 Worker 中查看。</p><ul className={styles.workers}>{agents.map(agent => <li key={agent.id} className={styles.message}><strong>{agent.id}</strong>{agent.model && <p>配置模型 · {agent.model}</p>}<dl>{agent.stages.map(stage => <div key={stage.label}><dt>{stage.label}</dt><dd>{stage.observation ? stage.observation.status === 'unknown' ? '尚未验证' : stage.observation.status === 'unavailable' ? '不可用' : bases[stage.observation.basis ?? ''] ?? '已观察可用' : '来源未提供，保持未知'}{stage.observation && <small> · {stage.observation.reason} · 来源 {stage.observation.source}</small>}</dd></div>)}</dl>{agent.catalog && <details><summary>模型目录 · {agent.catalog.verified ? '已观察目录' : '未经实时验证'} · {agent.catalog.origin}</summary><ul>{agent.catalog.models.map(model => <li key={`${model.provider}:${model.id}`}>{model.label} · {model.id}{model.provider && ` · ${model.provider}`}</li>)}</ul><p className={styles.note}>目录来源核实不表示这些模型均已真实执行成功。</p></details>}</li>)}</ul></section>;
 }
 
-export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled, command, useAnswerCommand, onAttached, role = null, conversationID = '' }: { project: Project; capabilities: SwaEnvelope | null; disabled: boolean; startDisabled: boolean; command: CommandState; useAnswerCommand: UseAnswerCommand; onAttached: (selection: SwaRunSelection) => void; role?: SwaRunRoleSelection | null; conversationID?: string }) {
+export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled, command, useAnswerCommand, onAttached, onForgotten, role = null, conversationID = '' }: { project: Project; capabilities: SwaEnvelope | null; disabled: boolean; startDisabled: boolean; command: CommandState; useAnswerCommand: UseAnswerCommand; onAttached: (selection: SwaRunSelection) => void; onForgotten: () => void; role?: SwaRunRoleSelection | null; conversationID?: string }) {
   const [workdir, setWorkdir] = useState(project.root), [specFile, setSpecFile] = useState(''), [inputFile, setInputFile] = useState(''), [name, setName] = useState('lead');
-  const [agentChoice, setAgentChoice] = useState({ roleKey: '', value: '' }), [modelChoice, setModelChoice] = useState({ key: '', value: '' });
+  const [agentChoice, setAgentChoice] = useState({ roleKey: '', value: project.settings.external_model_cli }), [modelChoice, setModelChoice] = useState({ key: '', value: '' });
   const [questionChoice, setQuestionChoice] = useState<{ roleKey: string; value: 'disabled' | 'native' }>({ roleKey: '', value: 'disabled' });
   const roleKey = role ? `${role.id}:${role.revision}` : '';
   const agentID = agentChoice.roleKey === roleKey ? agentChoice.value : role?.default_agent ?? '';
   const questionMode = questionChoice.roleKey === roleKey ? questionChoice.value : role?.question_mode ?? 'disabled';
-  const [controller, setController] = useState(''), [taskID, setTaskID] = useState(''), [runID, setRunID] = useState('');
-  const [selected, setSelected] = useState<SwaRunSelection | null>(null);
+  const [connection, setConnection] = useState(() => readRunConnection(project.id));
+  const selected = connection.selection;
+  const [controller, setController] = useState(selected?.controller ?? ''), [taskID, setTaskID] = useState(selected?.taskID ?? ''), [runID, setRunID] = useState(selected?.runID ?? '');
   let agents: ReturnType<typeof readSwaAgents> = [], capabilityError: string | null = null;
   if (capabilities) {
-    try { agents = readSwaAgents(capabilities).filter(agent => agent.id === project.settings.external_model_cli); } catch (error) { capabilityError = formatError(error); }
+    try { agents = readSwaAgents(capabilities).filter(agent => modelCLIAllowed(project.settings, agent.id)); } catch (error) { capabilityError = formatError(error); }
   }
   const agent = agents.find(item => item.id === agentID);
   const modelKey = `${roleKey}:${agentID}`;
@@ -44,7 +47,7 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
   const nativeQuestionsAvailable = agent?.id === 'pi' && agent.questions?.status === 'available';
   const canSubmit = !!workdir.trim() && !!specFile.trim() && (questionMode === 'disabled' || nativeQuestionsAvailable) && canRequestSwaStart({ agent: agent ? { ...agent, model } : undefined, settings: project.settings, disabled: disabled || startDisabled, pending: command.pending, unresolved: !!command.unresolved, name, inputFile });
   function attach(selection: SwaRunSelection) {
-    setSelected(selection); setController(selection.controller); setTaskID(selection.taskID); setRunID(selection.runID); onAttached(selection);
+    setConnection({ selection, warning: saveRunConnection(project.id, selection) }); setController(selection.controller); setTaskID(selection.taskID); setRunID(selection.runID); onAttached(selection);
   }
   return <section className={styles.workspace} aria-label="完整任务">
     <h3>提交目标，跟踪到交付</h3>
@@ -69,6 +72,8 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
       <label>原 Run 的根 Task ID<input required value={taskID} onChange={event => setTaskID(event.target.value)} /></label>
       <button type="submit" className="ac-button secondary compact" disabled={disabled || !controller.trim() || !taskID.trim() || !runID.trim()}>重新连接完整任务</button>
     </form>
+    {connection.warning && <p role="status">{connection.warning}</p>}
+    {selected && <button type="button" className="ac-button secondary compact" onClick={() => { setConnection({ selection: null, warning: saveRunConnection(project.id, null) }); setController(''); setTaskID(''); setRunID(''); onForgotten(); }}>忘记此项目的运行连接（任务继续运行）</button>}
     {selected && <RunProgress key={`${selected.controller}:${selected.runID}:${selected.taskID}`} project={project} selected={selected} disabled={disabled} useAnswerCommand={useAnswerCommand} />}
   </section>;
 }
