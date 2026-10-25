@@ -185,6 +185,21 @@ export interface PendingSwaRequest {
   questionID?: string;
 }
 
+export function readPendingSwaRequest(storageKey: string, storage?: Pick<Storage, 'getItem'>): { pending: PendingSwaRequest | null; error: string | null } {
+  let saved: string | null;
+  try { saved = storage ? storage.getItem(storageKey) : typeof window === 'undefined' ? null : window.sessionStorage.getItem(storageKey); }
+  catch { return { pending: null, error: '无法读取保存的请求记录，当前命令已暂停。请恢复浏览器存储访问后重新读取。' }; }
+  if (saved === null) return { pending: null, error: null };
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+    const record = parsed as Record<string, unknown>;
+    for (const field of ['requestID', 'action']) if (typeof record[field] !== 'string' || !record[field].trim()) throw new Error();
+    for (const field of ['controller', 'taskID', 'dispatchID', 'runID', 'questionID']) if (field in record && (typeof record[field] !== 'string' || !record[field].trim())) throw new Error();
+    return { pending: parsed as PendingSwaRequest, error: null };
+  } catch { return { pending: null, error: '保存的请求记录已损坏，当前命令已暂停。请保留并修复原记录后重新读取。' }; }
+}
+
 /** 只恢复同范围已完成的原生回执；absent 和 pending 不能证明没有执行。 */
 export function recoverSwaRequest(reply: SwaEnvelope, projectID: string, pending: PendingSwaRequest): SwaEnvelope | null {
   const request = object(reply.result);

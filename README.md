@@ -30,7 +30,7 @@ swa export --project "$project_id" --controller "$controller" \
 
 普通 `export` 和 GUI 下载交付当前已记录的任务结果，运行中也可以取得已有成果，缺失结果明确标记。需要完整原生会话与日志核验时使用 `export --audit`；两种模式都保留权限、来源归属和凭据保护。
 
-GUI 的角色选择保存准确版本，讨论追加只保存要求；向实际 Worker 追加模型输入使用独立发送操作，并按当前项目的人类权限重新授权。声明支持、已安装、配置、认证、能启动和真实执行结果分别显示，未知状态不会解释为成功。
+GUI 可选择角色、保存讨论，再向 Worker 发送补充要求。发送时检查当前项目许可。
 
 项目设置可明确许可多个 CLI，并选择一个默认客户端。同一 Run 的 Worker 可分别使用获准的 Pi、Codex、Claude 或 OpenCode；旧项目仍只允许原默认客户端。浏览器按项目保存 Run 连接，刷新后继续观察，忘记连接不会停止后台任务。
 
@@ -47,7 +47,7 @@ pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filt
 pnpm dev
 ```
 
-默认开发页面为 `http://127.0.0.1:5173/swarm`，API 为 `http://127.0.0.1:8787`。用 `SWA_PORT`、`SWA_WEB_PORT` 明确修改端口；开发脚本把实际 Vite 地址传给服务的同源校验。`pnpm dev --ephemeral` 使用本次独立数据目录，停止后保留原件；普通开发使用 `.verification/swa-dev-data`，可通过绝对路径 `SWA_DATA_DIR` 指定专用目录。
+默认开发页面为 `http://127.0.0.1:5173/swarm`，API 为 `http://127.0.0.1:8787`。用 `SWA_PORT`、`SWA_WEB_PORT` 修改端口。`pnpm dev --ephemeral` 使用独立数据目录；普通开发使用 `.verification/swa-dev-data`，可通过绝对路径 `SWA_DATA_DIR` 指定目录。
 
 PowerShell 配置示例：
 
@@ -58,7 +58,7 @@ $env:SWA_WEB_PORT = '5173'
 pnpm dev
 ```
 
-按 Ctrl+C 请求关闭本次 API 与 Vite；关闭浏览器不停止后台。开发入口不自动配置模型、签发项目 Agent Grant 或调用原生模型。真实 Worker 验收使用按 CLI 文档安装和授权的服务。
+按 Ctrl+C 关闭本次 API 与 Vite；关闭浏览器不停止后台任务。启动 Worker 前，按 [CLI 使用说明](runtime/swa-orca/USAGE.md)安装运行时、配置模型并设置项目许可。
 
 ## 检查与构建
 
@@ -75,13 +75,13 @@ pnpm build
 pnpm start
 ```
 
-`pnpm build` 生成 `dist/swa`、`dist/swa-server`（Windows 带 `.exe`）及 `web/dist`。前端从独立 SWA 入口与 public 目录构建，`.vite/swa-modules.json` 记录实际模块；资料、认知与旧作品页面进入构建时直接失败。`pnpm start` 在同一 API 端口提供网页，默认任务入口为 `http://127.0.0.1:8787/swarm`；数据默认位于 `.verification/swa-local-data`，可用 `SWA_DATA_DIR` 修改，静态目录可用 `SWA_WEB_DIR` 明确指定。
+`pnpm build` 生成 `dist/swa`、`dist/swa-server`（Windows 带 `.exe`）及 `web/dist`。`pnpm start` 在 API 端口提供网页，默认任务入口为 `http://127.0.0.1:8787/swarm`；数据默认位于 `.verification/swa-local-data`，可用 `SWA_DATA_DIR` 修改，静态目录可用 `SWA_WEB_DIR` 指定。
 
-上述本地开发构建不替代发行安装包。固定 Node、私有 Orca 原生依赖和两种发行形态由 `pnpm build:swa` 及相应平台脚本构建，所需明确输入、安装边界和实际剩余限制见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。
+`pnpm build:swa` 构建含 Node 和 Orca 原生依赖的安装包，参数见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。Linux 服务要求 `/proc` 挂载在当前 PID namespace 中；容器应使用自己的 proc 挂载。
 
-`pnpm check` 运行 SWA 当前入口、项目权限、Run/Worker、同源传输、角色和实际 SQLite 规则；`pnpm check:race` 在同一 Go 检查范围运行竞争检测。默认 Web 测试同样只选择 SWA 的真实接口与状态规则。需要已安装运行时、真实模型、历史 Relay 事件来源的检查保留独立验收入口，不因默认检查通过而视为已经运行。资料提取工具随 Attention Mirror 管理，SWA 默认安装不依赖 summarize。
+`pnpm check` 检查项目权限、Run/Worker、HTTP、角色与 SQLite 行为；`pnpm check:race` 运行 Go 竞争检测。原生运行时与模型检查使用 CLI 文档中的独立入口。
 
-保留的旧工作台、资料提取与混合服务检查脚本见[历史脚本与当前入口](scripts/LEGACY.md)。复现时使用完整保存点与独立目录；本轮产品检查不代表正式科研实验已经重新运行。
+旧工作台与资料提取脚本见[历史脚本与当前入口](scripts/LEGACY.md)。
 
 浏览器验收使用独立 SWA 服务、SQLite 与端口，默认配置为 `web/e2e/swa-workspace.config.ts`。无截图；失败 trace 与报告保留在 `web/test-results`、`web/playwright-report`。安装浏览器时保留其他项目版本：
 

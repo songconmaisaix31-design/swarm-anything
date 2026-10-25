@@ -149,6 +149,17 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 	if err := unix.Statfs("/proc", &procMount); err != nil || procMount.Type != unix.PROC_SUPER_MAGIC {
 		return nil, errors.Join(errors.New("进程观察必须来自实际内核 proc 文件系统"), err)
 	}
+	procSelf, err := fs.Self()
+	if err != nil {
+		return nil, err
+	}
+	status, err := procSelf.NewStatus()
+	if err != nil {
+		return nil, err
+	}
+	if procSelf.PID != os.Getpid() || len(status.NSpids) > 1 {
+		return nil, fmt.Errorf("/proc 不属于当前 PID namespace（当前 PID %d，proc PID %d）；请在当前 PID namespace 挂载 /proc 后启动 SWA", os.Getpid(), procSelf.PID)
+	}
 	boot, err := linuxBootID()
 	if err != nil {
 		return nil, err

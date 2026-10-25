@@ -62,7 +62,7 @@ function useCollaborationCommand(projectID: string, expected: CollaborationReque
 }
 
 function CommandState({ command, recovered }: { command: ReturnType<typeof useCollaborationCommand>; recovered: (reply: SwaEnvelope) => void }) {
-  return <div aria-live="polite">{command.pending && <p role="status">正在保存…</p>}{command.error && <p role="alert">{command.error}</p>}{command.notice && <p role="status">{command.notice}</p>}{command.queryError && <p role="alert">{command.queryError}</p>}{command.uncertain && <div><p className={styles.note}>原请求 {command.operationID} 的结果尚未确认。继续查询此请求后再提交新操作。</p><button className="ac-button secondary compact" type="button" disabled={!command.canInspect || command.pending || command.querying} onClick={() => { void command.inspect(recovered); }}>查询原请求</button></div>}</div>;
+  return <div aria-live="polite">{command.pending && <p role="status">正在保存…</p>}{command.error && <p role="alert">{command.error}</p>}{command.notice && <p role="status">{command.notice}</p>}{command.queryError && <p role="alert">{command.queryError}</p>}{command.storageError && <button type="button" className="ac-button secondary compact" disabled={command.pending} onClick={command.reloadPending}>重新读取请求记录</button>}{command.uncertain && !command.storageError && command.operationID && <div><p className={styles.note}>原请求 {command.operationID} 的结果尚未确认。继续查询此请求后再提交新操作。</p><button className="ac-button secondary compact" type="button" disabled={!command.canInspect || command.pending || command.querying} onClick={() => { void command.inspect(recovered); }}>查询原请求</button></div>}</div>;
 }
 
 function RoleEditor({ project, role, disabled, onSaved }: { project: Project; role?: SwaRole; disabled: boolean; onSaved: (role: SwaRole) => void }) {
