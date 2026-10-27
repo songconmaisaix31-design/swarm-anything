@@ -444,7 +444,7 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 	if c.QuestionMode != "" && c.QuestionMode != "disabled" && c.QuestionMode != "native" {
 		return projectError(apierrors.ValidationFailed, "question_mode must be disabled or native")
 	}
-	if c.QuestionMode == "native" && (c.Agent != "pi" || c.HandoffMode == "consult") {
+	if c.QuestionMode == "native" && ((c.Agent != "" && c.Agent != "pi") || c.HandoffMode == "consult") {
 		return projectError(apierrors.UnsupportedCapability, "native questions require Pi work; consult keeps its disabled-tool policy")
 	}
 	if mutation || c.Action == "request.show" {
@@ -460,8 +460,8 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		if c.ProjectID == "" || !filepath.IsAbs(c.Workdir) || c.Controller != "" {
 			return projectError(apierrors.ValidationFailed, "controller open requires a project and absolute workdir")
 		}
-		if c.Action == "run.submit" && (c.SpecFile == "" || c.InputFile == "" || strings.TrimSpace(c.Agent) == "" || strings.TrimSpace(c.Model) == "" || strings.TrimSpace(c.Name) == "") {
-			return projectError(apierrors.ValidationFailed, "run submit requires a task specification, input, Agent, model and lead name")
+		if c.Action == "run.submit" && (c.SpecFile == "" || c.InputFile == "" || strings.TrimSpace(c.Name) == "" || !validOrcaAgentPair(c.Agent, c.Model)) {
+			return projectError(apierrors.ValidationFailed, "run submit requires a task specification, input, lead name and either both Agent and model or neither")
 		}
 		if c.Action == "run.submit" && (c.RoleID == "" && c.Revision != 0 || c.RoleID != "" && (c.Revision < 1 || c.Revision > 9007199254740991)) {
 			return projectError(apierrors.ValidationFailed, "a selected role requires its exact revision")
@@ -502,8 +502,8 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 			return projectError(apierrors.ValidationFailed, "task_id is required")
 		}
 	}
-	if c.Action == "worker.start" && (strings.TrimSpace(c.Agent) == "" || strings.TrimSpace(c.Model) == "" || c.Name == "" || c.InputFile == "") {
-		return projectError(apierrors.ValidationFailed, "worker start requires an explicit Agent, model, name and input file")
+	if c.Action == "worker.start" && (c.Name == "" || c.InputFile == "" || !validOrcaAgentPair(c.Agent, c.Model) || c.Agent == "" && c.RoleID == "") {
+		return projectError(apierrors.ValidationFailed, "worker start requires a name, input file and either an Agent and model or a role")
 	}
 	if c.Action == "worker.start" {
 		if c.HandoffMode != "" && c.HandoffMode != "work" && c.HandoffMode != "consult" || c.ReplyMode != "" && c.ReplyMode != "resume" && c.ReplyMode != "poll" {
@@ -531,6 +531,13 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		return projectError(apierrors.ValidationFailed, "the action requires its explicit file or absolute output directory")
 	}
 	return nil
+}
+
+func validOrcaAgentPair(agent, model string) bool {
+	if agent != strings.TrimSpace(agent) || model != strings.TrimSpace(model) {
+		return false
+	}
+	return (agent == "") == (model == "")
 }
 
 func validateOrcaAnswer(text string) error {
@@ -751,7 +758,7 @@ func (s *OrcaExecutionService) executeOrcaCommand(ctx context.Context, caller do
 		if err != nil {
 			return reply, err
 		}
-		if selection.AgentID == "" || selection.ExternalTarget != selection.AgentID || selection.Executable == "" || selection.Version == "" || selection.Model == "" || selection.Provider == "" || selection.ConfigurationVersion == "" || command.Action == "worker.start" && (selection.AgentID != command.Agent || selection.Model != command.Model) {
+		if selection.AgentID == "" || selection.ExternalTarget != selection.AgentID || selection.Executable == "" || selection.Version == "" || selection.Model == "" || selection.Provider == "" || selection.ConfigurationVersion == "" || command.Action == "worker.start" && command.Agent != "" && (selection.AgentID != command.Agent || selection.Model != command.Model) {
 			return reply, projectError(apierrors.EvidenceMissing, "native selection does not prove the requested Agent and model")
 		}
 		if err := validateOrcaNativeLaunch(selection, projectID); err != nil {

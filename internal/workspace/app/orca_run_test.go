@@ -84,6 +84,47 @@ func TestRunRolePreservesFixedSpecification(t *testing.T) {
 	}
 }
 
+func TestRoleDefaultSelectionValidation(t *testing.T) {
+	for _, action := range []string{"run.submit", "worker.start"} {
+		command := OrcaCommand{Action: action, ProjectID: "project", Name: "reviewer", InputFile: "input.txt", RequestID: uuid.NewString(), RoleID: "review-role", Revision: 1}
+		if action == "run.submit" {
+			command.Workdir, command.SpecFile = t.TempDir(), "task.json"
+		} else {
+			command.Controller, command.TaskID = "controller", "root"
+		}
+		if err := ValidateOrcaCommand(command); err != nil {
+			t.Fatal(action, err)
+		}
+		for _, pair := range [][2]string{{"pi", ""}, {"", "openai/model"}, {" ", "model"}, {"pi", " model "}} {
+			invalid := command
+			invalid.Agent, invalid.Model = pair[0], pair[1]
+			if ValidateOrcaCommand(invalid) == nil {
+				t.Fatalf("%s accepted incomplete or blank selection: %q %q", action, pair[0], pair[1])
+			}
+		}
+		explicit := command
+		explicit.Agent, explicit.Model = "pi", "openai/model"
+		if err := ValidateOrcaCommand(explicit); err != nil {
+			t.Fatal(action, err)
+		}
+		if action == "worker.start" {
+			missing := command
+			missing.RoleID, missing.Revision = "", 0
+			if ValidateOrcaCommand(missing) == nil {
+				t.Fatal("worker accepted no role and no selection")
+			}
+		}
+		command.QuestionMode = "native"
+		if err := ValidateOrcaCommand(command); err != nil {
+			t.Fatal("question mode should be validated against the resolved role", err)
+		}
+		explicit.QuestionMode, explicit.Agent = "native", "codex"
+		if ValidateOrcaCommand(explicit) == nil {
+			t.Fatal("native questions accepted explicit non-Pi Agent")
+		}
+	}
+}
+
 func TestRoleAndDiscussionDoNotAcceptExecutionAuthority(t *testing.T) {
 	role := &OrcaRoleDefinition{Name: "审查员", Responsibilities: "审查公开修改和验证结果", DefaultAgent: "pi", DefaultModel: "stepfun/step-3.5-flash", Skills: []string{"review"}, Knowledge: []string{"README.md"}}
 	create := OrcaCommand{Action: "role.create", ProjectID: "project", Role: role, RequestID: uuid.NewString()}

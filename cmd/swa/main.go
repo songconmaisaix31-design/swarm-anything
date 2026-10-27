@@ -25,7 +25,7 @@ import (
 
 const usage = `swa serve --data-dir D --port N --protected-roots R [--agent-profile P] [--web-dir INSTALL/web] --json
 swa status|capabilities --json
-swa run --project P --workdir W --spec-file F --input-file I --agent A --model M --request-id UUID [--question-mode disabled|native] [--name lead] [--role ID --role-revision N] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
+swa run --project P --workdir W --spec-file F --input-file I --request-id UUID [--agent A --model M] [--role ID --role-revision N] [--question-mode disabled|native] [--name lead] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa wait --controller C --task T --run R [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa export --controller C --task T --run R --output-dir O [--audit] --json
 swa question answer --controller C --run R --task T --dispatch D --question Q --input-file F --request-id UUID --json
@@ -34,7 +34,7 @@ swa controller open --project P --workdir W --request-id UUID --json
 swa controller show|close|recover --controller C [--request-id UUID] --json
 swa task create --controller C --spec-file F --request-id UUID --json
 swa task show|list|complete|result --controller C [--task T] [--result-file F|--output-dir O] [--request-id UUID] --json
-swa worker start --controller C --task T --name NAME --agent AGENT --model PROVIDER/MODEL --input-file F --request-id UUID [--question-mode disabled|native] --json
+swa worker start --controller C --task T --name NAME --input-file F --request-id UUID [--agent AGENT --model PROVIDER/MODEL] [--role ID --role-revision N] [--parent-task T --completion-criterion TEXT ...] [--handoff-mode work|consult] [--reply-mode poll|resume] [--question-mode disabled|native] --json
 swa worker show|list|read|send|stop|release --controller C [--task T|--dispatch X] [--source transcript --limit 100 --cursor K] [--input-file F] [--request-id UUID] --json
 swa request show --controller C|--project P --request-id UUID --json
 
@@ -56,6 +56,14 @@ run/wait 的超时和 Ctrl-C 仅结束当前等待；stderr 显示进度和原 R
 `
 
 var version = "development"
+
+type completionCriteria []string
+
+func (criteria *completionCriteria) String() string { return strings.Join(*criteria, ", ") }
+func (criteria *completionCriteria) Set(value string) error {
+	*criteria = append(*criteria, value)
+	return nil
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -114,6 +122,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.StringVar(&command.Name, "name", "", "Worker 名称")
 	flags.StringVar(&command.Agent, "agent", "", "已批准的 Agent")
 	flags.StringVar(&command.Model, "model", "", "已批准的 provider/model")
+	flags.StringVar(&command.RoleID, "role", "", "角色 ID")
+	flags.Int64Var(&command.Revision, "role-revision", 0, "角色当前版本")
+	flags.StringVar(&command.ParentTaskID, "parent-task", "", "同一 Run 中的父 Task ID")
+	flags.StringVar(&command.HandoffMode, "handoff-mode", "", "work 或 consult")
+	flags.StringVar(&command.ReplyMode, "reply-mode", "", "poll 或 resume")
+	flags.Var((*completionCriteria)(&command.CompletionCriteria), "completion-criterion", "完成条件；可重复")
 	flags.StringVar(&command.QuestionMode, "question-mode", "", "disabled 或 native；只在启动时选择")
 	flags.StringVar(&command.Source, "source", "", "明确原件来源")
 	flags.StringVar(&command.Cursor, "cursor", "", "原来源 cursor")

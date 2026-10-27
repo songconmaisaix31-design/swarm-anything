@@ -32,7 +32,8 @@ import { createPiSessionPolicy } from './pi-session-policy'
 import { isTaskDescendant } from './run-view'
 import { runCleanupApproval, validateHandoffInput } from './run-settlement'
 import { controllerScope } from './controller-scope'
-import { workerTaskSpec } from './collaboration-records'
+import { workerTaskSpec, assertCurrentCollaborationAssignment } from './collaboration-records'
+import { workerSelectionMatches } from './role-selection'
 
 const mutationRowSchema = z.object({ caller_fingerprint: z.string(), request_id: z.string(), method: z.string(), payload_hash: z.string(), state: z.enum(['pending', 'completed']), receipt: z.string().nullable() })
 
@@ -54,7 +55,8 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     const receipt = nativeObject(JSON.parse(row.receipt)), invocation = invocationSchema.parse(receipt.invocation), selection = agentSelectionSchema.parse(receipt.selection)
     const command = invocation.command, { scope, owner: controller } = controllerScope(runtime, invocation.project.id, input.controller)
     const expected = { from: input.controller, run: scope.run_id, parent: command.parent_task_id ?? scope.root_task_id, worktree: 'current', taskTitle: command.name, agent: selection.agent_id, model: selection.model, timeoutMs: 90_000, spec: workerTaskSpec(invocation) }
-    if (command.action !== 'worker.start' || command.request_id !== requestId || command.controller !== input.controller || command.agent !== selection.agent_id || command.model !== selection.model || receipt.action !== command.action || receipt.child_request !== mutation.requestId || receipt.project_id !== invocation.project.id || receipt.controller !== input.controller || receipt.run_id !== scope.run_id || receipt.root_task_id !== scope.root_task_id || !isDeepStrictEqual(invocation.scope, scope) || !isDeepStrictEqual(invocation.selection, selection) || input.agent !== selection.agent_id || input.runId !== scope.run_id || input.worktreeId !== controller.worktree_id || mutation.payloadHash !== hashCanonical({ method: mutation.method, params: replayStableCallerParams(runtime, expected, undefined, mutation.method) })) throw new OrchestrationError('request_mismatch', 'The actual Worker source or request differs from its approved selection', { effectsApplied: false })
+    if (command.action !== 'worker.start' || command.request_id !== requestId || command.controller !== input.controller || !workerSelectionMatches(invocation) || receipt.action !== command.action || receipt.child_request !== mutation.requestId || receipt.project_id !== invocation.project.id || receipt.controller !== input.controller || receipt.run_id !== scope.run_id || receipt.root_task_id !== scope.root_task_id || !isDeepStrictEqual(invocation.scope, scope) || !isDeepStrictEqual(invocation.selection, selection) || input.agent !== selection.agent_id || input.runId !== scope.run_id || input.worktreeId !== controller.worktree_id || mutation.payloadHash !== hashCanonical({ method: mutation.method, params: replayStableCallerParams(runtime, expected, undefined, mutation.method) })) throw new OrchestrationError('request_mismatch', 'The actual Worker source or request differs from its approved selection', { effectsApplied: false })
+    assertCurrentCollaborationAssignment(db, invocation)
     assertDeliveryGrantCurrent(invocation)
     return { invocation, selection, receipt: row.receipt, scope, controller }
   }

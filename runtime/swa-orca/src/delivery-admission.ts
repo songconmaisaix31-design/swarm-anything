@@ -2,12 +2,18 @@ import { timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/orchestration-error'
 import type { Invocation } from './contracts'
+import { workerSelectionMatches } from './role-selection'
 
 const resultSchema = z.strictObject({ schema: z.literal('swa.delivery-admission.v1'), project_id: z.string().min(1), request_id: z.string().min(1), settings_revision: z.number().int().positive(), grant_expires_at: z.string().optional() })
 const errorSchema = z.object({ error: z.object({ code: z.string().min(1), message: z.string().min(1) }) })
 
 export function deliveryAdmissionInvocation(invocation: Invocation): Pick<Invocation, 'command' | 'caller' | 'project' | 'scope' | 'input' | 'selection' | 'handoff' | 'submission' | 'question_ask'> {
-  const { command, caller, project, scope, input, selection, handoff, submission, question_ask } = invocation
+  const { caller, project, scope, input, selection, handoff, submission, question_ask } = invocation
+  let command = invocation.command
+  if (command.action === 'worker.start') {
+    if (!selection || !workerSelectionMatches(invocation)) throw new OrchestrationError('request_mismatch', 'The Worker selection differs from its assigned role', { effectsApplied: false })
+    if (!command.agent && !command.model) command = { ...command, agent: selection.agent_id, model: selection.model }
+  }
   // 原生 spec 留在原账本；完整 scope 与 submission 保留 Go 当前准入和交接冲突判断。
   return { command, caller, project, scope, input, selection, handoff, submission, question_ask }
 }

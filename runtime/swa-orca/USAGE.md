@@ -20,7 +20,20 @@ swa export --project "$project_id" --controller "$controller" --task "$root_task
 
 示例变量均需使用实际值；`--export` 和 `--output-dir` 要求尚不存在的绝对目录及已存在、获准的父目录。目标路径经过符号链接或重解析点时拒绝。`run --export` 在提交之前核对本地目标，最终导出时再次独占创建，已有目录不会覆盖。
 
-复用当前项目角色时，为 `run` 同时提供 `--role "$role_id" --role-revision "$role_revision"`，可用 `--conversation "$conversation_id"` 关联已有讨论。服务核查准确角色版本、归档状态与项目身份，并将关联保存在根任务规格；仍需明确本次 `--agent` 与 `--model`。GUI 中选择角色会填入默认 Agent、模型及问题模式，提交时按当前项目批准重新核查。
+复用当前项目角色时，为 `run` 同时提供 `--role "$role_id" --role-revision "$role_revision"`，可用 `--conversation "$conversation_id"` 关联已有讨论。省略 `--agent` 和 `--model` 时使用角色的默认值；也可以同时指定两者覆盖默认值。服务核查角色版本、归档状态、项目身份以及所选 Agent 的项目授权。任务文件中也可以指定角色及版本。
+
+也可以为 `worker start` 指定角色和已有父任务，使用已有 Run 的实际标识和获准输入：
+
+```sh
+swa worker start --project "$project_id" --controller "$controller" --task "$root_task_id" \
+  --name reviewer --agent "$agent" --model "$model" --input-file "$input_file" \
+  --role "$role_id" --role-revision "$role_revision" --parent-task "$parent_task_id" \
+  --handoff-mode consult --reply-mode resume \
+  --completion-criterion '审查指定变更' --completion-criterion '报告发现的问题' \
+  --request-id "$request_id" --json
+```
+
+角色与版本须一起提供；省略 Agent 和模型时使用角色默认值，也可同时指定两者覆盖。父任务须属于同一 Run，指定 `--parent-task` 时至少提供一个 `--completion-criterion`，选项可重复。`--handoff-mode` 可选 `work` 或 `consult`，`--reply-mode` 可选 `poll` 或 `resume`；`resume` 需要符合服务要求的活跃父 Worker。命令由调用方发起；它本身不会让 Worker 自主委派。
 
 新 Run 和 `worker start` 可用 `--question-mode disabled|native` 选择问题模式。省略时继承所选角色的准确默认值，没有角色或旧角色没有该字段时为 disabled；显式 disabled 保持模型工具全部关闭。native 仅支持固定 Pi 1.0.1 的 per-session 账号模式，通过随安装固定的 `swa_ask` 扩展提问与读取原答案，原生文件和命令工具仍关闭。其它 Agent 或不相容账号合同返回能力不可用；不能在已有 Worker 中切换模式。GUI 只在当前 Agent 已声明该能力时开放选项，声明支持不表示真实提问已经验收。
 

@@ -30,6 +30,7 @@ import { authority, controllerOwnerSchema, controllerScope, exactController, obs
 import { approvedWorkerLimit, assertCompletionInventory, assertWorkerCapacity, assertWorkerStartOpen } from './task-budget'
 import { readRunView, readRunTaskTree, isTaskDescendant, recordedRunResults } from './run-view'
 import { collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment } from './collaboration-records'
+import { assignedAgent } from './role-selection'
 import { requestRunSettlement, validateHandoffInput } from './run-settlement'
 import { assertQuestionReservation, questionStartSelection, readAnswerQuestion, validateQuestionAnswer } from './question-answer'
 import { assertQuestionResume, observeRunQuestions } from './question-ask'
@@ -459,11 +460,12 @@ async function recoverController(invocation: Invocation, context: RpcContext) {
 
 async function resolveSelection(runtime: OrcaRuntimeService, project: string, command: Invocation['command']): Promise<AgentSelection> {
   if (command.action === 'run.submit') {
-    if (!command.workdir || !isAbsolute(command.workdir) || !command.agent || !command.model || command.controller) return fail('invalid_argument', 'Run submission requires its explicit project directory, Agent and model')
+    if (!command.workdir || !isAbsolute(command.workdir) || command.controller) return fail('invalid_argument', 'Run submission requires its explicit project directory')
     const projectRoot = await realpath(command.workdir)
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision, conversation_id: command.conversation_id })
     await runtime.ensureStructuredAgentSessionHost({ prewarmModelCatalog: false })
-    return selectAgent(runtime, project, command.agent, command.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
+    const selected = assignedAgent(command, project, references.role_snapshot)
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
   }
   if (!command.controller) return fail('invalid_argument', 'An exact controller is required for the native account source boundary')
   const { owner, scope } = controllerScope(runtime, project, command.controller)
@@ -477,9 +479,9 @@ async function resolveSelection(runtime: OrcaRuntimeService, project: string, co
   if (!resolvePath) return fail('evidence_missing', 'The exact native project directory is unavailable')
   const projectRoot = await realpath(await resolvePath(owner.worktree_id))
   if (command.action === 'worker.start') {
-    if (!command.agent || !command.model) return fail('invalid_argument', 'An explicit native Agent and model are required')
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision })
-    return selectAgent(runtime, project, command.agent, command.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
+    const selected = assignedAgent(command, project, references.role_snapshot)
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
   }
   if (!['worker.send', 'question.answer', 'question.resume'].includes(command.action) || !command.controller || !command.dispatch_id) return fail('invalid_argument', 'Only a start or an exact existing Worker input resolves a model selection')
   validateTaskAction(runtime, { command }, scope)

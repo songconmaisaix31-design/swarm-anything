@@ -72,6 +72,35 @@ func TestOrcaCLIMissingCurrentGrantIsDenied(t *testing.T) {
 	requireLocalRefusal(t, code, 3, "scope_denied", "", &stdout)
 }
 
+func TestWorkerStartRoleAndHandoffArguments(t *testing.T) {
+	t.Setenv("SWA_PROJECT_TOKEN", "")
+	request := uuid.NewString()
+	base := []string{"worker", "start", "--project", "project", "--controller", "controller", "--task", "root-task", "--name", "reviewer", "--agent", "pi", "--model", "provider/model", "--input-file", "brief.txt", "--request-id", request, "--json"}
+	for _, test := range []struct {
+		name     string
+		extra    []string
+		wantExit int
+		wantCode string
+	}{
+		{"role and handoff", []string{"--role", "reviewer-role", "--role-revision", "2", "--parent-task", "parent-task", "--handoff-mode", "consult", "--reply-mode", "resume", "--completion-criterion", "review the change", "--completion-criterion", "report findings"}, 3, "scope_denied"},
+		{"role without revision", []string{"--role", "reviewer-role"}, 2, "validation_failed"},
+		{"parent without criteria", []string{"--parent-task", "parent-task"}, 2, "validation_failed"},
+		{"invalid handoff", []string{"--handoff-mode", "other"}, 2, "validation_failed"},
+		{"invalid reply", []string{"--reply-mode", "other"}, 2, "validation_failed"},
+		{"blank repeated criterion", []string{"--parent-task", "parent-task", "--completion-criterion", "review", "--completion-criterion", " "}, 2, "validation_failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			args := append(append([]string{}, base...), test.extra...)
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), args, &stdout, &stderr)
+			requireLocalRefusal(t, code, test.wantExit, test.wantCode, request, &stdout)
+		})
+	}
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"worker", "list", "--controller", "controller", "--task", "task", "--role", "reviewer", "--role-revision", "2", "--json"}, &stdout, &stderr)
+	requireLocalRefusal(t, code, 2, "validation_failed", "", &stdout)
+}
+
 func TestQuestionCLIOutputFailureRetainsOriginalRequest(t *testing.T) {
 	for _, action := range []string{"question.answer", "question.resume"} {
 		t.Run(action, func(t *testing.T) {

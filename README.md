@@ -1,16 +1,12 @@
 # SWA（Swarm Anything）
 
-SWA 通过现有 Agent CLI 执行任务，复用同一个 Run、Task 与 Dispatch 后端。一次提交后，CLI 与 GUI 可以观察递归任务、阻塞问题、实际交接和成果；长期角色与讨论独立于 Worker 进程保存。
-
-当前工作包括独立产品拆分、完整 Run 入口和 N=4/N=6 真实验收。代码、局部检查与实际模型验收分别记录，最新结果见 [STATUS](STATUS.md) 和[本轮任务](tasks/swa-evolution-20261023.md)。Windows x64 与 Linux x64 的安装、真实执行及正常退出需要各自证据。
+SWA 将已有的 Agent CLI 组织到同一个工作空间。你可以定义角色，指定 Agent 与模型，启动 Worker，并在 CLI 或网页中查看任务、交接和成果。
 
 ## 产品范围
 
-本仓默认开发、构建与启动 SWA。网页仅提供“任务与交付”和“项目与权限”，使用同一项目授权与原生运行记录。独立服务入口为 `cmd/swa-server`，命令入口为 `cmd/swa`；开发服务未配置已安装原生运行时时，任务命令明确报告不可用。
+网页提供任务、交付、项目和权限管理。服务入口为 `cmd/swa-server`，命令入口为 `cmd/swa`。项目可配置 Pi、Codex、Claude 和 OpenCode；实际使用需要安装对应 CLI、配置账号和模型，并在项目中授权。
 
-Astrocyte 的认知事件、知识、经验、MCP 与 Sleep，以及 Attention Mirror 的资料、沉淀、品味与机会，分别保全到独立本地仓库。目前路径为 `/workspace/astrocyte`、`/workspace/attention-mirror`，尚未提供远端仓库地址。拆分进展、来源与保全范围见[产品拆分记录](tasks/swa-product-separation-20261023.md)。旧产品源码只在完成保全后清理，原数据与验证记录继续保留。
-
-接管先读 [HANDOFF](HANDOFF.md)、[AGENTS](AGENTS.md) 和[文档目录](docs/README.md)。仓库为 `songconmaisaix31-design/swarm-anything`，默认分支 `main`；当前实现与剩余限制以任务记录为准。
+当前 Worker 由用户或外部调用者启动。模型会收到角色职责和任务上下文；自主调用子 Agent 的工具尚未开放。各 CLI 支持的版本、模型和工具权限见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。
 
 ## 完整任务 CLI
 

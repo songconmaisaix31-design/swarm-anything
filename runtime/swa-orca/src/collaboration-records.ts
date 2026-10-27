@@ -6,9 +6,9 @@ import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/
 import { roleDefinitionSchema, nativeObject, type Invocation, type Scope } from './contracts'
 import { assertDeliveryGrantCurrent } from './delivery-admission'
 import { isTaskDescendant } from './run-view'
+import { roleSchema } from './role-selection'
 
 const roleDefinition = roleDefinitionSchema
-const roleSchema = roleDefinition.extend({ id: z.string(), project_id: z.string(), revision: z.number().int().positive(), archived: z.boolean(), created_at: z.string(), updated_at: z.string() })
 const conversationSchema = z.object({ id: z.string(), project_id: z.string(), title: z.string(), role_id: z.string().nullable(), created_at: z.string() })
 const entrySchema = z.object({ id: z.string(), request_id: z.string(), text: z.string(), created_at: z.string(), status: z.literal('stored'), author_id: z.string(), author_kind: z.enum(['human', 'agent']) })
 const storedRole = z.object({ id: z.string(), project_id: z.string(), revision: z.number().int(), archived: z.number().int(), definition: z.string(), created_at: z.string(), updated_at: z.string() })
@@ -133,6 +133,7 @@ export function resolveCollaborationReferences(db: OrchestrationDb, project: str
   if (conversation?.role_id && conversation.role_id !== role?.id) fail('scope_denied', 'The conversation and task roles differ')
   return { ...(role ? { role_snapshot: role } : {}), ...(conversation ? { conversation_id: conversation.id } : {}) }
 }
+
 
 // 接受新 Task/Worker 的原 reservation 事务内重核，接受后保留不可变历史快照。
 export function assertCurrentCollaborationAssignment(db: OrchestrationDb, invocation: Invocation) {
