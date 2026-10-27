@@ -88,3 +88,9 @@ I31be 的 N4 复验 `/workspace/swa-n4-acceptance-31be-01`，Run `run_f52d63acb2
 该 N4 四个原生 Worker 均有完整 custody_closed、真实退出及 released lease；Grant 撤销确认。尚未结算的资源使原 service 返回 6，自动退出仍失败。宿主复核 boot、UID、executable、cwd、启动时刻、准确 argv 和子树后，仅向遗留 Controller 1000706 发送 SIGTERM，观察其消失，daemon 1000315 随后自行退出。独立人工记录为该输出目录 `manual-process-cleanup.json`；原 Run、任务、CLI 和服务失败保持。N6 尚未运行。
 
 用户明确确认删除新四副本：31be candidate/package、I6406 和 I5c25。执行前重新逐文件核对全部归档成员、内容、当前进程引用与保留文件，准确四根删除成功，退出 0；可用空间 809992192→4293480448 字节，当前 I31be、全部归档、数据、凭据及失败原件保留。原件为 `.verification/cloud-setup/space-role-31be-20261027-17/operation-01/`；原授权仅覆盖这四根。
+
+OpenCode 模型准入与独立 journal 容量修复以 `6b9acc891472cb2757788809088c50f0d6abce61` 提交推送。combined 完整构建、归档、解包、新安装均退出 0，原件为 `.verification/swa-linux/evidence/6b9acc891472cb2757788809088c50f0d6abce61-combined-role-dev-03/`。首次 D12 为 11/12：`real stdin stop before admission` 在关闭 stdin、等待 250ms、发送准入后，`tree.ready()` 实际成功，违反该测试的未启动预期。原完整检查、服务与模型阶段不记为通过。
+
+源码显示 stdin EOF 和准入 IPC 为独立通道；250ms 不能证明子进程已处理 EOF，准入前也没有可等待的产品 EOF 回执。原失败未保存事件顺序，不能回填其根因时序。最小真实观察在同 I6b 使用只监听事件的 Node preload：明确观察 EOF 回调完成后再准入，实际得到 not-created/stopped-before-spawn；先等待真实 native 就绪及准确 ROOT 输出，再关闭 stdin，得到 created。两场景均有原完整退出证明、ACK、root exit/absent，forced=false。原件为 `.verification/role-delegation-20261027/d12-stdin-order/case-51b41A/`，实际退出 0；原失败目录当前前后均无匹配进程，不能据此补记历史退出证明。
+
+正式修复只修改 D12 测试、专用事件观察器和既有同源检查 helper：以真实 EOF 事件替代固定等待，保留原退出判定及失败 finally 收尾。helper 仅新增两个明确测试路径的非产品排除，继续核 clean checkout、所有产品/身份观察器依赖及锁配置一致，并检查测试不属于安装输入。语法检查和独立源审通过。产品代码未变，提交测试后继后复用同 I6b 重新运行完整 D12；原 11/12 失败文件保持。
