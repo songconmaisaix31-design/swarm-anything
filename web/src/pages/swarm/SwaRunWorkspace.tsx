@@ -3,14 +3,14 @@ import type { components } from '../../api/schema';
 import { swaApi, type SwaCommand, type SwaEnvelope } from '../../api/swa';
 import { useReadApi, formatError } from '../../hooks/useReadState';
 import { QueryState } from '../../components/QueryState';
-import { canRequestSwaStart, readSwaAgents, readSwaCapabilityDetails, observationJSON, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
+import { canRequestSwaStart, readSwaAgents, readSwaCapabilityDetails, observationJSON, swaDelegationBlock, swaDevelopmentBlock, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
 import { readSwaRun, submittedRun, type SwaQuestionReadState, type SwaRunSelection } from './swaRunView';
 import { modelCLIAllowed } from '../workspace/modelCLIPermission';
 import { readRunConnection, saveRunConnection } from './swaRunConnection';
 import styles from './SwaWorkspace.module.css';
 
 type Project = components['schemas']['LocalProjectV1'];
-export interface SwaRunRoleSelection { id: string; revision: number; default_agent: string; default_model: string; question_mode?: 'disabled' | 'native' }
+export interface SwaRunRoleSelection { id: string; revision: number; default_agent: string; default_model: string; question_mode?: 'disabled' | 'native'; delegation_mode?: 'disabled' | 'native'; development_mode?: 'disabled' | 'project' }
 interface CommandState {
   pending: boolean; error: string | null; reply: SwaEnvelope | null; unresolved: PendingSwaRequest | null;
   blocked: boolean; storageError: string | null; reloadPending: () => void;
@@ -25,16 +25,21 @@ export function SwaAgentCapabilities({ reply }: { reply: SwaEnvelope }) {
   let agents: ReturnType<typeof readSwaCapabilityDetails>;
   try { agents = readSwaCapabilityDetails(reply); } catch (error) { return <p role="alert">{formatError(error)}</p>; }
   const bases: Record<string, string> = { declaration: '声明支持', configuration: '已配置', probe: '探测通过', session: '会话可用', result: '结果可用' };
-  return <section className={styles.workspace} aria-label="Agent 能力状态"><h3>Agent 状态与能力</h3><ul className={styles.workers}>{agents.map(agent => <li key={agent.id} className={styles.message}><strong>{agent.id}</strong>{agent.model && <p>配置模型 · {agent.model}</p>}<dl>{agent.stages.map(stage => <div key={stage.label}><dt>{stage.label}</dt><dd>{stage.observation ? stage.observation.status === 'unknown' ? '未知' : stage.observation.status === 'unavailable' ? '不可用' : bases[stage.observation.basis ?? ''] ?? '可用' : '未知'}{stage.observation?.status === 'unavailable' && <small> · {stage.observation.reason}</small>}</dd></div>)}</dl>{agent.catalog && <details><summary>模型目录 · {agent.catalog.verified ? '已获取' : '未核实'} · {agent.catalog.origin}</summary><ul>{agent.catalog.models.map(model => <li key={`${model.provider}:${model.id}`}>{model.label} · {model.id}{model.provider && ` · ${model.provider}`}</li>)}</ul></details>}</li>)}</ul></section>;
+  const versions: Record<string, string> = { pi: '1.0.1', codex: '0.163.0', claude: '2.1.284', opencode: '2.0.31' };
+  return <section className={styles.workspace} aria-label="Agent 能力状态"><h3>Agent 状态与能力</h3><ul className={styles.workers}>{agents.map(agent => <li key={agent.id} className={styles.message}><strong>{agent.id}</strong><p>实际 CLI 版本 · {agent.version ?? '尚未取得'}</p>{agent.executable && <p className={styles.identity}>执行文件 · {agent.executable}</p>}{agent.model && <p>配置模型 · {agent.model}</p>}<dl>{agent.stages.map(stage => <div key={stage.label}><dt>{stage.label}</dt><dd>{stage.observation ? stage.observation.status === 'unknown' ? '未知' : stage.observation.status === 'unavailable' ? '不可用' : bases[stage.observation.basis ?? ''] ?? '可用' : '未知'}{stage.observation?.status !== 'available' && stage.observation && <small> · {stage.observation.reason}</small>}</dd></div>)}</dl>{versions[agent.id] && agent.stages.some(stage => ['安装', '配置'].includes(stage.label) && stage.observation?.status !== 'available') && <p className={styles.note}>当前接入要求 {agent.id} {versions[agent.id]}。请在执行服务所在机器安装此版本并加入服务的 PATH，配置此 CLI 的独立 API 密钥来源和模型后刷新项目能力。</p>}{agent.catalog && <details><summary>模型目录 · {agent.catalog.verified ? '已获取' : '尚未验证'} · {agent.catalog.origin === 'configured' ? 'CLI 配置' : agent.catalog.origin === 'probe' ? '实际探测' : agent.catalog.origin === 'live-session' ? '实际会话' : '来源未知'}</summary><ul>{agent.catalog.models.map(model => <li key={`${model.provider}:${model.id}`}>{model.label} · {model.id}{model.provider && ` · ${model.provider}`}</li>)}</ul></details>}</li>)}</ul></section>;
 }
 
 export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled, command, useAnswerCommand, onAttached, onForgotten, role = null, conversationID = '' }: { project: Project; capabilities: SwaEnvelope | null; disabled: boolean; startDisabled: boolean; command: CommandState; useAnswerCommand: UseAnswerCommand; onAttached: (selection: SwaRunSelection) => void; onForgotten: () => void; role?: SwaRunRoleSelection | null; conversationID?: string }) {
   const [workdir, setWorkdir] = useState(project.root), [specFile, setSpecFile] = useState(''), [inputFile, setInputFile] = useState(''), [name, setName] = useState('lead');
   const [agentChoice, setAgentChoice] = useState({ roleKey: '', value: project.settings.external_model_cli }), [modelChoice, setModelChoice] = useState({ key: '', value: '' });
   const [questionChoice, setQuestionChoice] = useState<{ roleKey: string; value: 'disabled' | 'native' }>({ roleKey: '', value: 'disabled' });
+  const [delegationChoice, setDelegationChoice] = useState<{ roleKey: string; value: 'disabled' | 'native' }>({ roleKey: '', value: 'disabled' });
+  const [developmentChoice, setDevelopmentChoice] = useState<{ roleKey: string; value: 'disabled' | 'project' }>({ roleKey: '', value: 'disabled' });
   const roleKey = role ? `${role.id}:${role.revision}` : '';
   const agentID = agentChoice.roleKey === roleKey ? agentChoice.value : role?.default_agent ?? '';
   const questionMode = questionChoice.roleKey === roleKey ? questionChoice.value : role?.question_mode ?? 'disabled';
+  const delegationMode = delegationChoice.roleKey === roleKey ? delegationChoice.value : role?.delegation_mode ?? 'disabled';
+  const developmentMode = developmentChoice.roleKey === roleKey ? developmentChoice.value : role?.development_mode ?? 'disabled';
   const [connection, setConnection] = useState(() => readRunConnection(project.id));
   const selected = connection.selection;
   const [controller, setController] = useState(selected?.controller ?? ''), [taskID, setTaskID] = useState(selected?.taskID ?? ''), [runID, setRunID] = useState(selected?.runID ?? '');
@@ -45,8 +50,10 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
   const agent = agents.find(item => item.id === agentID);
   const modelKey = `${roleKey}:${agentID}`;
   const model = modelChoice.key === modelKey ? modelChoice.value : role?.default_agent === agentID ? role.default_model : agent?.model ?? '';
-  const nativeQuestionsAvailable = agent?.id === 'pi' && agent.questions?.status === 'available';
-  const canSubmit = !!workdir.trim() && !!specFile.trim() && (questionMode === 'disabled' || nativeQuestionsAvailable) && canRequestSwaStart({ agent: agent ? { ...agent, model } : undefined, settings: project.settings, disabled: disabled || startDisabled, pending: command.pending, unresolved: command.blocked, name, inputFile });
+  const nativeQuestionsAvailable = agent?.questions?.status === 'available';
+  const delegationBlock = swaDelegationBlock(agent, project.settings);
+  const developmentBlock = swaDevelopmentBlock(agent, project.settings);
+  const canSubmit = !!workdir.trim() && !!specFile.trim() && (questionMode === 'disabled' || nativeQuestionsAvailable) && (delegationMode === 'disabled' || !delegationBlock) && (developmentMode === 'disabled' || !developmentBlock) && canRequestSwaStart({ agent: agent ? { ...agent, model } : undefined, settings: project.settings, disabled: disabled || startDisabled, pending: command.pending, unresolved: command.blocked, name, inputFile });
   function attach(selection: SwaRunSelection) {
     setConnection({ selection, warning: saveRunConnection(project.id, selection) }); setController(selection.controller); setTaskID(selection.taskID); setRunID(selection.runID); onAttached(selection);
   }
@@ -54,13 +61,15 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
     <h3>提交目标，跟踪到交付</h3>
     <p className={styles.note}>使用服务端的任务规格和输入文件提交目标，在此跟踪进度、子任务和成果。</p>
     {role && <p className={styles.identity}>复用角色 · {role.id} · 版本 {role.revision}</p>}{conversationID && <p className={styles.identity}>关联讨论会话 · {conversationID}</p>}
-    <form className={styles.form} onSubmit={event => { event.preventDefault(); if (!canSubmit || !agent) return; void command.run({ action: 'run.submit', project_id: project.id, workdir: workdir.trim(), spec_file: specFile.trim(), input_file: inputFile.trim(), agent: agent.id, model: model.trim(), question_mode: questionMode, name: name.trim(), ...(role ? { role_id: role.id, revision: role.revision } : {}), ...(conversationID ? { conversation_id: conversationID } : {}) }, reply => attach(submittedRun(reply))); }}>
+    <form className={styles.form} onSubmit={event => { event.preventDefault(); if (!canSubmit || !agent) return; void command.run({ action: 'run.submit', project_id: project.id, workdir: workdir.trim(), spec_file: specFile.trim(), input_file: inputFile.trim(), agent: agent.id, model: model.trim(), question_mode: questionMode, delegation_mode: delegationMode, development_mode: developmentMode, name: name.trim(), ...(role ? { role_id: role.id, revision: role.revision } : {}), ...(conversationID ? { conversation_id: conversationID } : {}) }, reply => attach(submittedRun(reply))); }}>
       <label>任务工作目录<input required value={workdir} onChange={event => setWorkdir(event.target.value)} /></label>
       <label>任务规格文件<input required value={specFile} onChange={event => setSpecFile(event.target.value)} /></label>
       <label>目标与要求的输入文件<input required value={inputFile} onChange={event => setInputFile(event.target.value)} /></label>
       <label>主 Agent<select required value={agentID} onChange={event => setAgentChoice({ roleKey, value: event.target.value })}><option value="">选择当前项目 Agent</option>{agents.map(item => <option key={item.id} value={item.id} disabled={!!swaStartRequestBlock(item, project.settings)}>{item.id} · {item.model || '模型未配置'}</option>)}</select></label>
       <label>本次模型<input required value={model} onChange={event => setModelChoice({ key: modelKey, value: event.target.value })} /></label>
       <SwaQuestionModeField value={questionMode} nativeAvailable={nativeQuestionsAvailable} disabled={disabled || startDisabled || command.pending || command.blocked} onChange={value => setQuestionChoice({ roleKey, value })} />
+      <SwaDelegationModeField value={delegationMode} block={delegationBlock} disabled={disabled || startDisabled || command.pending || command.blocked} onChange={value => setDelegationChoice({ roleKey, value })} />
+      <SwaDevelopmentModeField value={developmentMode} block={developmentBlock} disabled={disabled || startDisabled || command.pending || command.blocked} paths={project.settings.allowed_subdirs} onChange={value => setDevelopmentChoice({ roleKey, value })} />
       <label>主 Worker 名称<input required value={name} onChange={event => setName(event.target.value)} /></label>
       <button type="submit" className="ac-button compact" disabled={!canSubmit}>提交完整任务</button>
     </form>
@@ -131,7 +140,15 @@ export function SwaQuestionAnswerForm({ question, text, disabled, onChange, onSu
 }
 
 export function SwaQuestionModeField({ value, nativeAvailable, disabled, onChange }: { value: 'disabled' | 'native'; nativeAvailable: boolean; disabled: boolean; onChange: (value: 'disabled' | 'native') => void }) {
-  return <><label>本次问题模式<select value={value} disabled={disabled} onChange={event => onChange(event.target.value as 'disabled' | 'native')}><option value="disabled">禁用工具</option><option value="native" disabled={!nativeAvailable}>原生问答 · 仅允许提问与读取原答案</option></select></label>{value === 'native' && !nativeAvailable ? <p role="alert">当前 Agent 的原生问答能力不可用。已选模式保留，请明确选择可用 Agent 或禁用工具。</p> : <p className={styles.note}>{value === 'native' ? '允许 Worker 在此 Run 提问。此模式不提供文件或命令工具。' : '本次 Worker 的模型工具保持关闭。'}</p>}</>;
+  return <><label>本次问题模式<select value={value} disabled={disabled} onChange={event => onChange(event.target.value as 'disabled' | 'native')}><option value="disabled">问答关闭</option><option value="native" disabled={!nativeAvailable}>原生问答 · 仅允许提问与读取原答案</option></select></label>{value === 'native' && !nativeAvailable ? <p role="alert">当前 Agent 的原生问答能力不可用。已选模式保留，请明确选择可用 Agent 或关闭问答。</p> : <p className={styles.note}>{value === 'native' ? '允许 Worker 在此 Run 提问。委派和开发工具另行选择。' : '本次 Worker 的原生问答关闭；自主委派和项目开发单独选择。'}</p>}</>;
+}
+
+export function SwaDelegationModeField({ value, block, disabled, onChange }: { value: 'disabled' | 'native'; block: string | null; disabled: boolean; onChange: (value: 'disabled' | 'native') => void }) {
+  return <><label>本次委派模式<select value={value} disabled={disabled} onChange={event => onChange(event.target.value as 'disabled' | 'native')}><option value="disabled">委派关闭</option><option value="native" disabled={!!block}>按角色自主委派</option></select></label>{block ? <p role={value === 'native' ? 'alert' : 'status'}>{block}{value === 'native' && '。已选模式保留，请明确关闭委派或调整项目许可。'}</p> : <p className={styles.note}>{value === 'native' ? '允许主 Agent 按当前项目角色发起子任务并读取结果；子任务仍受项目许可和任务额度限制。' : '主 Agent 不会通过委派工具启动子任务。'}</p>}</>;
+}
+
+export function SwaDevelopmentModeField({ value, block, disabled, paths, onChange }: { value: 'disabled' | 'project'; block: string | null; disabled: boolean; paths: string[]; onChange: (value: 'disabled' | 'project') => void }) {
+  return <><label>本次开发模式<select value={value} disabled={disabled} onChange={event => onChange(event.target.value as 'disabled' | 'project')}><option value="disabled">开发关闭</option><option value="project" disabled={!!block}>项目开发 · 读取、修改与执行检查</option></select></label>{block && <p role={value === 'project' ? 'alert' : 'status'}>{block}{value === 'project' && '。已选模式保留，请明确关闭开发或调整项目许可。'}</p>}{value === 'project' && <p className={styles.note}>启动后通过隔离命令读取、修改获准项目路径并运行检查：{paths.join('、') || '尚未指定'}。命令无网络；咨询子任务保持工具关闭。撤销许可会拒绝下一条调用，已准入的命令请使用停止 Worker 取消。</p>}</>;
 }
 
 export function SwaQuestionHistory({ question, disabled, onResume }: { question: { id: string; dispatchID: string; question: string; answer: string; answerID: string; answeredAt: string; readState: SwaQuestionReadState; continuationRequired: boolean }; disabled: boolean; onResume: () => void }) {

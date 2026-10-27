@@ -9,17 +9,18 @@ import (
 
 // 仅宿主内部准入使用；原生消费者负责从同 Run 的真实邮件和终态任务核对来源。
 type OrcaHandoffResume struct {
-	Schema           string `json:"schema"`
-	SourceTaskID     string `json:"source_task_id"`
-	SourceDispatchID string `json:"source_dispatch_id"`
-	ParentTaskID     string `json:"parent_task_id"`
-	ParentDispatchID string `json:"parent_dispatch_id"`
-	MailID           string `json:"mail_id"`
+	Schema           string              `json:"schema"`
+	SourceTaskID     string              `json:"source_task_id"`
+	SourceDispatchID string              `json:"source_dispatch_id"`
+	ParentTaskID     string              `json:"parent_task_id"`
+	ParentDispatchID string              `json:"parent_dispatch_id"`
+	MailID           string              `json:"mail_id"`
+	SourceSelection  *OrcaAgentSelection `json:"source_selection,omitempty"`
 }
 
 func validateOrcaHandoffResume(invocation OrcaInvocation) error {
 	handoff, input, command := invocation.Handoff, invocation.Input, invocation.Command
-	if handoff == nil || handoff.Schema != "swa.handoff-resume.v1" || command.Action != "worker.send" || input == nil || invocation.Submission != nil {
+	if handoff == nil || handoff.Schema != "swa.handoff-resume.v1" || command.Action != "worker.send" || input == nil || invocation.Submission != nil || invocation.NativeProjectTool != nil || invocation.NativeSessionObservation != nil {
 		return projectError(apierrors.ScopeDenied, "the original handoff delivery binding is incomplete")
 	}
 	for _, id := range []string{handoff.SourceTaskID, handoff.SourceDispatchID, handoff.ParentTaskID, handoff.ParentDispatchID, handoff.MailID} {
@@ -33,6 +34,14 @@ func validateOrcaHandoffResume(invocation OrcaInvocation) error {
 	}
 	if strings.TrimSpace(input.Text) == "" || !utf8.ValidString(input.Text) || len(input.Text) > 1024*1024 {
 		return projectError(apierrors.ValidationFailed, "the original handoff result is empty, invalid or exceeds its input bound")
+	}
+	if source := handoff.SourceSelection; source != nil {
+		if source.NativeLaunch.Tools.Mode != "project" || source.ExternalTarget != source.AgentID || source.Executable == "" || source.ConfigurationVersion == "" {
+			return projectError(apierrors.ScopeDenied, "historical project context requires its original development Worker selection")
+		}
+		if err := validateOrcaNativeLaunch(*source, invocation.Project.ID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

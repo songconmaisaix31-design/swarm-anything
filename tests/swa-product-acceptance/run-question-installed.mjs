@@ -46,7 +46,7 @@ try {
 process.umask(0o077)
 const token = process.env.SWA_PROJECT_TOKEN
 const report = { status: 'NOT_RUN', scenario: values['question-scenario'], source_revision: null, model_execution: 'NOT_RUN', phases: [], commands: [], unknown_requests: [], checks: [], not_run: ['independent_no_model_extension_success', 'windows_native_questions', 'private_cross_worker_rpc', 'workspace_resolution_disconnect', 'legacy_active_same_task_siblings', 'sdk_abort_result_without_actual_evidence'], service_shutdown: 'REQUIRES_ORIGINAL_OWNER_PROOF' }
-let output, installation, dataRoot, project, inputRoot, swa, node, revision, runtimeId, database, protocol, observer, runtimeRequire, sourceReader, journalFold
+let output, installation, dataRoot, project, inputRoot, swa, node, revision, runtimeId, database, protocol, observer, runtimeRequire, sourceReader, journalFold, resultLimits
 let owned, ready, launch, runtimeCustodian, custodianInput, deadline, cleanupDeadline, piExecutable, settingsRevision, gui, guiChild, cleaning = false
 const filePins = new Map(), sourcePins = new Map(), approved = new Map(), tracePrefixes = new Map(), nativePrefixes = new Map()
 const observers = new Set(), issued = new Set()
@@ -484,7 +484,7 @@ async function finishPhase(phase, expectedCode = 0) {
     const journal = object(worker.journal), actual = readonly(original.source.journal_database, db => {
       assert.equal(db.prepare('SELECT epoch FROM journal_sessions WHERE session_id=?').get(original.source.native_session_id)?.epoch, journal.epoch)
       const rows = db.prepare('SELECT seq,ts,row_json FROM journal_rows WHERE session_id=? AND epoch=? ORDER BY seq').all(original.source.native_session_id, journal.epoch)
-      assert.ok(rows.length <= 100_000 && rows.reduce((total, row) => total + Buffer.byteLength(row.row_json), 0) <= 12 * 1024 * 1024)
+      assert.ok(rows.length <= resultLimits.journal_rows && rows.reduce((total, row) => total + Buffer.byteLength(row.row_json), 0) <= resultLimits.journal_bytes)
       return rows
     })
     assert.deepEqual(journal.rows.map(row => ({ seq: row.seq, ts: row.ts, row: row.row })), actual.map(row => ({ seq: row.seq, ts: row.ts, row: protocol.parseStrictPiJson(row.row_json) })), 'question_export_journal_differs')
@@ -666,6 +666,8 @@ async function setup() {
   assert.equal(sha(await pin(values['gui-driver'])), values['gui-sha256'])
   runtimeRequire = createRequire(join(installation, 'runtime/package.json')); protocol = runtimeRequire('./pi-protocol.cjs')
   sourceReader = runtimeRequire('./task-result.cjs').readProviderTraceObservation
+  resultLimits = object(runtimeRequire('./task-result.cjs').resultObservationLimits)
+  for (const key of ['journal_bytes', 'journal_rows']) assert.ok(Number.isSafeInteger(resultLimits[key]) && resultLimits[key] > 0)
   journalFold = runtimeRequire('./journal-open.cjs').startJournalRowFold
   owned = protocol.parseStrictPiJson((await pin(values['owner-handoff'])).toString('utf8'))
   assert.equal(owned.status, 'SERVICE_BASELINE_OBSERVED')

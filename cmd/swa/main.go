@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/songconmaisaix31-design/Astrocyte/internal/apierrors"
 	workspaceapp "github.com/songconmaisaix31-design/Astrocyte/internal/workspace/app"
@@ -25,7 +26,7 @@ import (
 
 const usage = `swa serve --data-dir D --port N --protected-roots R [--agent-profile P] [--web-dir INSTALL/web] --json
 swa status|capabilities --json
-swa run --project P --workdir W --spec-file F --input-file I --agent A --model M --request-id UUID [--question-mode disabled|native] [--name lead] [--role ID --role-revision N] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
+swa run --project P --workdir W --spec-file F --input-file I --request-id UUID [--agent A --model M] [--role ID --role-revision N] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] [--name lead] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa wait --controller C --task T --run R [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa export --controller C --task T --run R --output-dir O [--audit] --json
 swa question answer --controller C --run R --task T --dispatch D --question Q --input-file F --request-id UUID --json
@@ -34,9 +35,12 @@ swa controller open --project P --workdir W --request-id UUID --json
 swa controller show|close|recover --controller C [--request-id UUID] --json
 swa task create --controller C --spec-file F --request-id UUID --json
 swa task show|list|complete|result --controller C [--task T] [--result-file F|--output-dir O] [--request-id UUID] --json
-swa worker start --controller C --task T --name NAME --agent AGENT --model PROVIDER/MODEL --input-file F --request-id UUID [--question-mode disabled|native] --json
+swa worker start --controller C --task T --name NAME --input-file F --request-id UUID [--agent AGENT --model PROVIDER/MODEL] [--role ID --role-revision N] [--parent-task T --completion-criterion TEXT ...] [--handoff-mode work|consult] [--reply-mode poll|resume] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] --json
 swa worker show|list|read|send|stop|release --controller C [--task T|--dispatch X] [--source transcript --limit 100 --cursor K] [--input-file F] [--request-id UUID] --json
 swa request show --controller C|--project P --request-id UUID --json
+swa role create --project P --role-file F --request-id UUID --json
+swa role update --project P --role ID --role-revision N --role-file F --request-id UUID --json
+swa role list|show|archive --project P [--role ID] [--role-revision N --request-id UUID] --json
 
 查询和控制使用 SWA_ENDPOINT、SWA_PROJECT_ID、SWA_PROJECT_TOKEN。
 SWA_PROJECT_TOKEN 必须来自当前项目授权。后台启动不会发行项目授权。
@@ -50,12 +54,22 @@ task spec 的 max_workers 是任务批准创建或预留的 Worker 总席位；�
 退出码：0=命令成功，2=参数错误，3=权限或批准不足，4=能力不可用，5=资源拒绝，6=效果未知，7=运行或导出失败，8=等待超时，9=需要用户回答，130=等待已取消。
 run 默认等待同一 Run 的全部递归任务；wait 只读重连，--strict 在任一子任务失败时返回7。
 question-mode 默认关闭；native 仅为实际 Pi 开放固定 swa_ask 问答工具。question resume 只在原问题已答且原 Worker 需要显式继续时使用，不接受自定义输入。
+delegation-mode 默认关闭；native 仅为 Pi 开放项目明确许可的 swa_delegate，省略时继承角色默认值。它与 question-mode 独立。
+development-mode 默认关闭；project 仅在当前项目批准 project_shell 与对应目录后开放受限开发命令，省略时继承角色默认值；consult 不允许 project。
 run/wait 的超时和 Ctrl-C 仅结束当前等待；stderr 显示进度和原 Run 重连命令。
 普通查询/控制的 Ctrl-C 只取消当前 CLI 等待，不停止 Worker；serve 的 Ctrl-C/所属 stdin 结束会关闭本次所属服务。
 安装及完整调用说明见安装目录 USAGE.md；使用独立目录，保持 serve 所属 stdin 开启。
 `
 
 var version = "development"
+
+type completionCriteria []string
+
+func (criteria *completionCriteria) String() string { return strings.Join(*criteria, ", ") }
+func (criteria *completionCriteria) Set(value string) error {
+	*criteria = append(*criteria, value)
+	return nil
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -88,7 +102,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		if len(rest) == 0 {
 			return output.failure("validation_failed", "缺少命令动作", "read_swa_help", 2)
 		}
-		if (rest[0] == "--help" || rest[0] == "-h") && (action == "controller" || action == "task" || action == "worker" || action == "request" || action == "question") {
+		if (rest[0] == "--help" || rest[0] == "-h") && (action == "controller" || action == "task" || action == "worker" || action == "request" || action == "question" || action == "role") {
 			return writeHelp(&output, nil)
 		}
 		action, rest = action+"."+rest[0], rest[1:]
@@ -114,7 +128,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.StringVar(&command.Name, "name", "", "Worker 名称")
 	flags.StringVar(&command.Agent, "agent", "", "已批准的 Agent")
 	flags.StringVar(&command.Model, "model", "", "已批准的 provider/model")
+	flags.StringVar(&command.RoleID, "role", "", "角色 ID")
+	flags.Int64Var(&command.Revision, "role-revision", 0, "角色当前版本")
+	roleFile := flags.String("role-file", "", "创建或更新角色的 JSON 文件")
+	flags.StringVar(&command.ParentTaskID, "parent-task", "", "同一 Run 中的父 Task ID")
+	flags.StringVar(&command.HandoffMode, "handoff-mode", "", "work 或 consult")
+	flags.StringVar(&command.ReplyMode, "reply-mode", "", "poll 或 resume")
+	flags.Var((*completionCriteria)(&command.CompletionCriteria), "completion-criterion", "完成条件；可重复")
 	flags.StringVar(&command.QuestionMode, "question-mode", "", "disabled 或 native；只在启动时选择")
+	flags.StringVar(&command.DelegationMode, "delegation-mode", "", "disabled 或 native；只在启动时选择")
+	flags.StringVar(&command.DevelopmentMode, "development-mode", "", "disabled 或 project；只在启动时选择")
 	flags.StringVar(&command.Source, "source", "", "明确原件来源")
 	flags.StringVar(&command.Cursor, "cursor", "", "原来源 cursor")
 	defaultLimit := 0
@@ -130,6 +153,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if parseError != nil || flags.NArg() != 0 {
 		return output.failure("validation_failed", "命令参数无效", "read_swa_help", 2)
+	}
+	if *roleFile != "" {
+		if command.Action != "role.create" && command.Action != "role.update" {
+			return output.failure("validation_failed", "--role-file 仅用于创建或更新角色", "read_swa_help", 2)
+		}
+		var err error
+		command.Role, err = readRoleDefinition(*roleFile)
+		if err != nil {
+			return output.failure("validation_failed", "角色文件须为不超过 256 KiB 的普通 UTF-8 JSON 文件，且只包含角色定义字段", "correct_role_file", 2)
+		}
 	}
 	command.ProjectID = *project
 	if err := workspaceapp.ValidateOrcaCommand(command); err != nil {
@@ -221,6 +254,44 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 7
 	}
 	return 0
+}
+
+func readRoleDefinition(path string) (*workspaceapp.OrcaRoleDefinition, error) {
+	const limit = 256 * 1024
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, errors.New("role definition must be a bounded regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err = file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, errors.New("role definition must be a bounded regular file")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > limit || !utf8.Valid(data) {
+		return nil, errors.New("role definition must be bounded UTF-8")
+	}
+	var role *workspaceapp.OrcaRoleDefinition
+	if err := decodeOneJSON(data, &role); err != nil {
+		return nil, err
+	}
+	if role == nil {
+		return nil, errors.New("role definition must be an object")
+	}
+	return role, nil
 }
 
 func writeHelp(output *cliOutput, flags *flag.FlagSet) int {

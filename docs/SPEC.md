@@ -842,11 +842,11 @@ CLI/HTTP 复用 App 的项目主体、批准及动作准入；具体原生源码
 
 合法已认证人类的自有安全停止保留原规则：严格核项目和原生进程所属，执行批准撤销及旧上下文版本不阻断安全停止；Agent的执行与撤销准入保持。关闭控制端与创建任务/Worker的准入必须共同核原生持久占用：创建先保留时，关闭须拒绝或等待其明确结算；关闭先保留时，新建及输入拒绝，unknown保持原屏障。关闭helper不能代替停止所属独立Worker。
 
-完整成果沿准确d7已审[方案§5.5](https://github.com/songconmaisaix31-design/swarm-anything/blob/d7f21242259739cfb49a4f68a19a1a8f28bcec32/docs/standards/swa-cli-headless-20261020.md)、§21.1.2及T07/T13实施。`worker read`保留原生有界预览与游标；`task result`从已核所属的实际原生journal及对应Agent自产transcript取得内容，采用成熟严格解析，检查身份、格式、读取一致性、单源12MiB及完整多Worker结果96MiB上限，不迁移、修补或换源。terminal只有有界输出时明确标注，不能作为完整成果通过。指定停止一项Worker时分别返回真实状态、已有部分和incomplete/unavailable/unknown；坏源或来源变化明确失败。其余Worker的完整成果、预定业务成功判据和全部相关资源退出/归档/释放仍为根Task完成条件；指定停止项保持停止状态，不追加其成功完成条件。旧A/B用例保留其原范围。本轮N=3须验证停止一项后其余至少两项保留原身份继续及一次同session追加输入，额度是上限，不强迫创建满额Worker。实际项目执行目标来自稳定AgentSelection并核现有批准；新数据根不预置Grant，服务启动不签发token。候选携带真实首次人工授权步骤及必要使用说明，真实结果按同一安装候选核验。
+完整成果沿准确d7已审[方案§5.5](https://github.com/songconmaisaix31-design/swarm-anything/blob/d7f21242259739cfb49a4f68a19a1a8f28bcec32/docs/standards/swa-cli-headless-20261020.md)、§21.1.2及T07/T13实施。`worker read`保留原生有界预览与游标；`task result`从已核所属的实际原生journal及对应Agent自产transcript取得内容，采用成熟严格解析，检查身份、格式、读取一致性、provider/native单源12MiB、每个journal 32MiB/100000行及完整多Worker结果96MiB上限，不迁移、修补或换源。terminal只有有界输出时明确标注，不能作为完整成果通过。指定停止一项Worker时分别返回真实状态、已有部分和incomplete/unavailable/unknown；坏源或来源变化明确失败。其余Worker的完整成果、预定业务成功判据和全部相关资源退出/归档/释放仍为根Task完成条件；指定停止项保持停止状态，不追加其成功完成条件。旧A/B用例保留其原范围。本轮N=3须验证停止一项后其余至少两项保留原身份继续及一次同session追加输入，额度是上限，不强迫创建满额Worker。实际项目执行目标来自稳定AgentSelection并核现有批准；新数据根不预置Grant，服务启动不签发token。候选携带真实首次人工授权步骤及必要使用说明，真实结果按同一安装候选核验。
 
 `run.export` 默认 `export_mode=results`，返回同一事务中已记录的任务结果快照：`schema=swa.recorded-results.v1`、`source=native_task_records`，逐任务标记 `available/missing`，保留 Run 的原状态、`complete`、`observed_at` 与 `acceptance=unreviewed`。`completeness` 仅描述任务结果是否全部存在；`audit=not_requested`。普通导出不读取原生日志，不等待整个 Run 结算；全部 Dispatch 必须有可核实的原会话绑定和凭据来源，最终完整响应经过所有相关账号的密钥过滤。读取日志期间整组记录不变的要求不适用于此快照。
 
-`export_mode=audit`（CLI `swa export --audit`）保持完整原生成果及来源核验。`task.result` 保持原语义。多Worker完整结果按[容量任务](../tasks/swa-result-capacity-20261023.md)区分单源、汇总和实际传输：每个journal按UTF-8字节保持12MiB/100000行，结果JSON为96MiB，task.result/run.export响应为128MiB；其他动作响应保持16MiB。run/wait --export使用普通结果快照。Go默认转义和实际run_view/envelope也计入响应字节，两个总界分别拒绝，不截断或自动重发。当前容量选择基于原四份真实来源；完整N6及第二轮峰值仍须实际验证。
+`export_mode=audit`（CLI `swa export --audit`）保持完整原生成果及来源核验。`task.result` 保持原语义。多Worker完整结果沿[原容量任务](../tasks/swa-result-capacity-20261023.md)区分来源、汇总和实际传输，并按[journal容量任务](../tasks/swa-journal-capacity-20261027.md)独立计量journal：`source_bytes=12MiB`用于provider/native来源，`journal_bytes=32MiB`、`journal_rows=100000`用于每个journal的实际UTF-8字节和行数，结果JSON为96MiB，task.result/run.export响应为128MiB；其他动作响应保持16MiB。journal的完整行、epoch/sequence、snapshot及读取前后来源检查继续保留，任何独立界超限均完整拒绝，不截断或自动重发。run/wait --export使用普通结果快照。Go默认转义和实际run_view/envelope也计入响应字节，结果与响应总界分别核验。journal预算调整来自实际N4中约15.0/16.1MB的journal读取失败；原provider来源仍在12MiB以内。当前只读组成测量尚未覆盖完整导出，完整N4/N6及第二轮内存峰值仍须实际验证。
 
 CLI输出和所属生命周期依准确b3f0e229已审方案§7.5及C01—C09实施。`--json`在stdout只发布一个完整结果，stderr保存诊断；已成功解析并校验的原请求ID及实际selector须在失败或取消时保留，未知身份省略。真实HTTP ErrorV1转换为既有CLI envelope，完整HTTP原件保存在既有`error.data`，HTTP trace与命令原请求ID各保留其来源；原生结果及错误数据保持。真实网络效果未知时只查询原请求，不重发；取消当前CLI等待返回130，不据此停止Worker。stdout实际不可写时将已知关联和实际影响保留到stderr并非零退出，不再次发布结果。
 
@@ -1014,7 +1014,7 @@ Claude的固定native contract要求bare、tools空、disable-slash、strict空M
 
 Codex每个新thread固定真实model/provider、`environments:[]/selectedCapabilityRoots:[]/dynamicTools:[]`、禁止模型fallback且持久化；不得用`cwd/runtimeWorkspaceRoots`重新引入环境。原生reply须提供并核对实际thread/model/provider/history/path，缺失时拒绝或保留unknown，不以请求参数补造。每次turn/start固定原thread、本次输入的原clientUserMessageId、model和空environments，只允许批准的纯文本；活跃turn的同会话追加沿原turn/steer与实际expectedTurnId，绑定本次send自己的原R/operation/clientUserMessageId，不复用start的operation，也不增加目录、工具、模型或capability覆盖。启动的strict config、完整工具组合门、当前来源与项目权限在投递前再次核验；API-key或模型catalog不替代ToolsOff证据。
 
-Codex真实通知在journal合并前写入原`provider-events.ndjson`，保留同session/fence的序号、host观察时刻、原生method/params与已审raw line；delta来自实际agentMessage/reasoning通知，不能拆分最终assistant全文。该来源和完整rollout/journal分别保持单源12MiB，并共同计入96MiB完整结果上限，保留FD有界读、前后SourceVersion及秘密检查。原opaque native响应的`source.process/source.owner_process`是bootstrap所属身份：Windows保持`{pid,creation_time_ms,runtime_id}`，Linux为`{platform:'linux',pid,boot_id,start_ticks,owner_uid,runtime_id}`，ticks/UID为十进制字符串；native CLI身份单独取真实custody观测，不代替lease PID。最终tree事实由受控Tree的只读`readFinalObservation()`取得，未知或processless不返回完整tree proof；原root退出、stderr JSON或interrupt回执不足以释放。只有实际最终事实成功持久化后才能向session host发布退出；真实未创建bootstrap的processless沿原独立受证分支处理。这些新增来源由实际消费者另验，不以689的D14替代，也不增加无人消费的JSON Schema定义。
+Codex真实通知在journal合并前写入原`provider-events.ndjson`，保留同session/fence的序号、host观察时刻、原生method/params与已审raw line；delta来自实际agentMessage/reasoning通知，不能拆分最终assistant全文。该provider来源和完整rollout分别保持单源12MiB，journal独立保持32MiB/100000行，并共同计入96MiB完整结果上限，保留FD有界读、前后SourceVersion及秘密检查。原opaque native响应的`source.process/source.owner_process`是bootstrap所属身份：Windows保持`{pid,creation_time_ms,runtime_id}`，Linux为`{platform:'linux',pid,boot_id,start_ticks,owner_uid,runtime_id}`，ticks/UID为十进制字符串；native CLI身份单独取真实custody观测，不代替lease PID。最终tree事实由受控Tree的只读`readFinalObservation()`取得，未知或processless不返回完整tree proof；原root退出、stderr JSON或interrupt回执不足以释放。只有实际最终事实成功持久化后才能向session host发布退出；真实未创建bootstrap的processless沿原独立受证分支处理。这些新增来源由实际消费者另验，不以689的D14替代，也不增加无人消费的JSON Schema定义。
 
 路径为实际canonical来源，version沿原配置snapshot的实际文件身份/版本；models_source=null要求实际不存在，后继出现视为变化。政策与原settings source/revision/configuration_version、原R/checkpoint共同固定原生选择，不保存凭据或另建账号账本。model_target绑定实际合成modelId/API/baseUrl，成熟URL解析拒绝账号信息、秘密查询、动态模板和未批准目标。Pi分支API只允许已核最终请求消费者的openai-responses、openai-completions、azure-openai-responses；OpenCode、Codex及Claude按各自上述固定目标，不换模型或来源。
 
@@ -1082,7 +1082,7 @@ type PiLocalFailure = {
 
 queue的write(line,signal?,beforeWrite?,onSettled?:(fact:ProviderWriteSettlement)=>void):Promise<void>保留原前三参数；beginClose(error:Error):void只停止新条目和未写输入，不拆reader/已发pending。prompt在真实queue entry的异步批准、无settings锁阶段调用prepareInput(clientMessageId,frame):Promise<()=>void>：同步读取原binding.body，经成熟preparePiRpcPrompt异步准备并与实际frame比较，返回同步重核原binding/frame的闭包，组合进最后finalAdmission；prepare不表示accepted、不写stdin或新增pending表。顺序为await旧批准/early检查及prepareInput（无锁）→同步finalAdmission/输入重核/assertCurrent→policy.beforeWrite取得本次acquirePrivatePiSettingsGuardSync(settingsPath)并有界读，再核prepared input、当前binding和line序列化frame一致后，核真实native前缀基线/fsync write_intent→writeAttempted=true紧邻实际write→finally close FD/release→callback/drain齐备→同步onSettled→resolve/reject，成功才flush。guard只暴露assertCurrent/release，不跨RPC或模型等待；真实cleanup未结算不能先terminal，写后失败不得变neverReachedAgent。onSettled持久化失败须抛固定safe错误，使queue永久terminal，不靠不抛的failure通知假装阻住下一项。
 
-peer/connection的request(command,params?,options?):Promise<unknown>新增options.id、beforeWrite和onReply(frame:JsonlRpcRecord,context:PiRawContext):void，保留timeoutMs。id只取真实Submission.id/operation，Map.set/写前查碰撞，不换id重试；使用唯一原pending表，30秒prompt ACK期限含批准与排队。strict raw在任何warn/return/delete前取得同pending上下文，递归strict DTO、重复键、秘密和来源检查/append后同步onReply，最后才删entry/清timer/resolve；unknown、重复、timeout后id与idless不当下一项ACK。原line保留，不由本地错误造native帧；8MiB行、真实末LF/fatal UTF8/EOF与单源12MiB/100000行门继续，多Worker完整结果另受96MiB汇总界。ACK只表preflight，不能触发accepted；新受限lane只从唯一完整user message_end回显关联原Submission，agent_start只开cycle。真实accepted早于ACK时不能被后回执倒写，peer永久失败不因late ACK复活。
+peer/connection的request(command,params?,options?):Promise<unknown>新增options.id、beforeWrite和onReply(frame:JsonlRpcRecord,context:PiRawContext):void，保留timeoutMs。id只取真实Submission.id/operation，Map.set/写前查碰撞，不换id重试；使用唯一原pending表，30秒prompt ACK期限含批准与排队。strict raw在任何warn/return/delete前取得同pending上下文，递归strict DTO、重复键、秘密和来源检查/append后同步onReply，最后才删entry/清timer/resolve；unknown、重复、timeout后id与idless不当下一项ACK。原line保留，不由本地错误造native帧；8MiB行、真实末LF/fatal UTF8/EOF与provider/native单源12MiB及既有100000行门继续，runtime journal独立保持32MiB/100000行，多Worker完整结果另受96MiB汇总界。ACK只表preflight，不能触发accepted；新受限lane只从唯一完整user message_end回显关联原Submission，agent_start只开cycle。真实accepted早于ACK时不能被后回执倒写，peer永久失败不因late ACK复活。
 
 timeline发布只报告原transition真实resolver、appendSteps的wrote及bound.publish事实：
 
@@ -1172,6 +1172,8 @@ policy使用官方Promise hook。context核最终工具数量0，model.request�
 
 structured launch admission增加disabledOpenCodeTools，与disabledPiTools各自对应合同；原R、child R、Dispatch/session、input binding、当前Grant、runtime fence和consumer generation保持。首次及后续输入等待原串行队列后，效果前重新核全部选择、来源、私有账号、原生policy和授权；当前输入未知只查询原R，不重发、不换Agent/model/目录。当前许可只接受固定公开项目的text，attachment、资源读取、slash command及输入中模型切换在边界拒绝。
 
+新建受控 OpenCode Worker 在原身份注册之后、原生 create 之前调用私有 `workerSessionOptions({sessionId,agent,dispatchId,options})`。它核准确原 pending 父子请求、当前项目与角色许可、同一 Run/worktree/Dispatch、`2.0.31` structured 合同和唯一显式 model，在当前批准前后复核原选择与身份，再把 `permissionMode:ask` 交给既有 create/record 路径。后续启动继续要求 record 为 ask，原 restricted ACP 全权限拒绝保留。已有记录不迁移；无该回调的普通 Orca 和其他 Agent 保持原选项。项目工具另受每次调用授权与隔离约束。规则与实际验收边界见[权限初始值任务](../tasks/swa-opencode-worker-permissions-20261027.md)。
+
 **事件、成果与停止。** 原providerEventDirectory增加protocol=acp的真实request/response/update trace，绑定actual ACP sessionId、native process incarnation、单调时间及原R/input operation；不得合成Pi事件，秘密不进入trace。task.result新增source=opencode-sqlite联合分支，Go/TS/HTTP schema及全部直接消费者同步；Pi结果原语义保持。读取前核同一R/Run/root/Dispatch/native lease和ACP session，只读事务一次读取真实私有session_v2/session_message全部指定会话记录，核seq/time/id唯一顺序、model/directory/project及实际input/output/stop。累计UTF-8超过12MiB明确失败；保留原生JSON和完整文本投影，未知schema或不完整结构立即失败。读取前后核DB/session和原journal epoch/sequence，跨库不声明原子；partial和确定完整成果分别表示。检测实际凭据泄露时整体拒绝导出，私有原件保持。
 
 停止沿原cancel/close和Job消费者，只处理已核所属身份，保留其他Worker、主服务和本机Orca；两次完整Job查询核全部非保留成员退出，缺创建时间按已审独立完整CIM缺席方法处理，未知不标released。实施顺序为O02针对性构建、O03/O04真实私有无推理及拒绝、O05首次真实正文/O06所属故障，再O07全部产品消费者、O08准确最终安装、O09同安装双Worker及O10必要失败恢复。最终须真实执行重叠、停止活跃A全树、B原PID/session/fence继续并接收真实后续正文、完整成果及逐项真实事件库定位；本节技术接受不表示这些检查已经通过。
@@ -1211,7 +1213,7 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 
 | 对象 | 保存的业务事实 |
 | --- | --- |
-| Role | 职责、默认 Agent/模型及问题模式、技能及长期知识引用；有项目范围、版本和归档状态 |
+| Role | 职责、默认 Agent/模型、问题/委派/开发模式、技能及长期知识引用；有项目范围、版本和归档状态 |
 | Conversation | 当前讨论及追加要求；追加讨论不隐式调用模型 |
 | Task | 目标、依赖、验收条件和结果；固定角色版本及来源 |
 | Worker | 实际 Dispatch、进程与原生会话身份、输入和释放状态 |
@@ -1219,6 +1221,20 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 `run.submit` 接原 project/workdir/spec_file/input_file/agent/model/name/request_id，可选 role_id+revision、conversation_id 和 question_mode。Go 在原权限下组合 controller.open、task.create、worker.start；外部稳定 UUID 为首阶段身份，后两阶段确定派生，持久化完整 spec/input/context/selection。恢复只读取并验证原请求回执，unknown 不自动重发或生成新身份。`initial_workers` 省略为 1，显式值须在 1 至 max_workers 以内；它防止已批准的初始并发尚未启动就收尾，实际动态后代仍全部纳入观察。
 
 `question_mode: disabled | native` 只在新 Run、worker.start 或 Role 默认值中选择；旧记录没有该字段时使用 disabled。Run/Worker 未显式选择时沿准确角色版本继承其默认值，没有角色时为 disabled；当前 Worker 不支持中途切换。角色编辑、归档、复用和实际启动记录保留原模式。native 仅适用于固定 Pi 1.0.1 的 per-session 账号合同，对应 `native_launch.tools.mode: questions-only`、固定安装扩展来源和唯一允许工具 `swa_ask`；其它 Agent 或账号合同明确拒绝。GUI 依据当前 `control.questions` 声明及项目选择开放入口，未得到能力时保留已选模式并阻止启动。声明支持、来源配置、实际启动和真实提问成功分别记录。
+
+**角色与自主委派。** Command 与 Role 的 `delegation_mode: disabled | native` 独立于问答模式，省略时继承准确角色版本，没有角色时关闭。当前 native 仅支持 Pi per-session 账号及当前项目 `allowed_tools` 中的 `swa_delegate`。工具集合采用固定 collaboration 扩展，包含委派及显式启用的问答；关闭问答不自动关闭委派。当前 Worker 不允许中途更换工具模式。
+
+`swa.delegate` 只接收 `role_id/revision/input/completion_criteria/mode`，mode 为 work 或 consult。项目、Run、父 Task/Dispatch、原启动选择、session、lease 与 native toolCall 从实际调用者解析，模型不得提供。外层请求 ID 由实际 session/nativeSession/assistantEntry/toolCall 稳定派生，内层 worker.start 使用独立且确定的 ID；复用原 mutation_receipts，不增加调度或重试账本。Go 在每次调用和实际启动边界核当前项目、settings revision、start/send、父子 CLI、工具许可与原 Grant；consult 禁止继续委派。
+
+委派回执在子 Worker 启动确认或失败后完成，不持有请求等待子任务成果；ready、failed、rejected 和 unknown 保留实际状态。未知请求只查询原 ID，不更换 ID 重发。子任务结束沿既有 mail/resume 将成果送回父会话；父任务忙时等待，父任务失败、取消或停止时保留未读成果并允许失败结算，不声称父 Agent 已读取。角色版本、默认值和显式覆盖均保存到原始启动记录，同请求重试不能切换执行目标。实现与真实验收状态见[本轮任务](../tasks/swa-role-delegation-20261027.md)。
+
+**项目开发工具。** Command 与 Role 的 `development_mode: disabled | project` 独立于问题和委派模式，未指定时继承准确角色版本，无角色时关闭。project 需要当前项目显式批准 `allowed_tools: project_shell`、目录及非空子目录范围、Agent 控制、read_context/start/send 和对应 CLI；GUI 同时依据 `control.development` 的实际能力决定能否启动。consult 强制关闭开发及进一步委派。原启动模式与实际工具名进入 Worker 记录和成果，不能从之后的角色或项目配置补推旧状态。
+
+Pi 使用原生 bash，OpenCode 使用原生 shell；读取、修改及检查命令都经过同一固定 Linux bubblewrap 执行器。模型只提供命令及原生支持的工作目录、超时；项目、工具链、保护目录、可写目录与原调用者由运行系统确定。执行器将获准目录读写挂载，系统和公开工具链只读挂载，使用独立 PID、用户和网络 namespace、私有临时目录及空环境，不向命令传入账号、代理或服务凭据；外部路径不可写，网络关闭。共享硬链接、特殊文件、重定向目录和与保护目录相交的挂载范围被拒绝。隔离能力不可用时明确拒绝，Windows 当前未提供该开发执行器。
+
+每次原生命令调用通过只读 `swa.projectToolAuthorize` 验证真实 session、lease、原启动请求和原生工具调用来源；Go 重新核当前项目、Grant、目录及操作范围，返回当前可写目录。固定扩展检查返回身份、Grant 有效期和取消状态，在创建命令前完成授权。撤销许可阻止后续命令；已准入命令由 Worker stop 取消。Pi 依据真实 assistant entry/toolCall，OpenCode 依据真实消息/工具记录及原生 shell execute 的 AsyncLocalStorage 上下文绑定授权；上下文缺失时拒绝。
+
+合法文件修改不改写已接受的历史输入。项目工具准入保留原 Context.Files 的正文和版本，同时重新核路径许可和当前 Materials。真实 project 母 Worker 的原生委派、问答也沿该历史文件输入检查当前许可。真实 project 模式子 Worker 的成果交接携带原 source_selection，并再次核当前 project_shell 许可，才可沿该历史文件上下文恢复父会话；首次启动及普通追加仍核现有文件新鲜度。该例外不扩大其他输入、项目或 Agent 的权限。
 
 questions-only 只允许以原文 question 创建问题或以 resume 读取所属原问题的答案，不接受路径、命令、模型、账号或任意收件人；原生文件和命令工具保持关闭。disabled 的原工具集合与启动参数不变。Worker preamble 从实际原启动选择取得模式：disabled 要求直接交付最终助手正文，由运行系统收集；questions-only 只说明可用的 `swa_ask` 和最终成果。原任务规格与验收条件保留，不能要求模型使用实际不可用的协作命令。consult 继续要求 disabled，不能隐式升级工具范围；既定 ToolsOff N4/N6 验收与本问答模式分别记录。
 
@@ -1239,6 +1255,8 @@ CLI `run` 默认等待整个递归 Run；`wait` 用精确 controller/run_id/root
 `question.resume` 返回0只确认该次继续输入已接受；原请求未知时仅查询同 R，不能自动重发，已完成回放也不再次输入。新一轮确实结束但仍未读取答案时，重新呈现明确继续入口，由用户选择下一次请求。`answered_questions.read_state` 区分 answer_saved、read_unconfirmed、read_observed、continuation_required 和 interrupted；`continuation_required` 布尔仅在同名状态为 true。CLI 对尚需回答或继续的问题保持退出9：可以继续时给出 `swa question resume --project P --controller C --run R --task ROOT --dispatch D --question Q --request-id NEW_UUID --json`；证据不足时给原 wait/request 查询指引。GUI 同 Run 按相同库存显示继续按钮，并沿原 request.show 恢复，pending、未知或普通权限错误均不清除原请求锁。
 
 work 委派执行，consult 必须由实际工具策略禁止外部操作，notify 仅保存单向邮件且不新建 Task/Worker。交接保存原始来源、父任务、接收者、完成条件和 reply。`handoff.notify` 接收原 Controller、根任务、接收 Dispatch 和 `input_file`；Go 按当前项目权限读取并版本化该文件，原生邮件逐字保存 `invocation.input.text`。该操作不接收内联 `text`。notify 的 `delivery:stored` 只表示记录已保存；通知和完成邮件使用原 `audit_only` 合同，不进入会自动向模型投递的邮箱。reply=poll 由调用者观察；reply=resume 由原生完成消费者把真实子成果通过原邮件和经过当前权限检查的 worker.send 输入路径递交父会话。内部 `handoff` 引用 source_task_id/source_dispatch_id/parent_task_id/parent_dispatch_id/mail_id；后台核原记录、当前项目权限和原会话，外部请求不能提供该证明。邮件已保存、实际接受输入、父 Agent 继续输出分别记录。
+
+新建的 resume 输入明确区分运行系统的交接状态与子 Agent 原文：固定标题后用 JSON 一行呈现 `source_task_id/source_dispatch_id/outcome/acceptance`，随后标明原文区域并逐字附上结果文本，结果可以为空。Task.result、完成邮件 body 和 execution 回执 result 保持原文，不以说明文字补造成果。邮件的 `acceptance` 必须为 `unreviewed`，并与同一 execution 回执一致；`outcome` 必须等于该回执的 `turn.outcome`，或在其明确记录 `continuation=parent_interrupted` 时等于 `parent_interrupted`。该回执的 turn task/dispatch 同原子任务绑定，生成和投递校验共用一个格式函数。失败或取消时没有模型文本仍能向父会话说明已记录状态；是否实际进入父上下文及父 Agent 继续必须另有原生证据。最终输入继续受原大小与权限限制，不截断正文。已有 resume 请求优先观察原 R 和原输入绑定；pending/unknown 不重新格式化或重发，completed 也不把旧输入替换为新格式。规则与真实验收范围见[交接状态任务](../tasks/swa-handoff-outcomes-20261027.md)。
 
 Run 自动收尾复用原 journal 完成通知、Task/Dispatch、完整成果 reader 和原 worker.stop/release，不新增调度器或第二任务状态库。Run 观察触发同 scope 的既有结算；问题库存同时核原问题、创建/等待回执及真实工具结果，覆盖报告、自动停止/释放、根任务交付与最终清理前复核。已保存但读取未确认的答案仍阻止自动交付；仅 Q=answered 或 Q=closed 不代表模型继续或停止完成。用户显式 stop 在原停止及退出证据确认后可沿原流程回收，保留 interrupted 与原答案，不宣称模型已读。所有实际后代、问题、未知输入和所属资源均须闭合；执行终态标记 `acceptance:unreviewed`，不代替验收条件审查。
 

@@ -26,10 +26,12 @@ import { createPrivateOpenCodeRoot } from './private-opencode-account'
 import { createPrivateCodexRoot } from './private-codex-account'
 import { deliverNativeWorkerInput } from './worker-input'
 import { assertDeliveryGrantCurrent } from './delivery-admission'
+import { assertDelegationParentCurrent } from './delegation'
 import { authority, controllerOwnerSchema, controllerScope, exactController, observeControllerExited, recorded } from './controller-scope'
 import { approvedWorkerLimit, assertCompletionInventory, assertWorkerCapacity, assertWorkerStartOpen } from './task-budget'
 import { readRunView, readRunTaskTree, isTaskDescendant, recordedRunResults } from './run-view'
 import { collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment } from './collaboration-records'
+import { assignedAgent } from './role-selection'
 import { requestRunSettlement, validateHandoffInput } from './run-settlement'
 import { assertQuestionReservation, questionStartSelection, readAnswerQuestion, validateQuestionAnswer } from './question-answer'
 import { assertQuestionResume, observeRunQuestions } from './question-ask'
@@ -88,8 +90,8 @@ export async function collectRunResult(runtime: OrcaRuntimeService, scope: Scope
 }
 
 export async function deliverRunHandoff(runtime: OrcaRuntimeService, invocation: Invocation) {
-  if (!invocation.handoff || !invocation.command.request_id) return fail('scope_denied', 'The native handoff continuation is required')
-  validateHandoffInput(runtime, invocation)
+  if ((!invocation.handoff && !invocation.native_delegation) || !invocation.command.request_id) return fail('scope_denied', 'The native handoff or delegation source is required')
+  if (invocation.handoff) validateHandoffInput(runtime, invocation)
   const method = buildRegistry(SWA_METHODS).get('swa.controllerDeliver')
   if (!method || isStreamingMethod(method)) return fail('evidence_missing', 'The original native input handler is unavailable')
   const id = invocation.command.request_id
@@ -292,6 +294,7 @@ export const SWA_METHODS = [
   } }),
   defineMethod({ name: 'swa.controllerDeliver', permission: 'workspace', params: wrapper, handler: async ({ invocation }, context) => {
     const c = invocation.command
+    if (invocation.native_session_observation || invocation.native_delegation?.observation_only) return fail('scope_denied', 'A private observation cannot deliver a Worker effect')
     if (!c.controller || !['worker.start', 'worker.send', 'worker.stop', 'worker.release', 'task.complete', 'question.answer', 'question.resume'].includes(c.action)) return fail('invalid_argument', 'Unsupported controller mutation')
     const { scope, owner } = controllerScope(context.runtime, invocation.project.id, c.controller)
     await exactController(context.runtime, owner)
@@ -457,13 +460,14 @@ async function recoverController(invocation: Invocation, context: RpcContext) {
   })
 }
 
-async function resolveSelection(runtime: OrcaRuntimeService, project: string, command: Invocation['command']): Promise<AgentSelection> {
+export async function resolveSelection(runtime: OrcaRuntimeService, project: string, command: Invocation['command']): Promise<AgentSelection> {
   if (command.action === 'run.submit') {
-    if (!command.workdir || !isAbsolute(command.workdir) || !command.agent || !command.model || command.controller) return fail('invalid_argument', 'Run submission requires its explicit project directory, Agent and model')
+    if (!command.workdir || !isAbsolute(command.workdir) || command.controller) return fail('invalid_argument', 'Run submission requires its explicit project directory')
     const projectRoot = await realpath(command.workdir)
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision, conversation_id: command.conversation_id })
     await runtime.ensureStructuredAgentSessionHost({ prewarmModelCatalog: false })
-    return selectAgent(runtime, project, command.agent, command.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
+    const selected = assignedAgent(command, project, references.role_snapshot)
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled')
   }
   if (!command.controller) return fail('invalid_argument', 'An exact controller is required for the native account source boundary')
   const { owner, scope } = controllerScope(runtime, project, command.controller)
@@ -477,9 +481,9 @@ async function resolveSelection(runtime: OrcaRuntimeService, project: string, co
   if (!resolvePath) return fail('evidence_missing', 'The exact native project directory is unavailable')
   const projectRoot = await realpath(await resolvePath(owner.worktree_id))
   if (command.action === 'worker.start') {
-    if (!command.agent || !command.model) return fail('invalid_argument', 'An explicit native Agent and model are required')
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision })
-    return selectAgent(runtime, project, command.agent, command.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled')
+    const selected = assignedAgent(command, project, references.role_snapshot)
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled')
   }
   if (!['worker.send', 'question.answer', 'question.resume'].includes(command.action) || !command.controller || !command.dispatch_id) return fail('invalid_argument', 'Only a start or an exact existing Worker input resolves a model selection')
   validateTaskAction(runtime, { command }, scope)
@@ -494,7 +498,8 @@ async function resolveSelection(runtime: OrcaRuntimeService, project: string, co
   const dispatch = db.getDispatchContextById(command.dispatch_id)
   const record = dispatch?.assignee_orca_session_id && runtime.openedAgentSessionRecordStore()?.getRecord(dispatch.assignee_orca_session_id)
   if (!record || record.provider !== original.agent_id || record.options?.model !== original.model) return fail('worker_identity_changed', 'The actual Worker session does not match its original Agent selection')
-  const current = await selectAgent(runtime, project, original.agent_id, original.model, projectRoot, original.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled')
+  const tools = original.native_launch.tools
+  const current = await selectAgent(runtime, project, original.agent_id, original.model, projectRoot, tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_ask') ? 'native' : 'disabled', tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_delegate') ? 'native' : 'disabled', tools.mode === 'project' ? 'project' : 'disabled')
   if (!isDeepStrictEqual(original, current)) return fail('request_mismatch', 'The original Worker Agent source changed; preserve the original selection')
   return original
 }
@@ -518,6 +523,7 @@ function reserve(context: RpcContext, invocation: Invocation, receipt: Record<st
     const fresh = controllerScope(runtime, invocation.project.id, c.controller)
     if (recorded(runtime, 'swa.controllerClose', c.controller)) fail('controller_closing', 'The exact controller already reserved its close; inspect the original request')
     assertCurrentCollaborationAssignment(db, invocation)
+    assertDelegationParentCurrent(runtime, invocation)
     if (c.action === 'task.create') {
       if (fresh.scope.run_id || recorded(runtime, 'swa.taskCreate', c.controller)) fail('request_mismatch', 'This controller already reserved its one user task')
     } else if (c.action === 'controller.close') {

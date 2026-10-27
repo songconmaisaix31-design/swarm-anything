@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { SwaQuestionAnswerForm, SwaQuestionHistory, SwaQuestionModeField } from './SwaRunWorkspace';
+import { SwaDelegationModeField, SwaDevelopmentModeField, SwaQuestionAnswerForm, SwaQuestionHistory, SwaQuestionModeField } from './SwaRunWorkspace';
 import { readQuestionContinuation, type SwaQuestionReadState } from './swaRunView';
 
 // 纯表单边界；生产 SQLite 问题/答复与恢复器另由 question-answer.test.mjs 直接验证。
@@ -39,6 +39,28 @@ describe('同 Run 问题回答表单', () => {
     expect(unavailable).toContain('已选模式保留');
     expect(mode('native', true)).toContain('<option value="native" selected="">');
     expect(mode('native', true, true)).toContain('<select disabled="">');
+  });
+
+  it('委派权限失效时保留原 native 选择并禁用，关闭问答不宣称关闭委派', () => {
+    const html = renderToStaticMarkup(createElement(SwaDelegationModeField, { value: 'native', block: '当前项目未许可', disabled: false, onChange }));
+    expect(html).toContain('<option value="native" disabled="" selected="">');
+    expect(html).toContain('已选模式保留');
+    expect(html).toContain('当前项目未许可');
+    const questions = renderToStaticMarkup(createElement(SwaQuestionModeField, { value: 'disabled', nativeAvailable: true, disabled: false, onChange }));
+    expect(questions).toContain('自主委派和项目开发单独选择');
+  });
+
+  it('开发模式失效保留选择，范围、无网络与撤权取消时点明确展示', () => {
+    const properties = { value: 'project' as const, block: '此环境隔离不可用', disabled: false, paths: ['src', 'tests'], onChange };
+    const blocked = renderToStaticMarkup(createElement(SwaDevelopmentModeField, properties));
+    expect(blocked).toContain('<option value="project" disabled="" selected="">');
+    expect(blocked).toContain('已选模式保留');
+    for (const text of ['src、tests', '读取、修改', '无网络', '咨询子任务保持工具关闭', '拒绝下一条调用', '停止 Worker']) expect(blocked).toContain(text);
+    const available = renderToStaticMarkup(createElement(SwaDevelopmentModeField, { ...properties, block: null }));
+    expect(available).toContain('<option value="project" selected="">');
+    const disabled = renderToStaticMarkup(createElement(SwaDevelopmentModeField, { ...properties, value: 'disabled', block: null }));
+    expect(disabled).toContain('<option value="disabled" selected="">');
+    expect(disabled).not.toContain('启动后通过');
   });
 
   it('只有明确的继续状态提供按钮，未知、已读与中断不产生继续操作', () => {

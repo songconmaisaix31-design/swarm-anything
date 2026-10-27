@@ -24,7 +24,7 @@ import { agentSessionSendBodyFingerprint } from '../../../third_party/orca-v1.4.
 import { SendBodyStructure } from '../../../third_party/orca-v1.4.230/src/shared/rpc-contract/structured-agent-session-message-params'
 import type { OrchestrationDb } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/db/orchestration-db'
 import { iterateJournalEpochRows, readJournalSessionEpoch } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-row-table'
-import { agentSelectionSchema, nativeObject, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
+import { agentSelectionSchema, nativeObject, nativeToolModes, nativeOpenCodeLaunchPolicySchema, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
 import { readNativeOpenCodeSessionSource, validateOpenCodeExport } from './opencode-session-result'
 import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
 import { readPrivateOpenCodeInputKey } from './private-opencode-account'
@@ -56,7 +56,11 @@ import { validateClaudeExport } from './claude-session-policy'
 import { claudeProviderHandleLeafUuid } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-provider-handle-encoding'
 import { isRootClaudeFrame } from '../../../third_party/orca-v1.4.230/src/main/claude/claude-turn-opening'
 
-export const resultObservationLimits = Object.freeze({ source_bytes: 12 * 1024 * 1024, result_bytes: 96 * 1024 * 1024, response_bytes: 128 * 1024 * 1024 })
+export const resultObservationLimits = Object.freeze({ source_bytes: 12 * 1024 * 1024, journal_bytes: 32 * 1024 * 1024, journal_rows: 100_000, result_bytes: 96 * 1024 * 1024, response_bytes: 128 * 1024 * 1024 })
+export function journalReadWithinBounds(bound: { count: number; bytes: number | null }) {
+  const bytes = bound.bytes ?? 0
+  return Number.isSafeInteger(bound.count) && bound.count >= 0 && bound.count <= resultObservationLimits.journal_rows && Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= resultObservationLimits.journal_bytes
+}
 const maximum = resultObservationLimits.source_bytes
 const sourceWitnesses = new Map<string, { path: string; identity: string; nativeSession: string; bytes: Buffer }>()
 const headerSchema = z.looseObject({ type: z.literal('session'), version: z.literal(3), id: z.uuid(), timestamp: z.iso.datetime(), cwd: z.string().min(1), parentSession: z.string().optional() })
@@ -701,12 +705,12 @@ export async function validateRecordedRunExport(runtime: OrcaRuntimeService, sco
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Claude account source changed before export')
       checks.push(() => { assertNativeClaudeCurrent(snapshot); validateClaudeExport(snapshot, serialized) })
     } else if (account.kind === 'pi-native-api-key-per-session') {
-      const snapshot = await inspectNativePiPolicy({ ...common, provider: account.provider, modelId: account.model_target.model_id, questionMode: selection.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled' })
+      const snapshot = await inspectNativePiPolicy({ ...common, provider: account.provider, modelId: account.model_target.model_id, ...nativeToolModes(selection.native_launch.tools) })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Pi account source changed before export')
       const env = privatePiEnvironment(join(account.private_root, sessionId), environment)
       checks.push(() => { assertNativePiSnapshotCurrent(snapshot); validatePiExport(snapshot, serialized, env) })
     } else if (account.kind === 'opencode-native-api-key' || account.kind === 'opencode-native-stepfun-api-key') {
-      const snapshot = await inspectNativeOpenCodePolicy({ ...common, privateRoot: account.private_root })
+      const snapshot = await inspectNativeOpenCodePolicy({ ...common, privateRoot: account.private_root, tools: nativeOpenCodeLaunchPolicySchema.parse(selection.native_launch).tools })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original OpenCode account source changed before export')
       const inputKey = await readPrivateOpenCodeInputKey(join(account.private_root, sessionId))
       checks.push(() => {
@@ -854,14 +858,14 @@ export async function completeTaskResult(runtime: OrcaRuntimeService, scope: Sco
       const inventory = readStructuredInputInventory(db, scope, worker.dispatchId)
       const bindings = structuredInputBindings(inventory, { scope, dispatchId: worker.dispatchId, sessionId, fence: original.binding.runtime_fence, selection })
       inputInventories.push({ dispatchId: worker.dispatchId, signature: inventory.signature })
-      const snapshot = await inspectNativePiPolicy({ executable: selection.executable, version: selection.version, sourceHome: account.source_home, projectId: scope.project_id, questionMode: selection.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled', provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(await readAgentSettings(), cwd) })
+      const snapshot = await inspectNativePiPolicy({ executable: selection.executable, version: selection.version, sourceHome: account.source_home, projectId: scope.project_id, ...nativeToolModes(selection.native_launch.tools), provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(await readAgentSettings(), cwd) })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Pi account source changed before export')
       await verifyPrivatePiSessionAccount(snapshot, sessionId)
       const home = join(account.private_root, sessionId)
       const privateSources = await Promise.all(['auth.json', 'settings.json', ...(snapshot.models === null ? [] : ['models.json'])].map(name => nativeConfigurationSource(join(home, name))))
       const trace = await readStructuredTrace({ agent: 'pi', path: join(data, 'workers', sessionId, 'provider-events.ndjson'), record, binding: original.binding, nativeId: head.handle.nativeId, runtimeId: z.string().min(1).parse(nativeWorker.runtime_epoch), maximum: Math.min(resultObservationLimits.source_bytes, maximum - used), requireClosed: resource.release_state === 'released', requirePrivatePath: path => requireNativeCodexPrivatePath(path, false) })
       const ready = trace.rows.find(row => row.event === 'policy_ready')
-      const expectedSources = [...snapshot.sources.pinnedFiles, ...privateSources.filter(source => basename(source.path) !== 'settings.json'), ...(snapshot.policy.tools.mode === 'questions-only' ? [snapshot.policy.tools.extension] : [])]
+      const expectedSources = [...snapshot.sources.pinnedFiles, ...privateSources.filter(source => basename(source.path) !== 'settings.json'), ...(snapshot.policy.tools.mode !== 'disabled' ? [snapshot.policy.tools.extension] : [])]
       if (!ready || !isDeepStrictEqual(nativeObject(ready.detail).sources, expectedSources)) return fail('The native Pi execution or private account source differs from its original observation')
       providerEvents = trace
       used += Buffer.byteLength(JSON.stringify(trace.value))
@@ -896,7 +900,7 @@ export async function completeTaskResult(runtime: OrcaRuntimeService, scope: Sco
     const { journal, rows, snapshot } = await readPrivateJournal(data, host.deps.journalDatabase.stateDirectory, journalDB => {
       const bound = z.object({ count: z.number(), bytes: z.number().nullable(), max_seq: z.number().nullable() }).parse(journalDB.prepare('SELECT COUNT(*) AS count, SUM(LENGTH(CAST(row_json AS BLOB))) AS bytes, MAX(seq) AS max_seq FROM journal_rows WHERE session_id=? AND epoch=?').get(sessionId, readJournalSessionEpoch(journalDB, sessionId)))
       used += (nativeSession === undefined ? 0 : Buffer.byteLength(JSON.stringify(nativeSession))) + (bound.bytes ?? 0)
-      if (used > maximum || (bound.bytes ?? 0) > resultObservationLimits.source_bytes || bound.count <= 0 || bound.count > 100_000) return fail('The required journal is missing or exceeds the declared result bound')
+      if (used > maximum || bound.count <= 0 || !journalReadWithinBounds(bound)) return fail('The required journal is missing or exceeds the declared result bound')
       const journal = replayJournal(journalDB, sessionId)
       if (!journal || journal.damage || journal.newer || journal.state.lastSequence !== bound.max_seq) return fail('The actual native journal is damaged, incomplete or has a newer schema')
       const rows = [...iterateJournalEpochRows(journalDB, sessionId, journal.state.epoch)]

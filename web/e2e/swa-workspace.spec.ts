@@ -62,9 +62,12 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     await expect(workspace.getByText('当前项目未允许观察角色与讨论，请刷新项目权限或在项目设置中调整。', { exact: true })).toBeVisible();
     for (const name of ['新建角色', '创建讨论', '创建角色', '保存角色新版本', '归档角色', '保存到讨论']) await expect(workspace.getByRole('button', { name, exact: true })).toHaveCount(0);
     expect(commands.filter(command => command.action === 'status')).toHaveLength(3);
+    const reloadedStatus = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/local-projects/${project.id}/orca/commands`) && response.request().postDataJSON().action === 'status');
     await page.reload();
-    await expect(workspace.getByLabel('SWA 项目')).toHaveValue('');
-    expect(commands.filter(command => command.action === 'status')).toHaveLength(3);
+    await reloadedStatus;
+    await expect(workspace.getByLabel('SWA 项目')).toHaveValue(project.id);
+    expect(new URL(page.url()).searchParams.get('project')).toBe(project.id);
+    expect(commands.filter(command => command.action === 'status')).toHaveLength(4);
     expect(commands.every(command => ['status', 'role.list', 'conversation.list'].includes(command.action))).toBe(true);
     expect(apiPaths.some(path => /^\/api\/v1\/(materials|opportunities|cognition|works|missions|proposals)(\/|$)/.test(path))).toBe(false);
     expect(server.query('SELECT COUNT(*) AS count FROM orca_execution_links')[0].count).toBe(0);

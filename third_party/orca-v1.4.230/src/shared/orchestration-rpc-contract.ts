@@ -81,7 +81,7 @@ export function isTerminalPromptMutation(method: string, params: unknown): boole
 }
 
 export function isDurableMutation(method: string, params: unknown): boolean {
-  if (['swa.controllerOpen', 'swa.controllerClose', 'swa.controllerRecover', 'swa.taskCreate', 'swa.controllerDeliver', 'swa.workerSend', 'swa.collaborationWrite', 'swa.runSettle'].includes(method)) return true
+  if (['swa.controllerOpen', 'swa.controllerClose', 'swa.controllerRecover', 'swa.taskCreate', 'swa.controllerDeliver', 'swa.workerSend', 'swa.collaborationWrite', 'swa.runSettle', 'swa.delegate'].includes(method)) return true
   return isOrchestrationMutation(method, params) || isTerminalPromptMutation(method, params)
 }
 

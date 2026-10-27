@@ -169,6 +169,24 @@ func TestOrcaDeliveryHumanIndependentSendSQLite(t *testing.T) {
 	}
 }
 
+func TestRoleWorkerEffectiveSelectionRequiresCurrentTargetAuthorization(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		t.Run(map[bool]string{true: "allowed", false: "denied"}[allowed], func(t *testing.T) {
+			input := newDeliveryAdmissionInput(t, "delivery-current-human", func(settings *domain.ProjectSettings) {
+				if !allowed {
+					settings.ExternalModelCLI = "codex"
+				}
+			})
+			command := &input.invocation.Command
+			command.Action, command.DispatchID = "worker.start", ""
+			command.TaskID, command.Name, command.RoleID, command.Revision = input.invocation.Scope.RootTaskID, "reviewer", "role-id", 1
+			// 私有原生准入先核角色快照，再把实际选择送到此 Go 授权入口。
+			command.Agent, command.Model = input.invocation.Selection.AgentID, input.invocation.Selection.Model
+			input.check(t, allowed)
+		})
+	}
+}
+
 func TestOrcaDeliveryCurrentAuthorizationBoundariesSQLite(t *testing.T) {
 	cases := []string{"cross-creator-start", "agent-wrong-creator-send", "agent-wrong-creator-start", "human-carries-grant", "empty-human", "unknown-kind", "wrong-project", "wrong-root", "wrong-run", "wrong-authority", "wrong-revision", "changed-input", "changed-context", "enabled-tools", "wrong-model", "disabled-control", "missing-send", "denied-directory", "wrong-external-target"}
 	for _, name := range cases {

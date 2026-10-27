@@ -2,6 +2,7 @@ import { createInterface } from 'node:readline'
 import { RuntimeClient } from '../../../third_party/orca-v1.4.230/src/cli/runtime/client'
 import { helperInput, nativeObject, nativeError, type Invocation } from './contracts'
 import { fixedTaskSpec, workerTaskSpec } from './collaboration-records'
+import { workerSelectionMatches } from './role-selection'
 import { questionReplyParams } from './question-answer'
 
 const controller = process.env.ORCA_TERMINAL_HANDLE
@@ -37,7 +38,7 @@ async function execute(action: string, requestId: string, invocation?: Invocatio
     case 'question.answer': return call('orchestration.reply', questionReplyParams(invocation), `${requestId}/native`)
     case 'task.complete': return call('orchestration.taskUpdate', { id: c.task_id, status: 'completed', result: invocation.input?.text, run, callerTerminalHandle: controller }, `${requestId}/native`)
     case 'worker.start': {
-      if (!invocation.input || !invocation.selection || invocation.selection.agent_id !== c.agent || invocation.selection.model !== c.model) throw new Error('selected_native_worker_input_required')
+      if (!invocation.input || !invocation.selection || !workerSelectionMatches(invocation)) throw new Error('selected_native_worker_input_required')
       return call('orchestration.workerStart', {
         from: controller, run, parent: c.parent_task_id ?? invocation.scope.root_task_id, worktree: 'current',
         taskTitle: c.name, agent: invocation.selection.agent_id, model: invocation.selection.model, timeoutMs: 90_000,

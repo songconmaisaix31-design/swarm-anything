@@ -2,6 +2,7 @@ package orca
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -97,6 +98,39 @@ func TestRuntimeClaudeAPIKeyHomeIsExplicitAndFiltersInheritance(t *testing.T) {
 		}
 		if found != 1 {
 			t.Fatal("Claude 来源环境必须唯一，未配置时仍须传空值")
+		}
+	}
+}
+
+func TestRuntimePassesOnlyExplicitProjectToolchainEnvironment(t *testing.T) {
+	config := codexSourceConfig(t)
+	roots, err := json.Marshal([]string{t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SWA_UNSELECTED_RULE_VALUE", "ordinary-filter-rule-input")
+	t.Setenv("SWA_OWNER_CAPABILITY", "unselected-owner-rule-input")
+	for _, selected := range []string{"", string(roots)} {
+		t.Setenv("SWA_PROJECT_TOOLCHAIN_ROOTS", selected)
+		native, err := New(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := 0
+		for _, entry := range native.ChildEnvironment() {
+			key, value, _ := strings.Cut(entry, "=")
+			if strings.EqualFold(key, "SWA_PROJECT_TOOLCHAIN_ROOTS") {
+				found++
+				if value != selected {
+					t.Fatal("工具链目录没有保留宿主显式选择")
+				}
+			}
+			if strings.EqualFold(key, "SWA_UNSELECTED_RULE_VALUE") || strings.EqualFold(key, "SWA_OWNER_CAPABILITY") && value != config.OwnerCapability {
+				t.Fatal("工具链环境传递开放了其他 SWA 环境继承")
+			}
+		}
+		if selected == "" && found != 0 || selected != "" && found != 1 {
+			t.Fatal("工具链来源必须只在显式选择时传递一次", found)
 		}
 	}
 }

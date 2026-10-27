@@ -1,11 +1,28 @@
 import { z } from 'zod'
 import { createHash } from 'node:crypto'
 import { workerLimitSchema } from './task-budget'
-import { strictPiQuestionParamsSchema, strictPiQuestionResultSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { projectShellPolicySchema } from './project-shell'
+import { strictPiQuestionParamsSchema, strictPiQuestionResultSchema, strictPiDelegationParamsSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 
 export const answerTextSchema = z.string().refine(text => text.trim().length > 0 && Buffer.byteLength(text, 'utf8') <= 32000 && Buffer.from(text, 'utf8').toString('utf8') === text, 'The answer must be nonblank UTF-8 text within 32000 bytes')
 const normalizedTextSchema = z.string().trim().min(1).max(32000)
 export const questionModeSchema = z.enum(['disabled', 'native'])
+export const delegationModeSchema = z.enum(['disabled', 'native'])
+export const developmentModeSchema = z.enum(['disabled', 'project'])
+export function nativeToolModes(tools: { mode: string; allowed?: readonly string[] }) {
+  return { questionMode: tools.allowed?.includes('swa_ask') ? 'native' as const : 'disabled' as const, delegationMode: tools.allowed?.includes('swa_delegate') ? 'native' as const : 'disabled' as const, developmentMode: tools.mode === 'project' ? 'project' as const : 'disabled' as const }
+}
+const projectCommandSchema = z.string().min(1).refine(value => Buffer.byteLength(value, 'utf8') <= 128 * 1024 && Buffer.from(value, 'utf8').toString('utf8') === value)
+export const piProjectInputSchema = z.strictObject({ command: projectCommandSchema, timeout: z.number().positive().max(2147483.647).optional() })
+export const openCodeProjectInputSchema = z.strictObject({ command: projectCommandSchema, workdir: z.string().min(1).max(4096).optional(), timeout: z.number().int().nonnegative().max(2147483647).optional(), background: z.literal(false).optional() })
+export const projectToolOriginSchema = z.discriminatedUnion('agent', [
+  z.strictObject({ agent: z.literal('pi'), native_session_id: z.uuidv7(), assistant_entry_id: z.string().min(1).max(64), tool_call_id: z.string().min(1).max(512) }),
+  z.strictObject({ agent: z.literal('opencode'), native_session_id: z.string().min(1).max(512), message_id: z.string().min(1).max(512), tool_call_id: z.string().min(1).max(512) })
+])
+export const projectToolParamsSchema = z.strictObject({ input: z.union([piProjectInputSchema, openCodeProjectInputSchema]), cwd: z.string().min(1).max(4096) })
+export const projectToolAuthorizationSchema = z.strictObject({ schema: z.literal('swa.project-tool-authorization.v1'), agent_session_id: z.string().min(1), origin: projectToolOriginSchema, policy: projectShellPolicySchema, grant_expires_at: z.string().refine(value => Number.isFinite(Date.parse(value)), 'The project tool grant expiry must be a valid time').optional() })
+export type ProjectToolOrigin = z.infer<typeof projectToolOriginSchema>
+export type ProjectToolParams = z.infer<typeof projectToolParamsSchema>
 export const questionOriginSchema = z.strictObject({ nativeSessionId: z.uuidv7(), assistantEntryId: z.string().min(1).max(64), toolCallId: z.string().min(1).max(512) })
 export const questionToolParamsSchema = strictPiQuestionParamsSchema
 export function readQuestionMutationResult(value: unknown, requestId: string) {
@@ -25,7 +42,11 @@ function questionUUID(name: string) {
 export const questionRequestID = (sessionId: string, origin: QuestionOrigin) => questionUUID(JSON.stringify([sessionId, origin.nativeSessionId, origin.assistantEntryId, origin.toolCallId]))
 export const questionWaitID = (requestId: string) => questionUUID(`${requestId}/wait`)
 export const questionResumeBody = (questionId: string) => `使用 swa_ask 的 resume 参数读取原问题 ${questionId} 的答案，并继续当前任务。`
-export const roleDefinitionSchema = z.strictObject({ name: z.string().trim().min(1).max(200), responsibilities: z.string().trim().min(1).max(16000), default_agent: z.string().trim().min(1), default_model: z.string().trim().min(1), question_mode: questionModeSchema.optional(), skills: z.array(z.string().min(1).max(2048)).max(32).nullable(), knowledge: z.array(z.string().min(1).max(2048)).max(32).nullable() })
+export const delegationRequestID = (sessionId: string, origin: QuestionOrigin) => questionUUID(`delegate/${JSON.stringify([sessionId, origin.nativeSessionId, origin.assistantEntryId, origin.toolCallId])}`)
+export const delegationWorkerRequestID = (requestId: string) => questionUUID(`delegate/${requestId}/start`)
+export const projectToolRequestID = (sessionId: string, origin: ProjectToolOrigin) => questionUUID(`project-tool/${JSON.stringify([sessionId, origin])}`)
+export const delegationToolParamsSchema = strictPiDelegationParamsSchema
+export const roleDefinitionSchema = z.strictObject({ name: z.string().trim().min(1).max(200), responsibilities: z.string().trim().min(1).max(16000), default_agent: z.string().trim().min(1), default_model: z.string().trim().min(1), question_mode: questionModeSchema.optional(), delegation_mode: delegationModeSchema.optional(), development_mode: developmentModeSchema.optional(), skills: z.array(z.string().min(1).max(2048)).max(32).nullable(), knowledge: z.array(z.string().min(1).max(2048)).max(32).nullable() })
 export const commandSchema = z.strictObject({
   action: z.enum(['status', 'capabilities', 'run.submit', 'run.show', 'run.export', 'role.list', 'role.show', 'role.create', 'role.update', 'role.archive', 'conversation.list', 'conversation.show', 'conversation.create', 'conversation.append', 'handoff.notify', 'controller.open', 'controller.show', 'controller.close', 'controller.recover', 'task.create', 'task.show', 'task.list', 'task.result', 'task.complete', 'worker.start', 'worker.show', 'worker.list', 'worker.read', 'worker.send', 'worker.stop', 'worker.release', 'question.answer', 'question.resume', 'request.show']),
   project_id: z.string().optional(), controller: z.string().optional(), task_id: z.string().optional(), run_id: z.string().optional(),
@@ -37,6 +58,8 @@ export const commandSchema = z.strictObject({
   completion_criteria: z.array(z.string().trim().min(1)).optional(), role_id: z.string().min(1).optional(), conversation_id: z.string().min(1).optional(),
   revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   question_mode: questionModeSchema.optional(),
+  delegation_mode: delegationModeSchema.optional(),
+  development_mode: developmentModeSchema.optional(),
   role: roleDefinitionSchema.optional(),
   conversation: z.strictObject({ title: z.string().trim().min(1).max(200), role_id: z.string().min(1).optional() }).optional(), text: z.string().optional()
 }).superRefine((command, context) => {
@@ -50,6 +73,8 @@ export const commandSchema = z.strictObject({
     if (Object.keys(command).some(key => !allowed.has(key)) || !command.controller || !command.run_id || !command.task_id || !command.dispatch_id || !command.question_id || !z.uuid().safeParse(command.request_id).success) context.addIssue({ code: 'custom', message: 'Question resume requires its exact identities and no custom input' })
   }
   if (command.question_mode !== undefined && !['run.submit', 'worker.start'].includes(command.action)) context.addIssue({ code: 'custom', message: 'Question mode can only be selected when starting a new Run or Worker' })
+  if (command.delegation_mode !== undefined && !['run.submit', 'worker.start'].includes(command.action)) context.addIssue({ code: 'custom', message: 'Delegation mode can only be selected when starting a new Run or Worker' })
+  if (command.development_mode !== undefined && !['run.submit', 'worker.start'].includes(command.action)) context.addIssue({ code: 'custom', message: 'Development mode can only be selected when starting a new Run or Worker' })
   if (command.action !== 'question.answer') return
   const allowed = new Set(['action', 'project_id', 'controller', 'run_id', 'task_id', 'dispatch_id', 'question_id', 'request_id', 'input_file', 'text'])
   if (Object.keys(command).some(key => !allowed.has(key)) || !command.controller || !command.run_id || !command.task_id || !command.dispatch_id || !command.question_id || !z.uuid().safeParse(command.request_id).success || (command.input_file !== undefined) === (command.text !== undefined) || command.input_file === '') context.addIssue({ code: 'custom', message: 'Question answer requires its exact identities and exactly one body source' })
@@ -73,7 +98,9 @@ export const settingsSourceSchema = z.strictObject({
 const nativeConfigurationSourceSchema = z.strictObject({ path: z.string().min(1), version: z.string().min(1) })
 export const nativePiToolsSchema = z.discriminatedUnion('mode', [
   z.strictObject({ mode: z.literal('disabled'), native_contract: z.literal('pi-cli-1.0.1') }),
-  z.strictObject({ mode: z.literal('questions-only'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.tuple([z.literal('swa_ask')]) })
+  z.strictObject({ mode: z.literal('questions-only'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.tuple([z.literal('swa_ask')]) }),
+  z.strictObject({ mode: z.literal('collaboration'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.union([z.tuple([z.literal('swa_delegate')]), z.tuple([z.literal('swa_ask'), z.literal('swa_delegate')])]) }),
+  z.strictObject({ mode: z.literal('project'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.union([z.tuple([z.literal('bash')]), z.tuple([z.literal('bash'), z.literal('swa_ask')]), z.tuple([z.literal('bash'), z.literal('swa_delegate')]), z.tuple([z.literal('bash'), z.literal('swa_ask'), z.literal('swa_delegate')])]) })
 ])
 export const nativePiLaunchPolicySchema = z.strictObject({
   schema: z.literal('swa.native-launch.v1'),
@@ -111,7 +138,7 @@ export const nativeOpenCodeLaunchPolicySchema = z.strictObject({
       model_target: z.strictObject({ model_id: z.literal('step-3.5-flash'), api: z.literal('openai-completions'), base_url: z.literal('https://api.stepfun.com/v1') })
     })
   ]),
-  tools: z.strictObject({ mode: z.literal('disabled'), native_contract: z.literal('opencode-cli-2.0.31') })
+  tools: z.discriminatedUnion('mode', [z.strictObject({ mode: z.literal('disabled'), native_contract: z.literal('opencode-cli-2.0.31') }), z.strictObject({ mode: z.literal('project'), native_contract: z.literal('opencode-cli-2.0.31'), allowed: z.tuple([z.literal('shell')]), shell: nativeConfigurationSourceSchema })])
 })
 export const nativeCodexLaunchPolicySchema = z.strictObject({
   schema: z.literal('swa.native-launch.v1'),
@@ -187,7 +214,7 @@ export const agentCapabilitiesSchema = z.strictObject({
     configured: observationSchema.extend({ model: z.string().optional(), provider: z.string().optional(), account_source: z.string().optional() }),
     launchable: observationSchema, authenticated: observationSchema.optional(),
     declared_features: declaredAgentFeaturesSchema.optional(), model_catalog: modelCatalogObservationSchema.optional(),
-    control: z.strictObject({ start: observationSchema, send: observationSchema, read: observationSchema, stop: observationSchema, resume: observationSchema, tools: observationSchema, questions: observationSchema.optional(), images: observationSchema.optional(), model_switch: observationSchema.optional() }),
+    control: z.strictObject({ start: observationSchema, send: observationSchema, read: observationSchema, stop: observationSchema, resume: observationSchema, tools: observationSchema, questions: observationSchema.optional(), delegation: observationSchema.optional(), development: observationSchema.optional(), images: observationSchema.optional(), model_switch: observationSchema.optional() }),
     requirements: capabilityRequirementsSchema
   }))
 })
@@ -196,11 +223,14 @@ export const invocationSchema = z.object({
   caller: z.strictObject({ id: z.string().min(1), kind: z.enum(['agent', 'human']), project_id: z.string().min(1), settings_revision: z.number().int().positive(), grant_expires_at: z.string().optional() }),
   project: z.looseObject({ id: z.string().min(1), root: z.string().min(1) }),
   scope: scopeSchema,
+  native_session_observation: z.strictObject({ schema: z.literal('swa.native-session-observation.v1'), start_request_id: z.uuid(), session_id: z.string().min(1), dispatch_id: z.string().min(1), task_id: z.string().min(1) }).optional(),
+  native_project_tool: z.strictObject({ schema: z.literal('swa.native-project-tool.v1'), start_request_id: z.uuid(), request_id: z.uuid(), session_id: z.string().min(1), dispatch_id: z.string().min(1), task_id: z.string().min(1), origin: projectToolOriginSchema, input: z.union([piProjectInputSchema, openCodeProjectInputSchema]), cwd: z.string().min(1).max(4096) }).optional(),
+  native_delegation: z.strictObject({ schema: z.literal('swa.native-delegation.v1'), observation_only: z.literal(true).optional(), start_request_id: z.uuid(), request_id: z.uuid(), worker_request_id: z.uuid(), session_id: z.string().min(1), dispatch_id: z.string().min(1), parent_task_id: z.string().min(1), parent_selection: agentSelectionSchema, origin: questionOriginSchema, params: delegationToolParamsSchema }).optional(),
   question_ask: z.strictObject({ start_request_id: z.uuid(), request_id: z.uuid(), question_id: z.string().min(1).optional(),
     session_id: z.string().min(1), dispatch_id: z.string().min(1), origin: questionOriginSchema, params: questionToolParamsSchema }).optional(),
   handoff: z.strictObject({
     schema: z.literal('swa.handoff-resume.v1'), source_task_id: z.string().min(1).max(512), source_dispatch_id: z.string().min(1).max(512),
-    parent_task_id: z.string().min(1).max(512), parent_dispatch_id: z.string().min(1).max(512), mail_id: z.string().min(1).max(512)
+    parent_task_id: z.string().min(1).max(512), parent_dispatch_id: z.string().min(1).max(512), mail_id: z.string().min(1).max(512), source_selection: agentSelectionSchema.optional()
   }).optional(),
   submission: z.strictObject({
     schema: z.literal('swa.run-submission.v1'), command: commandSchema,

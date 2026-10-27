@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -72,6 +75,138 @@ func TestOrcaCLIMissingCurrentGrantIsDenied(t *testing.T) {
 	requireLocalRefusal(t, code, 3, "scope_denied", "", &stdout)
 }
 
+func TestWorkerStartRoleAndHandoffArguments(t *testing.T) {
+	t.Setenv("SWA_PROJECT_TOKEN", "")
+	request := uuid.NewString()
+	base := []string{"worker", "start", "--project", "project", "--controller", "controller", "--task", "root-task", "--name", "reviewer", "--agent", "pi", "--model", "provider/model", "--input-file", "brief.txt", "--request-id", request, "--json"}
+	for _, test := range []struct {
+		name     string
+		extra    []string
+		wantExit int
+		wantCode string
+	}{
+		{"role and handoff", []string{"--role", "reviewer-role", "--role-revision", "2", "--parent-task", "parent-task", "--handoff-mode", "consult", "--reply-mode", "resume", "--completion-criterion", "review the change", "--completion-criterion", "report findings"}, 3, "scope_denied"},
+		{"role without revision", []string{"--role", "reviewer-role"}, 2, "validation_failed"},
+		{"parent without criteria", []string{"--parent-task", "parent-task"}, 2, "validation_failed"},
+		{"invalid handoff", []string{"--handoff-mode", "other"}, 2, "validation_failed"},
+		{"invalid reply", []string{"--reply-mode", "other"}, 2, "validation_failed"},
+		{"blank repeated criterion", []string{"--parent-task", "parent-task", "--completion-criterion", "review", "--completion-criterion", " "}, 2, "validation_failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			args := append(append([]string{}, base...), test.extra...)
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), args, &stdout, &stderr)
+			requireLocalRefusal(t, code, test.wantExit, test.wantCode, request, &stdout)
+		})
+	}
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"worker", "list", "--controller", "controller", "--task", "task", "--role", "reviewer", "--role-revision", "2", "--json"}, &stdout, &stderr)
+	requireLocalRefusal(t, code, 2, "validation_failed", "", &stdout)
+}
+
+func TestRoleFileInput(t *testing.T) {
+	t.Setenv("SWA_PROJECT_TOKEN", "")
+	directory := t.TempDir()
+	definition := `{"name":"Reviewer","responsibilities":"Review public changes","default_agent":"pi","default_model":"stepfun/step-3.5-flash","skills":[],"knowledge":[]}`
+	request := uuid.NewString()
+	for _, test := range []struct {
+		name, content string
+		action        string
+		extra         []string
+		wantExit      int
+		wantCode      string
+	}{
+		{"create", definition, "create", nil, 3, "scope_denied"},
+		{"update", definition, "update", []string{"--role", "reviewer", "--role-revision", "1"}, 3, "scope_denied"},
+		{"unknown field", strings.TrimSuffix(definition, "}") + `,"unexpected":true}`, "create", nil, 2, "validation_failed"},
+		{"multiple objects", definition + definition, "create", nil, 2, "validation_failed"},
+		{"null", "null", "create", nil, 2, "validation_failed"},
+		{"invalid UTF-8", string([]byte{0xff}), "create", nil, 2, "validation_failed"},
+		{"oversize", strings.Repeat(" ", 256*1024+1), "create", nil, 2, "validation_failed"},
+		{"missing file", "", "create", nil, 2, "validation_failed"},
+		{"missing revision", definition, "update", []string{"--role", "reviewer"}, 2, "validation_failed"},
+		{"irrelevant file", definition, "archive", []string{"--role", "reviewer", "--role-revision", "1"}, 2, "validation_failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			file := filepath.Join(directory, test.name+".json")
+			if test.content != "" {
+				if err := os.WriteFile(file, []byte(test.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args := append([]string{"role", test.action, "--project", "project", "--request-id", request, "--role-file", file, "--json"}, test.extra...)
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), args, &stdout, &stderr)
+			requireLocalRefusal(t, code, test.wantExit, test.wantCode, request, &stdout)
+		})
+	}
+}
+
+func TestRoleAndHandoffCLITransport(t *testing.T) {
+	// 这里只检查 CLI 发出的 HTTP 字段；接收端拒绝执行，不作为真实 Worker 验收。
+	commands := make(chan workspaceapp.OrcaCommand, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var command workspaceapp.OrcaCommand
+		if err := json.NewDecoder(r.Body).Decode(&command); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/local-projects/project/orca/commands" || r.Header.Get("Idempotency-Key") != command.RequestID {
+			t.Error("CLI transport changed the action endpoint or original request")
+		}
+		commands <- command
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(workspaceapp.OrcaEnvelope{RequestID: command.RequestID, Error: &workspaceapp.OrcaNativeError{Code: "scope_denied", Message: "Transport test does not execute Workers", RequiredAction: "use_real_service_for_acceptance"}})
+	}))
+	defer server.Close()
+	t.Setenv("SWA_PROJECT_TOKEN", "transport-rule-input")
+	t.Setenv("SWA_ENDPOINT", server.URL)
+	role := workspaceapp.OrcaRoleDefinition{Name: "Reviewer", Responsibilities: "Review public changes", DefaultAgent: "pi", DefaultModel: "stepfun/step-3.5-flash", DelegationMode: "native", DevelopmentMode: "project", Skills: []string{}, Knowledge: []string{}}
+	data, err := json.Marshal(role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "role.json")
+	if err := os.WriteFile(file, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	request := uuid.NewString()
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"role", "create", "--project", "project", "--role-file", file, "--request-id", request, "--json"}, &stdout, &stderr); code != 3 {
+		t.Fatalf("role transport exit=%d: %s", code, stdout.String())
+	}
+	if command := <-commands; command.Action != "role.create" || command.Role == nil || !reflect.DeepEqual(*command.Role, role) {
+		t.Fatal("CLI did not transmit the exact role definition")
+	}
+	for _, explicit := range []bool{false, true} {
+		args := []string{"worker", "start", "--project", "project", "--controller", "controller", "--task", "root", "--name", "reviewer", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--parent-task", "parent", "--handoff-mode", "consult", "--reply-mode", "resume", "--delegation-mode", "disabled", "--development-mode", "disabled", "--completion-criterion", "Review code", "--completion-criterion", "Report findings", "--request-id", request, "--json"}
+		if explicit {
+			args = append(args, "--agent", "opencode", "--model", "stepfun/step-3.5-flash")
+		}
+		stdout.Reset()
+		stderr.Reset()
+		if code := run(context.Background(), args, &stdout, &stderr); code != 3 {
+			t.Fatalf("worker transport exit=%d: %s", code, stdout.String())
+		}
+		command := <-commands
+		if command.Action != "worker.start" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.ParentTaskID != "parent" || command.HandoffMode != "consult" || command.ReplyMode != "resume" || command.DelegationMode != "disabled" || command.DevelopmentMode != "disabled" || !reflect.DeepEqual(command.CompletionCriteria, []string{"Review code", "Report findings"}) {
+			t.Fatal("CLI lost the selected role or handoff fields")
+		}
+		if explicit && (command.Agent != "opencode" || command.Model != "stepfun/step-3.5-flash") || !explicit && (command.Agent != "" || command.Model != "") {
+			t.Fatal("CLI changed the explicit override or resolved role defaults locally")
+		}
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(context.Background(), []string{"run", "--project", "project", "--workdir", t.TempDir(), "--spec-file", "task.json", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--delegation-mode", "native", "--development-mode", "project", "--request-id", request, "--json"}, &stdout, &stderr); code != 3 {
+		t.Fatalf("run transport exit=%d: %s", code, stdout.String())
+	}
+	if command := <-commands; command.Action != "run.submit" || command.DelegationMode != "native" || command.DevelopmentMode != "project" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.Agent != "" || command.Model != "" {
+		t.Fatal("Run CLI lost tool modes or changed the role default selection")
+	}
+}
+
 func TestQuestionCLIOutputFailureRetainsOriginalRequest(t *testing.T) {
 	for _, action := range []string{"question.answer", "question.resume"} {
 		t.Run(action, func(t *testing.T) {
@@ -118,6 +253,7 @@ func TestOrcaCLIHelpDoesNotRequireGrantOrService(t *testing.T) {
 		{"status", "--help"}, {"task", "create", "--help"},
 		{"worker", "start", "--help"}, {"request", "show", "-h"},
 		{"question", "--help"}, {"question", "answer", "--help"}, {"question", "resume", "--help"},
+		{"role", "--help"}, {"role", "create", "--help"},
 		{"serve", "--help"}, {"serve", "--json", "--help"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {

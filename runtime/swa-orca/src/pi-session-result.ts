@@ -11,7 +11,7 @@ import { parseAgentJournalItemKey } from '../../../third_party/orca-v1.4.230/src
 import { isRootAgentJournalItem } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-journal-producer'
 import type { AgentJournalRenderItem } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-journal-types'
 import { providerTimelineKeyPart, spelledProviderTimelineItemKey } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-timeline/provider-timeline-identity'
-import { parseStrictPiJson, strictPiNativeEntrySchema, strictPiQuestionNativeEntrySchema, strictPiNativeHeaderSchema, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, type StrictPiQuestionMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { parseStrictPiJson, strictPiNativeEntrySchema, strictPiQuestionNativeEntrySchema, strictPiCollaborationNativeEntrySchema, strictPiProjectNativeEntrySchema, strictPiNativeHeaderSchema, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, strictPiCollaborationRawSchema, strictPiProjectRawSchema, type StrictPiProjectMessage as StrictPiQuestionMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { structuredInputBindingSchema } from './contracts'
 import { readNativePiFile, type nativeConfigurationSource } from './native-pi-policy'
 import { requireNativeCodexPrivatePath } from './native-codex-policy'
@@ -23,7 +23,7 @@ export type NativePiSessionSourceInput = {
   path: string; privateRoot: string; nativeId?: string; cwd: string; provider: string; modelId: string; api: string; baseUrl: string
   source: Source; stopped: boolean; maximum: number; traceRows: readonly TraceRow[]; bindings: readonly Binding[]
   journal: JournalReducerState; fence: number; validateExport(serialized: string): void
-  toolsMode?: 'disabled' | 'questions-only'
+  toolsMode?: 'disabled' | 'questions-only' | 'collaboration' | 'project'
 }
 const maximum = 12 * 1024 * 1024
 const bodySchema = SendBodyStructure.omit({ kind: true }).extend({ kind: z.literal('message'), from: z.unknown().optional() })
@@ -46,7 +46,7 @@ const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('h
 const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 
 // 准入读取当前原件，不要求模型已经结束；准确工具 entry 由调用方核对。
-export function readPiQuestionEntries(input: { path: string; privateRoot: string; cwd?: string; provider: string; modelId: string; api: string }) {
+export function readPiQuestionEntries(input: { path: string; privateRoot: string; cwd?: string; provider: string; modelId: string; api: string; collaboration?: boolean; project?: boolean }) {
   if (!isAbsolute(input.path) || !isAbsolute(input.privateRoot)) fail('source_binding_invalid')
   const part = relative(input.privateRoot, input.path)
   if (!part || part === '..' || part.startsWith('../') || part.startsWith('..\\') || isAbsolute(part)) fail('outside_private_home')
@@ -63,7 +63,7 @@ export function readPiQuestionEntries(input: { path: string; privateRoot: string
   if (framer.takeTail()) fail('unterminated_jsonl')
   const header = checked(strictPiNativeHeaderSchema, rows[0])
   if (input.cwd !== undefined && !samePath(header.cwd, input.cwd) || !basename(input.path).endsWith(`_${header.id}.jsonl`)) fail('native_identity_changed')
-  const entries = rows.slice(1).map(row => checked(strictPiQuestionNativeEntrySchema, row)), ids = new Set<string>()
+  const entries = rows.slice(1).map(row => checked(input.project ? strictPiProjectNativeEntrySchema : input.collaboration ? strictPiCollaborationNativeEntrySchema : strictPiQuestionNativeEntrySchema, row)), ids = new Set<string>()
   let parent: string | null = null
   for (const entry of entries) {
     if (ids.has(entry.id) || entry.parentId !== parent) fail('native_parent_chain_changed')
@@ -104,8 +104,8 @@ export function readPiFinalBlock(content: readonly { type: string }[], providerI
 
 /** 真正native原件、原R回执和已发布journal交叉消费；没有来源时不补造会话。 */
 export async function readNativePiSessionSource(input: NativePiSessionSourceInput) {
-  const entrySchema = input.toolsMode === 'questions-only' ? strictPiQuestionNativeEntrySchema : strictPiNativeEntrySchema
-  const recordSchema = input.toolsMode === 'questions-only' ? nativeRecordSchema.extend({ frame: strictPiQuestionRawSchema }) : nativeRecordSchema
+  const entrySchema = input.toolsMode === 'project' ? strictPiProjectNativeEntrySchema : input.toolsMode === 'collaboration' ? strictPiCollaborationNativeEntrySchema : input.toolsMode === 'questions-only' ? strictPiQuestionNativeEntrySchema : strictPiNativeEntrySchema
+  const recordSchema = input.toolsMode === 'project' ? nativeRecordSchema.extend({ frame: strictPiProjectRawSchema }) : input.toolsMode === 'collaboration' ? nativeRecordSchema.extend({ frame: strictPiCollaborationRawSchema }) : input.toolsMode === 'questions-only' ? nativeRecordSchema.extend({ frame: strictPiQuestionRawSchema }) : nativeRecordSchema
   const cap = Math.min(maximum, input.maximum)
   if (!Number.isSafeInteger(cap) || cap < 1 || !isAbsolute(input.path) || !isAbsolute(input.privateRoot) || !isAbsolute(input.cwd) || !samePath(input.path, input.source.path)) fail('source_binding_invalid')
   const part = relative(input.privateRoot, input.path)
@@ -195,7 +195,7 @@ export async function readNativePiSessionSource(input: NativePiSessionSourceInpu
     return { binding, sequence: submission.submittedSequence }
   }).sort((a, b) => a.sequence - b.sequence)
   if (new Set(orderedBindings.map(row => row.binding.operation_id)).size !== orderedBindings.length || orderedBindings.some((row, index) => index > 0 && row.sequence <= orderedBindings[index - 1]!.sequence)) fail('latest_input_ambiguous')
-  const joined: { cid: string; sequence: number; sourceSequence: number; turnItemId: string; entry: Extract<z.output<typeof strictPiQuestionNativeEntrySchema>, { type: 'message' }> }[] = []
+  const joined: { cid: string; sequence: number; sourceSequence: number; turnItemId: string; entry: Extract<z.output<typeof strictPiProjectNativeEntrySchema>, { type: 'message' }> }[] = []
   for (const { binding } of orderedBindings) {
     if (binding.agent !== 'pi' || binding.runtime_fence !== input.fence) fail('input_binding_changed')
     const { from: _sender, ...body } = checked(bodySchema, binding.body)

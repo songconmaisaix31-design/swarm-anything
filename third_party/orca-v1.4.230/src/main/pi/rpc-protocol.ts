@@ -284,6 +284,78 @@ export const strictPiQuestionRawSchema = z.union([
   response('get_last_assistant_text', z.strictObject({ text: z.string().nullable() })), response('get_session_stats', strictStats.extend({ toolCalls: count, toolResults: count }))
 ])
 
+export const piDelegationDescription = 'Delegate work to one approved project role at its exact revision. This returns the child task identity after startup. Finish your current turn while waiting; its result will arrive as a continuation. Never repeat a delegation after an unknown result; inspect the original request ID instead.'
+export const piDelegationParameters = { type: 'object', properties: { role_id: { type: 'string', minLength: 1, maxLength: 200 }, revision: { type: 'integer', minimum: 1 }, input: { type: 'string', minLength: 1, maxLength: 32000 }, completion_criteria: { type: 'array', minItems: 1, maxItems: 32, items: { type: 'string', minLength: 1, maxLength: 2048 } }, mode: { type: 'string', enum: ['work', 'consult'] } }, required: ['role_id', 'revision', 'input', 'completion_criteria', 'mode'], additionalProperties: false }
+export const strictPiDelegationParamsSchema = z.strictObject({ role_id: z.string().trim().min(1).max(200), revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), input: z.string().refine(value => value.trim().length > 0 && Buffer.byteLength(value, 'utf8') <= 32000 && Buffer.from(value, 'utf8').toString('utf8') === value), completion_criteria: z.array(z.string().trim().min(1).max(2048)).min(1).max(32), mode: z.enum(['work', 'consult']) })
+export const strictPiDelegationResultSchema = z.strictObject({ schema: z.literal('swa.native-delegation.v1'), request_id: z.uuid(), worker_request_id: z.uuid(), state: z.enum(['ready', 'failed', 'rejected', 'unknown']), task_id: z.string().optional(), dispatch_id: z.string().optional(), required_action: z.string().optional(), error: z.strictObject({ code: z.string(), message: z.string() }).optional() })
+const delegationToolCall = z.strictObject({ type: z.literal('toolCall'), id: z.string().min(1).max(512), name: z.literal('swa_delegate'), arguments: strictPiDelegationParamsSchema, thoughtSignature: z.string().optional() })
+const delegationResult = z.strictObject({ content: z.array(strictText), details: strictPiDelegationResultSchema })
+const collaborationToolCall = z.union([questionToolCall, delegationToolCall])
+const collaborationToolResult = z.union([questionToolResult,
+  z.strictObject({ role: z.literal('toolResult'), toolCallId: z.string().min(1), toolName: z.literal('swa_delegate'), ...delegationResult.shape, isError: z.literal(false), timestamp: amount }),
+  z.strictObject({ role: z.literal('toolResult'), toolCallId: z.string().min(1), toolName: z.literal('swa_delegate'), ...questionErrorResult.shape, isError: z.literal(true), timestamp: amount })
+])
+const collaborationAssistant = z.strictObject({ ...strictAssistant.shape, content: z.array(z.union([strictText, strictThinking, collaborationToolCall])), stopReason: z.enum(['pending', 'stop', 'toolUse', 'length', 'aborted', 'error']), rawStopReason: z.enum(['stop', 'end', 'length', 'function_call', 'tool_calls']).optional() }).superRefine((message, ctx) => {
+  if (message.stopReason === 'aborted' ? message.errorMessage !== 'Request aborted' && message.errorMessage !== 'Request was aborted' : message.stopReason !== 'error' && message.errorMessage !== undefined) ctx.addIssue({ code: 'custom', message: 'native_pi_error_unreviewed' })
+})
+const collaborationSystem = strictSystem.extend({ toolsAdded: z.array(z.union([
+  z.strictObject({ name: z.literal('swa_ask'), description: z.literal(piQuestionDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piQuestionParameters)) }),
+  z.strictObject({ name: z.literal('swa_delegate'), description: z.literal(piDelegationDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piDelegationParameters)) })
+])).max(2).optional() })
+export const strictPiCollaborationMessageSchema = z.union([strictUser, collaborationSystem, collaborationAssistant, collaborationToolResult])
+export type StrictPiCollaborationMessage = z.infer<typeof strictPiCollaborationMessageSchema>
+export const strictPiCollaborationNativeEntrySchema = z.discriminatedUnion('type', [
+  z.strictObject({ ...entryCommon, type: z.literal('message'), message: strictPiCollaborationMessageSchema }),
+  ...strictPiNativeEntrySchema.options.filter(option => option.shape.type.value !== 'message')
+])
+export const strictPiCollaborationRawSchema = z.union([
+  ...(['agent_start', 'turn_start', 'agent_settled'] as const).map(type => z.strictObject({ type: z.literal(type) })),
+  z.strictObject({ type: z.literal('queue_update'), steering: z.array(z.string()), followUp: z.array(z.string()) }),
+  z.strictObject({ type: z.literal('message_start'), message: strictPiCollaborationMessageSchema }), z.strictObject({ type: z.literal('message_end'), message: strictPiCollaborationMessageSchema }),
+  z.strictObject({ type: z.literal('message_update'), usage: strictPiUsageSchema, assistantMessageEvent: z.union([strictDelta, z.strictObject({ type: z.literal('toolcall_start'), contentIndex: count, id: z.string(), toolName: z.enum(['', 'swa_ask', 'swa_delegate']) }), z.strictObject({ type: z.literal('toolcall_delta'), contentIndex: count, delta: z.string() }), z.strictObject({ type: z.literal('toolcall_end'), contentIndex: count, toolCall: collaborationToolCall })]) }),
+  z.strictObject({ type: z.literal('turn_end'), message: strictPiCollaborationMessageSchema, toolResults: z.array(collaborationToolResult) }),
+  z.strictObject({ type: z.literal('agent_end'), messages: z.array(strictPiCollaborationMessageSchema), willRetry: z.literal(false) }),
+  z.strictObject({ type: z.literal('tool_execution_start'), toolCallId: z.string().min(1).max(512), toolName: z.literal('swa_delegate'), args: strictPiDelegationParamsSchema }),
+  z.strictObject({ type: z.literal('tool_execution_end'), toolCallId: z.string().min(1).max(512), toolName: z.literal('swa_delegate'), result: delegationResult, isError: z.literal(false) }),
+  z.strictObject({ type: z.literal('tool_execution_end'), toolCallId: z.string().min(1).max(512), toolName: z.literal('swa_delegate'), result: questionErrorResult, isError: z.literal(true) }),
+  z.strictObject({ type: z.literal('entry_appended'), entry: strictPiCollaborationNativeEntrySchema }),
+  strictPiQuestionRawSchema
+])
+
+export const strictPiBashParamsSchema = z.strictObject({ command: z.string().min(1).refine(value => Buffer.byteLength(value, 'utf8') <= 128 * 1024), timeout: z.number().positive().max(2147483.647).optional() })
+const bashToolCall = z.strictObject({ type: z.literal('toolCall'), id: z.string().min(1).max(512), name: z.literal('bash'), arguments: strictPiBashParamsSchema, thoughtSignature: z.string().optional() })
+const bashTruncation = z.strictObject({ content: z.string(), truncated: z.boolean(), truncatedBy: z.enum(['lines', 'bytes']).nullable(), totalLines: count, totalBytes: count, outputLines: count, outputBytes: count, lastLinePartial: z.boolean(), firstLineExceedsLimit: z.boolean(), maxLines: count, maxBytes: count })
+export const strictPiBashResultSchema = z.strictObject({ content: z.array(strictText), details: z.strictObject({ truncation: bashTruncation.optional(), fullOutputPath: z.string().optional() }).optional(), structuredContent: z.strictObject({ output: z.string(), truncated: z.boolean(), full_output_path: z.string().optional(), exit_code: z.number().int(), wall_time_seconds: amount }).optional(), isError: z.boolean().optional() })
+const bashResult = strictPiBashResultSchema
+// 官方 agent-loop 的持久消息仅保存 content/details/isError；RPC 工具完成事件保留 structuredContent。
+const bashToolResult = z.strictObject({ role: z.literal('toolResult'), toolCallId: z.string().min(1), toolName: z.literal('bash'), ...bashResult.omit({ structuredContent: true }).shape, isError: z.boolean(), timestamp: amount })
+const projectToolCall = z.union([collaborationToolCall, bashToolCall]), projectToolResult = z.union([collaborationToolResult, bashToolResult])
+const projectAssistant = z.strictObject({ ...collaborationAssistant.shape, content: z.array(z.union([strictText, strictThinking, projectToolCall])) }).superRefine((message, ctx) => {
+  if (message.stopReason === 'aborted' ? message.errorMessage !== 'Request aborted' && message.errorMessage !== 'Request was aborted' : message.stopReason !== 'error' && message.errorMessage !== undefined) ctx.addIssue({ code: 'custom', message: 'native_pi_error_unreviewed' })
+})
+const projectSystem = strictSystem.extend({ toolsAdded: z.array(z.union([
+  z.strictObject({ name: z.literal('bash'), description: z.string().min(1), parameters: z.strictObject({ type: z.literal('object'), properties: z.strictObject({ command: z.strictObject({ type: z.literal('string'), description: z.string() }), timeout: z.strictObject({ type: z.literal('number'), description: z.string() }) }), required: z.tuple([z.literal('command')]) }) }),
+  z.strictObject({ name: z.literal('swa_ask'), description: z.literal(piQuestionDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piQuestionParameters)) }),
+  z.strictObject({ name: z.literal('swa_delegate'), description: z.literal(piDelegationDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piDelegationParameters)) })
+])).max(3).optional() })
+export const strictPiProjectMessageSchema = z.union([strictUser, projectSystem, projectAssistant, projectToolResult])
+export type StrictPiProjectMessage = z.infer<typeof strictPiProjectMessageSchema>
+export const strictPiProjectNativeEntrySchema = z.discriminatedUnion('type', [
+  z.strictObject({ ...entryCommon, type: z.literal('message'), message: strictPiProjectMessageSchema }),
+  ...strictPiNativeEntrySchema.options.filter(option => option.shape.type.value !== 'message')
+])
+export const strictPiProjectRawSchema = z.union([
+  z.strictObject({ type: z.literal('message_start'), message: strictPiProjectMessageSchema }), z.strictObject({ type: z.literal('message_end'), message: strictPiProjectMessageSchema }),
+  z.strictObject({ type: z.literal('message_update'), usage: strictPiUsageSchema, assistantMessageEvent: z.union([strictDelta, z.strictObject({ type: z.literal('toolcall_start'), contentIndex: count, id: z.string(), toolName: z.enum(['', 'bash', 'swa_ask', 'swa_delegate']) }), z.strictObject({ type: z.literal('toolcall_delta'), contentIndex: count, delta: z.string() }), z.strictObject({ type: z.literal('toolcall_end'), contentIndex: count, toolCall: projectToolCall })]) }),
+  z.strictObject({ type: z.literal('turn_end'), message: strictPiProjectMessageSchema, toolResults: z.array(projectToolResult) }),
+  z.strictObject({ type: z.literal('agent_end'), messages: z.array(strictPiProjectMessageSchema), willRetry: z.literal(false) }),
+  z.strictObject({ type: z.literal('tool_execution_start'), toolCallId: z.string().min(1).max(512), toolName: z.literal('bash'), args: strictPiBashParamsSchema }),
+  z.strictObject({ type: z.literal('tool_execution_update'), toolCallId: z.string().min(1).max(512), toolName: z.literal('bash'), args: strictPiBashParamsSchema.optional(), partialResult: bashResult }),
+  z.strictObject({ type: z.literal('tool_execution_end'), toolCallId: z.string().min(1).max(512), toolName: z.literal('bash'), result: bashResult, isError: z.boolean() }),
+  z.strictObject({ type: z.literal('entry_appended'), entry: strictPiProjectNativeEntrySchema }),
+  strictPiCollaborationRawSchema
+])
+
 export const strictPiOutboundSchema = z.union([
   z.strictObject({ type: z.literal('prompt'), id: z.string().min(1), message: z.string().min(1), images: z.tuple([]).optional(), streamingBehavior: z.enum(['steer', 'followUp']).optional() }),
   ...(['abort', 'get_state', 'get_available_models', 'get_available_thinking_levels', 'get_last_assistant_text', 'get_session_stats'] as const).map(type => z.strictObject({ type: z.literal(type), id: z.string().min(1) })),

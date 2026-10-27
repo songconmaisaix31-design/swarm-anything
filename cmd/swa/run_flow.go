@@ -108,6 +108,8 @@ func runWorkflow(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		flags.StringVar(&command.Agent, "agent", "", "已批准的 Agent")
 		flags.StringVar(&command.Model, "model", "", "实际 provider/model")
 		flags.StringVar(&command.QuestionMode, "question-mode", "", "disabled 或 native；默认关闭原生问答工具")
+		flags.StringVar(&command.DelegationMode, "delegation-mode", "", "disabled 或 native；省略时继承角色默认值")
+		flags.StringVar(&command.DevelopmentMode, "development-mode", "", "disabled 或 project；省略时继承角色默认值")
 		flags.StringVar(&command.Name, "name", "lead", "主 Worker 名称")
 		flags.StringVar(&command.RequestID, "request-id", "", "稳定提交 UUID")
 		flags.StringVar(&command.RoleID, "role", "", "复用的长期角色 ID")

@@ -39,6 +39,7 @@ export function rpcContextFromTransport(
     runtime,
     swaQuestionProducerProof: request.swaQuestionProducerProof,
     swaQuestionOrigin: request.swaQuestionOrigin,
+    swaProjectToolOrigin: request.swaProjectToolOrigin,
     signal: options?.signal,
     requestId: request.id,
     connectionId: options?.connectionId,

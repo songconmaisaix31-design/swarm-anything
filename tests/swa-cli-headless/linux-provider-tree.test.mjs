@@ -2,19 +2,23 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
+import { readFileSync, watch } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { test } from 'node:test'
+import { verifyInstalledProductSource } from './installed-product-source.mjs'
 
 // 必须提供实际编译的 node-pty 包目录；没有能力时不伪造成功或替换 native API。
 const packageDirectory = process.env.SWA_LINUX_PTY_PACKAGE
 const installInput = process.env.SWA_LINUX_INSTALL_ROOT
 if (process.platform !== 'linux' || !packageDirectory && !installInput) throw new Error('Linux and an actual compiled SWA_LINUX_PTY_PACKAGE or installed SWA_LINUX_INSTALL_ROOT are required')
 const root = fileURLToPath(new URL('../../', import.meta.url))
+await mkdir(join(root, '.verification/linux-provider-tree'), { recursive: true })
+const directory = await mkdtemp(join(root, '.verification/linux-provider-tree/run-'))
 let installation
 if (installInput) {
   installation = await realpath(installInput)
@@ -23,14 +27,12 @@ if (installInput) {
   assert.equal(await realpath(process.execPath), await realpath(join(installation, 'node/node')))
   assert.equal((await readFile(join(installation, 'VERSION'), 'utf8')).trim(), expected)
   assert.equal(execFileSync(join(installation, 'swa'), ['--version'], { encoding: 'utf8' }).trim(), expected)
-  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), expected)
-  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), '', 'Installed checks require the matching clean source for the external identity observer')
-  console.log(JSON.stringify({ verification_mode: 'installed-original-runtime', installation, source_revision: expected, native_agent_acceptance: 'NOT_RUN' }))
+  const source = await verifyInstalledProductSource(installation, root, join(directory, 'installed-product-source.json'))
+  assert.equal(source.candidate_source_revision, expected)
+  console.log(JSON.stringify({ verification_mode: 'installed-original-runtime', installation, source_revision: expected, test_source_revision: source.test_source_revision, evidence: directory, native_agent_acceptance: 'NOT_RUN' }))
 } else console.log(JSON.stringify({ verification_mode: 'development-source', native_agent_acceptance: 'NOT_RUN' }))
 const requireRuntime = createRequire(join(root, 'runtime/swa-orca/package.json'))
 const { buildSync } = requireRuntime('esbuild')
-await mkdir(join(root, '.verification/linux-provider-tree'), { recursive: true })
-const directory = await mkdtemp(join(root, '.verification/linux-provider-tree/run-'))
 if (!installation) {
   await mkdir(join(directory, 'node_modules'))
   await symlink(await realpath(packageDirectory), join(directory, 'node_modules/node-pty'), 'dir')
@@ -251,22 +253,68 @@ test('actual EACCES native spawn settles not-created while the existing bootstra
 })
 
 test('real stdin stop before admission never spawns a native process and still proves the existing bootstrap cleanup', async () => {
+  const observationFile = join(directory, 'stdin-before-admission.ndjson')
+  await writeFile(observationFile, '', { flag: 'wx', mode: 0o600 })
+  const observedEvents = () => readFileSync(observationFile, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+  const events = [], result = { diagnostic_preload: true }
+  const record = event => events.push({ event, pid: process.pid, monotonic_ns: process.hrtime.bigint().toString() })
   const tree = new SwaProviderProcessTree()
-  const managed = spawnManagedProviderProcess({ command: process.execPath, args: [compiled.get('entry'), JSON.stringify({ command: python, args: ['-u', fixture] })], cwd: directory, swaJobIPC: true }, { site: 'linux-kernel-stop-before-spawn' })
-  const output = linesFrom(managed.child.stdout), messages = []
-  managed.child.on('message', message => messages.push(message))
-  managed.child.stdin.end()
-  // 未发送准入，真实 native 不可能开始；让实际 EOF 在子进程启动后到达。
-  await delay(250)
-  tree.bind(managed.child, () => ({ observed: managed.rootExitObserved, processless: managed.processless }), true)
-  await assert.rejects(tree.ready(), /did not create|did not start/)
-  const result = await managed.close(tree)
-  assert.deepEqual(result, { root: 'exited', tree: 'exited' })
-  assert.equal(managed.processless, false)
-  const proof = messages.find(message => message.type === 'swa_linux_fulltreeclosed')
-  assert.equal(proof.native_cli.state, 'not-created')
-  assert.equal(proof.native_cli.reason, 'stopped-before-spawn')
-  assert.equal(output.lines.some(line => line.startsWith('ROOT ')), false)
+  let bound = false, closeCompleted = false, failure
+  const managed = spawnManagedProviderProcess({ command: process.execPath, args: [compiled.get('entry'), JSON.stringify({ command: python, args: ['-u', fixture] })], cwd: directory, swaJobIPC: true,
+    env: { NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'tests/swa-cli-headless/linux-provider-stdin-observer.mjs')).href}`, SWA_TEST_STDIN_OBSERVATION: observationFile }
+  }, { site: 'linux-kernel-stop-before-spawn' })
+  try {
+    const output = linesFrom(managed.child.stdout), messages = []
+    managed.child.on('message', message => { messages.push(message); record(message.type) })
+    result.root = identity.readSwaLinuxProcessIncarnation(managed.child.pid)
+    record('stdin-end-called'); managed.child.stdin.end()
+    let observer
+    let eof
+    try {
+      eof = await timeout(new Promise((resolve, reject) => {
+        const inspect = () => { try { const seen = observedEvents().find(row => row.event === 'stdin-end-listeners-completed'); if (seen) resolve(seen) } catch (error) { reject(error) } }
+        observer = watch(observationFile, inspect)
+        observer.on('error', reject)
+        inspect()
+      }), 'The actual bootstrap did not observe stdin EOF before admission')
+    } finally { observer?.close() }
+    assert.equal(eof.pid, result.root.pid)
+    assert.equal(observedEvents().some(row => row.event === 'swa_linux_admit'), false)
+    record('bind-called'); bound = true
+    tree.bind(managed.child, () => ({ observed: managed.rootExitObserved, processless: managed.processless }), true)
+    await assert.rejects(timeout(tree.ready(), 'Actual pre-admission EOF readiness did not settle'), /did not create|did not start/)
+    result.close = await timeout(managed.close(tree), 'Actual pre-admission EOF cleanup did not finish', 20000)
+    assert.deepEqual(result.close, { root: 'exited', tree: 'exited' })
+    closeCompleted = true
+    assert.equal(managed.processless, false)
+    const proof = messages.find(message => message.type === 'swa_linux_fulltreeclosed')
+    assert.equal(proof.native_cli.state, 'not-created')
+    assert.equal(proof.native_cli.reason, 'stopped-before-spawn')
+    assert.equal(proof.forced, false)
+    assert.equal(output.lines.some(line => line.startsWith('ROOT ')), false)
+    const admission = observedEvents().find(row => row.event === 'swa_linux_admit')
+    assert.equal(admission.pid, result.root.pid)
+    assert.ok(BigInt(eof.monotonic_ns) < BigInt(admission.monotonic_ns))
+    result.final = tree.readFinalObservation()
+    assert.equal(result.final.acknowledgement_delivered, true)
+    assert.equal(result.final.root_exit_observed, true)
+    assert.equal(result.final.root_absent, true)
+    assert.equal(identity.isSwaLinuxProcessAbsent(result.root.pid), true)
+  } catch (error) { failure = error; result.error = error.stack ?? String(error); throw error }
+  finally {
+    try {
+      if (!closeCompleted) {
+        if (bound) result.failure_cleanup = await timeout(managed.close(tree), 'Pre-admission EOF failure cleanup remains unknown', 20000)
+        else {
+          managed.child.stdin.end()
+          if (managed.child.connected) managed.child.disconnect()
+          await timeout(managed.exitPromise, 'Unadmitted EOF fixture did not exit after owner disconnect')
+          result.failure_cleanup = { owner_disconnected: true, full_tree_proof: 'NOT_CLAIMED' }
+        }
+      }
+    } catch (error) { result.cleanup_error = error.stack ?? String(error); if (!failure) throw error }
+    finally { await writeFile(join(directory, 'stdin-before-admission-result.json'), JSON.stringify({ ...result, events, stderr: managed.stderrTail() }, null, 2) + '\n', { flag: 'wx', mode: 0o600 }) }
+  }
 })
 
 test('actual owner IPC loss performs owned cleanup and cannot publish a full-tree receipt to its disconnected owner', async () => {

@@ -28,7 +28,8 @@ const beneath = (parent: string, child: string) => { const part = relative(proce
 
 export const openCodePolicyPluginId = 'swa.opencode.policy'
 export const openCodeBuiltinPlugins = ['opencode.provider.opencode', 'opencode.config.policy', 'opencode.agent', 'opencode.models.dev', 'opencode.config.agent', 'opencode.config.compaction'] as const
-export const openCodePlugins = (provider: OpenCodeProvider): readonly string[] => provider === 'stepfun' ? [...openCodeBuiltinPlugins, 'opencode.config.provider'] : openCodeBuiltinPlugins
+export const openCodePlugins = (provider: OpenCodeProvider, project = false): readonly string[] => [...openCodeBuiltinPlugins, ...(provider === 'stepfun' ? ['opencode.config.provider'] : []), ...(project ? ['opencode.tool.shell'] : [])]
+export const openCodePermissions = (project = false) => [{ action: '*', resource: '*', effect: 'deny' }, ...(project ? [{ action: 'shell', resource: '*', effect: 'allow' }] : [])]
 export const openCodeStepFunConfiguration = { package: '@opencode/ai/providers/openai-compatible', settings: { baseURL: 'https://api.stepfun.com/v1' }, models: { 'step-3.5-flash': {} } }
 
 async function readSource(file: string, jsonc = false, privateFile = true) {
@@ -112,19 +113,31 @@ export async function inspectNativeOpenCodeExecutable(path: string) {
   return { executable, manifest: manifest.source }
 }
 
-export async function inspectNativeOpenCodePolicy(input: SourceHomeInput & { executable: string; version: string; projectId: string; privateRoot: string }) {
+export async function inspectNativeOpenCodePolicy(input: SourceHomeInput & { executable: string; version: string; projectId: string; privateRoot: string; tools?: NativeOpenCodePolicy['tools'] }) {
   if (input.version !== '2.0.31' || !z.uuid().safeParse(input.projectId).success) throw new Error('native_opencode_contract_unavailable')
   const { executable, manifest } = await inspectNativeOpenCodeExecutable(input.executable)
   const { sourceHome, provider, config, auth, database, credential, wal, key } = await inspectNativeOpenCodeAccountSource(input)
   const target = openCodeTargets[provider]
+  const tools = input.tools ?? { mode: 'disabled', native_contract: 'opencode-cli-2.0.31' }
+  const projectSources: z.infer<typeof sourceSchema>[] = []
+  if (tools.mode === 'project') {
+    if (process.platform !== 'linux' || !input.env.SWA_INSTALL_ROOT) throw Object.assign(new Error('Project shell requires Linux bubblewrap isolation'), { code: 'unsupported_capability' })
+    const install = realpathSync.native(input.env.SWA_INSTALL_ROOT)
+    for (const path of [join(install, 'runtime/project-shell'), join(install, 'runtime/project-shell-entry.cjs'), join(install, 'node/node')]) {
+      const source = await nativeConfigurationSource(path)
+      if (source.path !== path || lstatSync(path).isSymbolicLink()) throw new Error('native_opencode_project_shell_redirected')
+      projectSources.push(source)
+    }
+    if (!isDeepStrictEqual(tools.shell, projectSources[0])) throw new Error('native_opencode_project_shell_changed')
+  }
   const policy = nativeOpenCodePolicySchema.parse({ schema: 'swa.native-launch.v1', account: {
     kind: target.kind, provider, source_home: sourceHome,
     config_source: config.source, auth_source: auth.source, database_source: { ...database, version: JSON.stringify({ database: database.version, wal: wal?.version ?? null }) },
     credential_id: credential.id, credential_updated_at: credential.updatedAt, private_root: input.privateRoot,
     model_target: { model_id: target.model_id, api: target.api, base_url: target.base_url }
-  }, tools: { mode: 'disabled', native_contract: 'opencode-cli-2.0.31' } })
+  }, tools })
   const sourceEnvironment = Object.fromEntries(Object.entries(input.env).filter(([name]) => ['SWA_OPENCODE_API_KEY_HOME', 'SWA_CODEX_API_KEY_HOME', 'SWA_CLAUDE_API_KEY_HOME', 'SWA_INSTALL_ROOT', 'SWA_DATA_DIR', 'SWA_AGENT_PROFILE', 'SWA_DISCOVERY_HOME', 'SWA_PROTECTED_ROOTS', 'CODEX_HOME', 'SWA_DISCOVERY_CODEX_HOME', 'CLAUDE_CONFIG_DIR', 'SWA_DISCOVERY_CLAUDE_HOME'].includes(name)))
-  const snapshot: NativeOpenCodeSnapshot = { policy, key, sources: [executable, manifest, config.source, auth.source, database, ...(wal ? [wal] : [])], absentSources: wal ? [] : [database.path + '-wal'], sourceInput: { sourceHome, protectedRoots: [...input.protectedRoots], env: sourceEnvironment } }
+  const snapshot: NativeOpenCodeSnapshot = { policy, key, sources: [executable, manifest, config.source, auth.source, database, ...(wal ? [wal] : []), ...projectSources], absentSources: wal ? [] : [database.path + '-wal'], sourceInput: { sourceHome, protectedRoots: [...input.protectedRoots], env: sourceEnvironment } }
   assertNativeOpenCodeCurrent(snapshot)
   return snapshot
 }

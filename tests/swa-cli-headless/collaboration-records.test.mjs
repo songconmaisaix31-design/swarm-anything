@@ -12,9 +12,9 @@ const { buildSync } = requireRuntime('esbuild')
 await mkdir(join(root, '.verification/collaboration-records'), { recursive: true })
 const directory = await mkdtemp(join(root, '.verification/collaboration-records/case-'))
 const bundle = join(directory, 'records.cjs')
-const built = buildSync({ stdin: { contents: "export { OrchestrationDb } from './third_party/orca-v1.4.230/src/main/runtime/orchestration/db'; export { hashCanonical } from './third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'; export * from './runtime/swa-orca/src/collaboration-records'", resolveDir: root }, platform: 'node', format: 'cjs', bundle: true, write: false, alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') }, nodePaths: [join(root, 'runtime/swa-orca/node_modules')], external: ['*.node'] })
+const built = buildSync({ stdin: { contents: "export { OrchestrationDb } from './third_party/orca-v1.4.230/src/main/runtime/orchestration/db'; export { hashCanonical } from './third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'; export * from './runtime/swa-orca/src/collaboration-records'; export * from './runtime/swa-orca/src/role-selection'; export { deliveryAdmissionInvocation } from './runtime/swa-orca/src/delivery-admission'", resolveDir: root }, platform: 'node', format: 'cjs', bundle: true, write: false, alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') }, nodePaths: [join(root, 'runtime/swa-orca/node_modules')], external: ['*.node'] })
 await writeFile(bundle, built.outputFiles[0].contents)
-const { OrchestrationDb, hashCanonical, initializeCollaborationRecords, collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment } = createRequire(bundle)(bundle)
+const { OrchestrationDb, hashCanonical, initializeCollaborationRecords, collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment, assignedAgent, workerSelectionMatches, deliveryAdmissionInvocation } = createRequire(bundle)(bundle)
 const role = { name: 'Code reviewer', responsibilities: 'Review public repository changes', default_agent: 'pi', default_model: 'stepfun/step-3.5-flash', skills: ['Review task specifications'], knowledge: ['Public repository coding rules'] }
 
 function createCase(name) {
@@ -36,13 +36,14 @@ function write(value, command, scope, file) {
 
 test('roles survive reopen, retain immutable assignment snapshots and require revision CAS', () => {
   const value = createCase('roles')
-  const selectedRole = { ...role, question_mode: 'native' }
+  const selectedRole = { ...role, question_mode: 'native', delegation_mode: 'native' }
   const created = write(value, { action: 'role.create', role: selectedRole })
   const id = created.result.native.role.id
   try {
     assert.equal(created.result.native.role.revision, 1)
     const snapshot = resolveCollaborationReferences(value.db, value.project, { role_id: id, role_revision: 1 })
     assert.equal(snapshot.role_snapshot.question_mode, 'native')
+    assert.equal(snapshot.role_snapshot.delegation_mode, 'native')
     const assignments = [
       { ...invocation(value, { action: 'task.create' }), spec: { role_id: id, role_revision: 1, ...snapshot } },
       { ...invocation(value, { action: 'worker.start', role_id: id, revision: 1 }), spec: snapshot }
@@ -53,6 +54,7 @@ test('roles survive reopen, retain immutable assignment snapshots and require re
     const updated = write(value, { action: 'role.update', role_id: id, revision: 1, role: { ...selectedRole, responsibilities: 'Review security and behavior' } })
     assert.equal(updated.result.native.role.revision, 2)
     assert.equal(updated.result.native.role.question_mode, 'native')
+    assert.equal(updated.result.native.role.delegation_mode, 'native')
     assert.equal(snapshot.role_snapshot.responsibilities, role.responsibilities)
     value.db.db.exec('BEGIN IMMEDIATE')
     for (const input of assignments) assert.throws(() => assertCurrentCollaborationAssignment(value.db, input), { code: 'context_stale' })
@@ -71,6 +73,33 @@ test('roles survive reopen, retain immutable assignment snapshots and require re
     assert.equal(saved.revision, 3)
     assert.equal(saved.question_mode, 'native')
   } finally { reopened.close() }
+})
+
+test('role defaults select the original worker and its admission target', () => {
+  const value = createCase('role-selection')
+  try {
+    const id = write(value, { action: 'role.create', role }).result.native.role.id
+    const snapshot = resolveCollaborationReferences(value.db, value.project, { role_id: id, role_revision: 1 })
+    const command = { action: 'worker.start', role_id: id, revision: 1, question_mode: 'native' }
+    const input = { ...invocation(value, command), spec: snapshot, selection: { agent_id: 'pi', model: 'stepfun/step-3.5-flash' } }
+    assert.deepEqual(assignedAgent(command, value.project, snapshot.role_snapshot), { agent: 'pi', model: 'stepfun/step-3.5-flash' })
+    assert.equal(workerSelectionMatches(input), true)
+    const admission = deliveryAdmissionInvocation(input)
+    assert.equal(admission.command.agent, 'pi')
+    assert.equal(admission.command.model, 'stepfun/step-3.5-flash')
+    assert.equal(admission.command.question_mode, 'native')
+    assert.equal(input.command.agent, undefined)
+    const override = { ...command, agent: 'codex', model: 'gpt-5.5' }
+    assert.deepEqual(assignedAgent(override, value.project, snapshot.role_snapshot), { agent: 'codex', model: 'gpt-5.5' })
+    assert.equal(workerSelectionMatches({ ...input, command: override }), false)
+    assert.throws(() => deliveryAdmissionInvocation({ ...input, command: override }), { code: 'request_mismatch' })
+    assert.throws(() => assignedAgent({ ...command, agent: 'codex' }, value.project, snapshot.role_snapshot), { code: 'invalid_argument' })
+    assert.throws(() => assignedAgent(command, 'other-project', snapshot.role_snapshot), { code: 'context_stale' })
+    assert.throws(() => assignedAgent({ ...command, revision: 2 }, value.project, snapshot.role_snapshot), { code: 'context_stale' })
+    write(value, { action: 'role.update', role_id: id, revision: 1, role: { ...role, default_agent: 'codex', default_model: 'gpt-5.5' } })
+    assert.throws(() => assertCurrentCollaborationAssignment(value.db, input), { code: 'context_stale' })
+    assert.throws(() => resolveCollaborationReferences(value.db, value.project, { role_id: id, role_revision: 1 }), { code: 'context_stale' })
+  } finally { value.db.close() }
 })
 
 test('conversation append and native receipt commit together and same request never duplicates', () => {

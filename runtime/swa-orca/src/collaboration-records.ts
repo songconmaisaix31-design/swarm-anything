@@ -6,9 +6,9 @@ import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/
 import { roleDefinitionSchema, nativeObject, type Invocation, type Scope } from './contracts'
 import { assertDeliveryGrantCurrent } from './delivery-admission'
 import { isTaskDescendant } from './run-view'
+import { roleSchema } from './role-selection'
 
 const roleDefinition = roleDefinitionSchema
-const roleSchema = roleDefinition.extend({ id: z.string(), project_id: z.string(), revision: z.number().int().positive(), archived: z.boolean(), created_at: z.string(), updated_at: z.string() })
 const conversationSchema = z.object({ id: z.string(), project_id: z.string(), title: z.string(), role_id: z.string().nullable(), created_at: z.string() })
 const entrySchema = z.object({ id: z.string(), request_id: z.string(), text: z.string(), created_at: z.string(), status: z.literal('stored'), author_id: z.string(), author_kind: z.enum(['human', 'agent']) })
 const storedRole = z.object({ id: z.string(), project_id: z.string(), revision: z.number().int(), archived: z.number().int(), definition: z.string(), created_at: z.string(), updated_at: z.string() })
@@ -94,7 +94,7 @@ export function writeCollaborationRecords(db: OrchestrationDb, invocation: Invoc
     } else if ((c.action === 'role.update' || c.action === 'role.archive') && c.role_id && c.revision) {
       const prior = requireRole(db, project, c.role_id, c.revision, true)
       if (prior.revision === Number.MAX_SAFE_INTEGER) fail('resource_limit', 'The role revision bound has been reached')
-      const definition = c.action === 'role.update' ? roleDefinition.parse(c.role) : roleDefinition.parse({ name: prior.name, responsibilities: prior.responsibilities, default_agent: prior.default_agent, default_model: prior.default_model, question_mode: prior.question_mode, skills: prior.skills, knowledge: prior.knowledge })
+      const definition = c.action === 'role.update' ? roleDefinition.parse(c.role) : roleDefinition.parse({ name: prior.name, responsibilities: prior.responsibilities, default_agent: prior.default_agent, default_model: prior.default_model, question_mode: prior.question_mode, delegation_mode: prior.delegation_mode, development_mode: prior.development_mode, skills: prior.skills, knowledge: prior.knowledge })
       db.db.prepare('UPDATE swa_roles SET definition=?,revision=revision+1,archived=?,updated_at=? WHERE project_id=? AND id=? AND revision=?').run(JSON.stringify(definition), c.action === 'role.archive' ? 1 : 0, now, project, c.role_id, c.revision)
       native = { role: requireRole(db, project, c.role_id) }
     } else if (c.action === 'conversation.create' && c.conversation) {
@@ -133,6 +133,7 @@ export function resolveCollaborationReferences(db: OrchestrationDb, project: str
   if (conversation?.role_id && conversation.role_id !== role?.id) fail('scope_denied', 'The conversation and task roles differ')
   return { ...(role ? { role_snapshot: role } : {}), ...(conversation ? { conversation_id: conversation.id } : {}) }
 }
+
 
 // 接受新 Task/Worker 的原 reservation 事务内重核，接受后保留不可变历史快照。
 export function assertCurrentCollaborationAssignment(db: OrchestrationDb, invocation: Invocation) {

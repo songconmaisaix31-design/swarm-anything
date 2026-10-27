@@ -17,6 +17,7 @@ export type PiDisabledToolsPolicy = {
   baseUrl: string
   sessionPolicy?: SwaPiSessionPolicy
   questionExtension?: string
+  allowedTools?: readonly ('swa_ask' | 'swa_delegate' | 'bash')[]
 }
 
 export type PiRpcLaunchOptions = {
@@ -80,7 +81,9 @@ export function buildPiRpcLaunch(options: PiRpcLaunchOptions): ProviderProcessLa
     const launcher = options.swaJobLauncher
     if (!launcher || ![launcher.node, launcher.entry, launcher.eventDirectory, options.command].every(isAbsolute)) throw new Error('Native Pi requires its owning Job launcher')
     if (policy.questionExtension !== undefined && !isAbsolute(policy.questionExtension)) throw new Error('Native Pi requires its fixed absolute question extension')
-    const toolArgs = policy.questionExtension ? ['--no-builtin-tools', '--tools', 'swa_ask', '--no-extensions', '--extension', policy.questionExtension] : ['--no-tools', '--no-extensions']
+    const allowed = policy.allowedTools ?? ['swa_ask']
+    if (policy.questionExtension && ![['swa_ask'], ['swa_delegate'], ['swa_ask', 'swa_delegate'], ['bash'], ['bash', 'swa_ask'], ['bash', 'swa_delegate'], ['bash', 'swa_ask', 'swa_delegate']].some(tools => JSON.stringify(tools) === JSON.stringify(allowed))) throw new Error('Native Pi tools differ from the fixed extension contract')
+    const toolArgs = policy.questionExtension ? ['--no-builtin-tools', '--tools', allowed.join(','), '--no-extensions', '--extension', policy.questionExtension] : ['--no-tools', '--no-extensions']
     const args = ['--mode', 'rpc', '--offline', '--no-approve', '--provider', policy.provider, '--model', policy.modelId, ...toolArgs, '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', ...(options.sessionFile ? ['--session', options.sessionFile] : []), ...(options.forkFile ? ['--fork', options.forkFile] : [])]
     return {
       command: launcher.node, cwd: options.cwd,
