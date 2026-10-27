@@ -94,7 +94,7 @@ export function writeCollaborationRecords(db: OrchestrationDb, invocation: Invoc
     } else if ((c.action === 'role.update' || c.action === 'role.archive') && c.role_id && c.revision) {
       const prior = requireRole(db, project, c.role_id, c.revision, true)
       if (prior.revision === Number.MAX_SAFE_INTEGER) fail('resource_limit', 'The role revision bound has been reached')
-      const definition = c.action === 'role.update' ? roleDefinition.parse(c.role) : roleDefinition.parse({ name: prior.name, responsibilities: prior.responsibilities, default_agent: prior.default_agent, default_model: prior.default_model, question_mode: prior.question_mode, skills: prior.skills, knowledge: prior.knowledge })
+      const definition = c.action === 'role.update' ? roleDefinition.parse(c.role) : roleDefinition.parse({ name: prior.name, responsibilities: prior.responsibilities, default_agent: prior.default_agent, default_model: prior.default_model, question_mode: prior.question_mode, delegation_mode: prior.delegation_mode, skills: prior.skills, knowledge: prior.knowledge })
       db.db.prepare('UPDATE swa_roles SET definition=?,revision=revision+1,archived=?,updated_at=? WHERE project_id=? AND id=? AND revision=?').run(JSON.stringify(definition), c.action === 'role.archive' ? 1 : 0, now, project, c.role_id, c.revision)
       native = { role: requireRole(db, project, c.role_id) }
     } else if (c.action === 'conversation.create' && c.conversation) {

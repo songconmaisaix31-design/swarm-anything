@@ -107,14 +107,14 @@ export class RuntimeClient {
     if (this.remote && this.swaOwnerCapability) throw new RuntimeClientError('scope_denied', 'The private product owner capability cannot be sent to a remote runtime')
     if (options?.signal?.aborted) throw new RuntimeClientError('operation_cancelled', 'The local runtime request was cancelled before sending.')
     if (options?.signal && this.remote) throw new RuntimeClientError('scope_denied', 'Cancellation is only supported by the local runtime transport.')
-    if (this.swaQuestionProducerProof && !['status.get', 'orchestration.ask', 'orchestration.requestShow'].includes(method)) throw new RuntimeClientError('scope_denied', 'The question producer cannot call this runtime method.')
+    if (this.swaQuestionProducerProof && !['status.get', 'orchestration.ask', 'orchestration.requestShow', 'swa.delegate'].includes(method)) throw new RuntimeClientError('scope_denied', 'The native tool producer cannot call this runtime method.')
     const effectiveTimeoutMs = options?.timeoutMs ?? this.resolveMethodTimeoutMs(method, params)
     const orchestrationMutation = isOrchestrationMutation(method, params)
     const terminalPromptMutation = isTerminalPromptMutation(method, params)
     const legacyTerminalPrompt = options?.legacyTerminalPrompt === true && terminalPromptMutation
     const durableMutation = !legacyTerminalPrompt && isDurableMutation(method, params)
-    const carriesCompatibility = method.startsWith('orchestration.') || method === 'swa.workerSend' || method === 'status.get' && (process.env.SWA_CONTROLLER_HELPER === '1' || !!this.swaQuestionProducerProof)
-    if (orchestrationMutation || method === 'swa.workerSend') {
+    const carriesCompatibility = method.startsWith('orchestration.') || method === 'swa.workerSend' || method === 'swa.delegate' || method === 'status.get' && (process.env.SWA_CONTROLLER_HELPER === '1' || !!this.swaQuestionProducerProof)
+    if (orchestrationMutation || method === 'swa.workerSend' || method === 'swa.delegate') {
       await this.ensureOrchestrationContractCompatible(effectiveTimeoutMs, options?.signal)
     }
     const orchestrationRequestId = durableMutation

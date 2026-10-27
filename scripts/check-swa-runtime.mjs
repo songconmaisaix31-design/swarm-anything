@@ -60,7 +60,7 @@ if (!values.native) {
   const requireRuntime = createRequire(join(runtime, 'package.json'))
   const packageJSON = JSON.parse(await readFile(join(runtime, 'package.json'), 'utf8'))
   assert.equal(packageJSON.type, 'commonjs')
-  for (const file of ['host.cjs', 'client.cjs', 'controller-helper.cjs', 'native-cli-entry.cjs', 'pi-question-extension.mjs', 'strict-caller-probe.cjs', 'controller-inspection.cjs', ...(!linux ? ['controller-fault.exe', 'cli-fault-control.exe'] : []), 'task-result.cjs', 'journal-open.cjs', 'swa-provider-process-tree.cjs', 'daemon-entry.js', 'profile-state-writer-worker-entry.js', 'opencode-policy/server.js', 'opencode-policy/package.json']) await readFile(join(runtime, file))
+  for (const file of ['host.cjs', 'client.cjs', 'controller-helper.cjs', 'native-cli-entry.cjs', 'pi-question-extension.mjs', 'pi-collaboration-extension.mjs', 'strict-caller-probe.cjs', 'controller-inspection.cjs', ...(!linux ? ['controller-fault.exe', 'cli-fault-control.exe'] : []), 'task-result.cjs', 'journal-open.cjs', 'swa-provider-process-tree.cjs', 'daemon-entry.js', 'profile-state-writer-worker-entry.js', 'opencode-policy/server.js', 'opencode-policy/package.json']) await readFile(join(runtime, file))
   if (linux) {
     const { checkLinuxNative } = await import('./check-swa-linux-native.mjs')
     await checkLinuxNative(candidate)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { SwaQuestionAnswerForm, SwaQuestionHistory, SwaQuestionModeField } from './SwaRunWorkspace';
+import { SwaDelegationModeField, SwaQuestionAnswerForm, SwaQuestionHistory, SwaQuestionModeField } from './SwaRunWorkspace';
 import { readQuestionContinuation, type SwaQuestionReadState } from './swaRunView';
 
 // 纯表单边界；生产 SQLite 问题/答复与恢复器另由 question-answer.test.mjs 直接验证。
@@ -39,6 +39,15 @@ describe('同 Run 问题回答表单', () => {
     expect(unavailable).toContain('已选模式保留');
     expect(mode('native', true)).toContain('<option value="native" selected="">');
     expect(mode('native', true, true)).toContain('<select disabled="">');
+  });
+
+  it('委派权限失效时保留原 native 选择并禁用，关闭问答不宣称关闭委派', () => {
+    const html = renderToStaticMarkup(createElement(SwaDelegationModeField, { value: 'native', block: '当前项目未许可', disabled: false, onChange }));
+    expect(html).toContain('<option value="native" disabled="" selected="">');
+    expect(html).toContain('已选模式保留');
+    expect(html).toContain('当前项目未许可');
+    const questions = renderToStaticMarkup(createElement(SwaQuestionModeField, { value: 'disabled', nativeAvailable: true, disabled: false, onChange }));
+    expect(questions).toContain('自主委派单独选择');
   });
 
   it('只有明确的继续状态提供按钮，未知、已读与中断不产生继续操作', () => {

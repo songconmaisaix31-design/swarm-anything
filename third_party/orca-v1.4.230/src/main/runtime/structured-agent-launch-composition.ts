@@ -56,7 +56,7 @@ export type StructuredAgentLaunchAdmission = {
   beforeWorkerStart?(input: StructuredWorkerStartAdmission): Promise<void | (() => void)>
   workerCommandSettings?(input: StructuredWorkerLaunchAdmission): Promise<StructuredAgentCommandSettings>
   createCommandSettings?(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings>
-  workerPreambleMode?(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only'>
+  workerPreambleMode?(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only' | 'collaboration'>
 }
 
 let launchAdmission: StructuredAgentLaunchAdmission | null = null
@@ -101,7 +101,7 @@ export function admitStructuredAgentCreateCommandSettings(sessionId: string, age
   return launchAdmission?.createCommandSettings ? launchAdmission.createCommandSettings(sessionId, agent) : Promise.resolve(undefined)
 }
 
-export function readStructuredWorkerPreambleMode(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only' | undefined> {
+export function readStructuredWorkerPreambleMode(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only' | 'collaboration' | undefined> {
   return launchAdmission?.workerPreambleMode ? launchAdmission.workerPreambleMode(input) : Promise.resolve(undefined)
 }
 

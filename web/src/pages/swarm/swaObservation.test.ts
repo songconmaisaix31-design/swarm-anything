@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SwaEnvelope } from '../../api/swa';
 import type { components } from '../../api/schema';
-import { readSwaFleet, readSwaAgents, readSwaExecution, readPendingSwaRequest, recoverSwaRequest, canRequestSwaStart, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
+import { readSwaFleet, readSwaAgents, readSwaExecution, readPendingSwaRequest, recoverSwaRequest, canRequestSwaStart, swaDelegationBlock, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
 
 // 以下为解析器的明确参数输入，不表示存在原生执行、模型返回或安装验收结果。
@@ -89,7 +89,7 @@ function formAgentInput(): FormAgent {
   return {
     id: 'form-agent-input', model: 'form-model-input', settingsRevision: formSettings.revision,
     registered: observationInput('available'), enabled: observationInput('available'), installed: observationInput('available'), configured: observationInput('available'), start: observationInput('available'),
-    launchable: observationInput('unknown'), read: observationInput('unknown'), tools: observationInput('unknown'), questions: null,
+    launchable: observationInput('unknown'), read: observationInput('unknown'), tools: observationInput('unknown'), questions: null, delegation: null,
   };
 }
 const startInput = (agent: FormAgent | undefined = formAgentInput()) => ({ agent, settings: formSettings, disabled: false, pending: false, unresolved: false, name: 'explicit-worker-name-input', inputFile: '/explicit/server-input-path' });
@@ -108,6 +108,17 @@ describe('SWA 启动表单的明确参数规则，不表示原生发现或启动
     expect(canRequestSwaStart(startInput(agent))).toBe(true);
     expect(swaStartRequestBlock(agent, formSettings)).toBeNull();
     expect([agent.launchable.status, agent.read.status, agent.tools.status]).toEqual(['unknown', 'unknown', 'unknown']);
+  });
+
+  it('自主委派同时核查实际能力、项目工具与当前启动发送许可', () => {
+    const agent = { ...formAgentInput(), delegation: observationInput('available') };
+    const settings = { ...formSettings, allowed_tools: ['swa_delegate'], allowed_actions: ['start', 'send'] };
+    expect(swaDelegationBlock(agent, settings)).toBeNull();
+    expect(swaDelegationBlock(agent, { ...settings, allowed_tools: [] })).toContain('未允许自主委派');
+    expect(swaDelegationBlock(agent, { ...settings, allowed_actions: ['start'] })).toContain('发送许可');
+    expect(swaDelegationBlock(agent, { ...settings, revision: settings.revision + 1 })).toContain('已过期');
+    for (const delegation of [null, observationInput('unknown'), observationInput('unavailable')]) expect(swaDelegationBlock({ ...agent, delegation }, settings)).not.toBeNull();
+    expect(swaDelegationBlock(undefined, settings)).not.toBeNull();
   });
 
   it('任何静态条件未核实、模型缺失或明确不可用的未握手能力都禁止提交', () => {

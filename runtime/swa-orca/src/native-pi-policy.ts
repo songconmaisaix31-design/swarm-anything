@@ -233,7 +233,7 @@ function reviewedModel(value: Record<string, unknown>, fields: ReadonlySet<strin
 }
 
 // 只调用真实安装CLI的只读配置、原composer和catalog，不调用认证解析、刷新或模型请求。
-export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { executable: string; version: string; projectId: string; provider: string; modelId: string; questionMode?: 'disabled' | 'native' }) {
+export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { executable: string; version: string; projectId: string; provider: string; modelId: string; questionMode?: 'disabled' | 'native'; delegationMode?: 'disabled' | 'native' }) {
   if (!z.uuid().safeParse(input.projectId).success || input.projectId !== input.projectId.toLowerCase()) throw new Error('native_project_identity_unverifiable')
   const sourceHome = await requireNativePiSourceHome(input)
   const dataRoot = await realpath(z.string().min(1).parse(process.env.SWA_DATA_DIR))
@@ -304,7 +304,9 @@ export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { e
     const handler = apiRegistry.getApiProvider(target.data.api)
     if (handler?.api !== target.data.api || typeof handler.stream !== 'function' || typeof handler.streamSimple !== 'function') throw new Error('native_model_api_unreviewed')
   }
-  const tools = input.questionMode === 'native'
+  const tools = input.delegationMode === 'native'
+    ? { mode: 'collaboration', native_contract: 'pi-cli-1.0.1', allowed: input.questionMode === 'native' ? ['swa_ask', 'swa_delegate'] : ['swa_delegate'], extension: await nativeConfigurationSource(join(z.string().min(1).parse(input.env.SWA_INSTALL_ROOT), 'runtime', 'pi-collaboration-extension.mjs')) }
+    : input.questionMode === 'native'
     ? { mode: 'questions-only', native_contract: 'pi-cli-1.0.1', allowed: ['swa_ask'], extension: await nativeConfigurationSource(join(z.string().min(1).parse(input.env.SWA_INSTALL_ROOT), 'runtime', 'pi-question-extension.mjs')) }
     : { mode: 'disabled', native_contract: 'pi-cli-1.0.1' }
   const policy = nativePiPerSessionLaunchPolicySchema.parse({ schema: 'swa.native-launch.v1', account: { kind: 'pi-native-api-key-per-session', provider: input.provider, source_home: sourceHome, auth_source: auth.source, models_source: modelsSource, private_root: privateRoot, model_target: target.data }, tools })
@@ -360,7 +362,7 @@ export function assertNativePiSnapshotCurrent(snapshot: NativePiPolicySnapshot) 
   const sources = snapshot.sources, account = snapshot.policy.account
   if (!samePath(assertNativePiSourceHome(snapshot.sourceInput), account.source_home)) throw new Error('native_pi_source_home_changed')
   assertNativePiSourcesCurrent(sources)
-  for (const source of [account.auth_source, account.models_source, snapshot.settingsSource, ...(snapshot.policy.tools.mode === 'questions-only' ? [snapshot.policy.tools.extension] : [])]) {
+  for (const source of [account.auth_source, account.models_source, snapshot.settingsSource, ...(snapshot.policy.tools.mode !== 'disabled' ? [snapshot.policy.tools.extension] : [])]) {
     if (!source) continue
     const path = realpathSync.native(source.path), info = statSync(path, { bigint: true })
     const version = `${info.dev}:${info.ino}:${info.birthtimeNs}:${info.mtimeNs}:${info.size}`

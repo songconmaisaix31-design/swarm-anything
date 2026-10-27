@@ -222,6 +222,49 @@ func TestNativeQuestionModePreservesExplicitSelection(t *testing.T) {
 	}
 }
 
+func TestDelegationModeRequiresIndependentExplicitSelection(t *testing.T) {
+	command := OrcaCommand{Action: "worker.start", Controller: "controller", TaskID: "root", Name: "lead", InputFile: "input.txt", RoleID: "role", Revision: 1, RequestID: uuid.NewString()}
+	selection := OrcaAgentSelection{NativeLaunch: OrcaNativeLaunchPolicy{Tools: OrcaNativeLaunchTools{Mode: "collaboration", Allowed: []string{"swa_delegate"}}}}
+	for _, mode := range []string{"", "native", "disabled"} {
+		command.DelegationMode = mode
+		if err := ValidateOrcaCommand(command); err != nil {
+			t.Fatal("角色模式应在实际选择后判断", err)
+		}
+		if err := validateOrcaQuestionSelection(command, selection); (err == nil) != (mode != "disabled") {
+			t.Fatal("显式关闭委派没有独立覆盖角色默认", mode, err)
+		}
+	}
+	command.DelegationMode, command.QuestionMode = "native", "native"
+	if validateOrcaQuestionSelection(command, selection) == nil {
+		t.Fatal("委派模式错误地开放了未选中的问题工具")
+	}
+	selection.NativeLaunch.Tools.Allowed = []string{"swa_ask", "swa_delegate"}
+	if err := validateOrcaQuestionSelection(command, selection); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*OrcaCommand){
+		func(c *OrcaCommand) { c.DelegationMode = "enabled" },
+		func(c *OrcaCommand) { c.HandoffMode = "consult" },
+		func(c *OrcaCommand) { c.Agent, c.Model = "opencode", "stepfun/step-3.5-flash" },
+		func(c *OrcaCommand) { c.Action = "worker.send" },
+	} {
+		invalid := command
+		change(&invalid)
+		if ValidateOrcaCommand(invalid) == nil {
+			t.Fatal("不支持的委派入口被接受", invalid)
+		}
+	}
+	role := OrcaRoleDefinition{Name: "委派角色", Responsibilities: "分配子任务", DefaultAgent: "pi", DefaultModel: "stepfun/step-3.5-flash", DelegationMode: "native"}
+	create := OrcaCommand{Action: "role.create", Role: &role, RequestID: uuid.NewString()}
+	if err := ValidateOrcaCommand(create); err != nil {
+		t.Fatal(err)
+	}
+	role.DefaultAgent = "opencode"
+	if ValidateOrcaCommand(create) == nil {
+		t.Fatal("角色向未支持的 CLI 开放了委派工具")
+	}
+}
+
 func TestQuestionResumeAllowsOnlyExactIdentity(t *testing.T) {
 	command := OrcaCommand{Action: "question.resume", Controller: "original-controller", RunID: "original-run", TaskID: "original-root", DispatchID: "original-dispatch", QuestionID: "original-question", RequestID: uuid.NewString()}
 	if err := ValidateOrcaCommand(command); err != nil {

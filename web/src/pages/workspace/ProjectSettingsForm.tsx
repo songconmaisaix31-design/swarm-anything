@@ -45,6 +45,7 @@ export function ProjectSettingsForm({ project, agents, disabled, onChanged, swaO
       <fieldset><legend>允许的原生操作</legend>{Object.entries(actions).filter(([action]) => !swaOnly || ['start', 'send', 'stop', 'observe'].includes(action)).map(([action, label]) => <label key={action}><input type="checkbox" style={{ width: 'auto' }} checked={settings.allowed_actions.includes(action)} onChange={event => setSettings({ ...settings, allowed_actions: event.target.checked ? [...settings.allowed_actions, action] : settings.allowed_actions.filter(value => value !== action) })} /> {label}</label>)}</fieldset>
       <label><input type="checkbox" style={{ width: 'auto' }} checked={settings.allow_agent_control} onChange={event => setSettings({ ...settings, allow_agent_control: event.target.checked })} /> 允许此项目的 Agent 控制操作</label>
       <p className={styles.note}>允许 Agent 按上述范围控制任务。访问授权在下方单独管理；启用此项不会启动任务。</p>
+      {swaOnly && <><label><input type="checkbox" style={{ width: 'auto' }} checked={settings.allowed_tools.includes('swa_delegate')} onChange={event => setSettings({ ...settings, allowed_tools: event.target.checked ? [...settings.allowed_tools, 'swa_delegate'] : settings.allowed_tools.filter(tool => tool !== 'swa_delegate') })} /> 允许 Agent 按角色自主委派子任务</label><p className={styles.note}>此许可只开放 swa_delegate，仍需启用 Agent 控制、启动和发送。每个新 Run 或 Worker 还须明确选择委派模式；文件和命令工具不会因此开放。</p></>}
     </fieldset><CommandState {...command} /><button className="ac-button" type="submit" disabled={disabled || command.pending || changed}>保存此项目许可</button>
   </form></details>;
 }

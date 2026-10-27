@@ -36,13 +36,14 @@ function write(value, command, scope, file) {
 
 test('roles survive reopen, retain immutable assignment snapshots and require revision CAS', () => {
   const value = createCase('roles')
-  const selectedRole = { ...role, question_mode: 'native' }
+  const selectedRole = { ...role, question_mode: 'native', delegation_mode: 'native' }
   const created = write(value, { action: 'role.create', role: selectedRole })
   const id = created.result.native.role.id
   try {
     assert.equal(created.result.native.role.revision, 1)
     const snapshot = resolveCollaborationReferences(value.db, value.project, { role_id: id, role_revision: 1 })
     assert.equal(snapshot.role_snapshot.question_mode, 'native')
+    assert.equal(snapshot.role_snapshot.delegation_mode, 'native')
     const assignments = [
       { ...invocation(value, { action: 'task.create' }), spec: { role_id: id, role_revision: 1, ...snapshot } },
       { ...invocation(value, { action: 'worker.start', role_id: id, revision: 1 }), spec: snapshot }
@@ -53,6 +54,7 @@ test('roles survive reopen, retain immutable assignment snapshots and require re
     const updated = write(value, { action: 'role.update', role_id: id, revision: 1, role: { ...selectedRole, responsibilities: 'Review security and behavior' } })
     assert.equal(updated.result.native.role.revision, 2)
     assert.equal(updated.result.native.role.question_mode, 'native')
+    assert.equal(updated.result.native.role.delegation_mode, 'native')
     assert.equal(snapshot.role_snapshot.responsibilities, role.responsibilities)
     value.db.db.exec('BEGIN IMMEDIATE')
     for (const input of assignments) assert.throws(() => assertCurrentCollaborationAssignment(value.db, input), { code: 'context_stale' })

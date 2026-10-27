@@ -102,18 +102,19 @@ export function readSwaCapabilityDetails(reply: SwaEnvelope) {
   const result = object(reply.result);
   if (result.schema !== 'swa.capabilities.v1' || !Array.isArray(result.agents)) throw new Error('服务未返回已知 Agent 能力合同');
   return result.agents.map(value => {
-    const agent = object(value), control = object(agent.control), configured = object(agent.configured);
+    const agent = object(value), control = object(agent.control), configured = object(agent.configured), installed = object(agent.installed);
     const stages = [
       ['注册', agent.registered], ['安装', agent.installed], ['配置', agent.configured], ['账号认证', agent.authenticated], ['可启动', agent.launchable],
-      ['追加指令', control.send], ['读取', control.read], ['停止', control.stop], ['会话恢复', control.resume], ['图片', control.images], ['切换模型', control.model_switch], ['工具限制', control.tools], ['原生问答', control.questions],
+      ['追加指令', control.send], ['读取', control.read], ['停止', control.stop], ['会话恢复', control.resume], ['图片', control.images], ['切换模型', control.model_switch], ['工具限制', control.tools], ['原生问答', control.questions], ['自主委派', control.delegation],
     ].map(([label, observation]) => ({ label: String(label), observation: observation === undefined ? null : readObservation(observation) }));
     let catalog: { origin: string; verified: boolean; models: { id: string; label: string; provider: string | null }[] } | null = null;
     if (agent.model_catalog !== undefined) {
       const source = object(agent.model_catalog);
       if (!['live-session', 'probe', 'configured', 'unknown'].includes(String(source.origin)) || !['verified', 'unverified'].includes(String(source.availability)) || !Array.isArray(source.models)) throw new Error('模型目录来源不完整');
       catalog = { origin: String(source.origin), verified: source.availability === 'verified', models: source.models.map(value => { const model = object(value); return { id: text(model.id, 'model.id'), label: text(model.label, 'model.label'), provider: typeof model.provider === 'string' ? model.provider : null }; }) };
+      if (new Set(catalog.models.map(model => model.id)).size !== catalog.models.length) throw new Error('模型目录含重复身份');
     }
-    return { id: text(agent.id, 'agent.id'), model: typeof configured.model === 'string' ? configured.model : null, stages, catalog };
+    return { id: text(agent.id, 'agent.id'), model: typeof configured.model === 'string' ? configured.model : null, version: typeof installed.version === 'string' ? installed.version : null, executable: typeof installed.executable === 'string' ? installed.executable : null, stages, catalog };
   });
 }
 
@@ -128,6 +129,7 @@ export function readSwaAgents(reply: SwaEnvelope) {
       registered: readObservation(agent.registered), enabled: readObservation(agent.enabled), installed: readObservation(agent.installed), configured: readObservation(configured),
       launchable: readObservation(agent.launchable), start: readObservation(control.start), read: readObservation(control.read), tools: readObservation(control.tools),
       questions: control.questions === undefined ? null : readObservation(control.questions),
+      delegation: control.delegation === undefined ? null : readObservation(control.delegation),
     };
   });
   if (new Set(agents.map(agent => agent.id)).size !== agents.length) throw new Error('能力清单包含重复 Agent，保持未确认');
@@ -135,6 +137,13 @@ export function readSwaAgents(reply: SwaEnvelope) {
 }
 
 type SwaAgent = ReturnType<typeof readSwaAgents>[number];
+
+export function swaDelegationBlock(agent: SwaAgent | undefined, settings: ProjectSettings): string | null {
+  if (!settings.allowed_tools.includes('swa_delegate')) return '当前项目未允许自主委派，请在项目权限中明确启用';
+  if (!settings.allow_agent_control || !settings.allowed_actions.includes('start') || !settings.allowed_actions.includes('send')) return '自主委派需要当前项目的 Agent 控制、启动和发送许可';
+  if (!agent || agent.delegation?.status !== 'available') return agent?.delegation?.reason ?? '当前 Agent 未声明自主委派能力';
+  return swaStartRequestBlock(agent, settings);
+}
 
 /** 只判定是否可向原启动门提交请求，不改变任何原生能力观察。 */
 export function swaStartRequestBlock(agent: SwaAgent, settings: ProjectSettings): string | null {

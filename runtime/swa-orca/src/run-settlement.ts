@@ -26,6 +26,12 @@ function fail(message: string): never { throw new OrchestrationError('operation_
 // 完整回滚的只读前置等待可重新观察；已经可能产生效果的未知状态仍保留原回执。
 export class RunSettlementWaiting extends Error {}
 
+export function handoffParentDisposition(turn: { outcome: string } | null, workerState: string | undefined): 'waiting' | 'resume' | 'failed' {
+  if (!turn) return 'waiting'
+  if (turn.outcome !== 'success' || workerState === 'stopped') return 'failed'
+  return workerState === 'ready' ? 'resume' : 'waiting'
+}
+
 export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }): Invocation {
   const h = mail.handoff, marker = `native-handoff:${mail.id}`
   // 新输入沿用原调用者和账号；首次提交、问题工具等字段只属于原操作。
@@ -139,6 +145,8 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
       if (status.state === 'rejected' || status.state === 'unknown') fail('The actual parent continuation was rejected or remains unknown')
       return
     }
+    const parentTurn = nativeTurn(runtime, h.parent_dispatch_id, scope)
+    if (handoffParentDisposition(parentTurn, db.getWorkerDispatch(h.parent_dispatch_id)?.state) !== 'resume') return
     const starts = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts WHERE method='swa.controllerDeliver' AND state='completed' AND caller_fingerprint=? AND json_valid(receipt)=1 AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.run_id')=? AND json_extract(receipt,'$.native.dispatchId')=?`).all(authority(runtime), scope.run_id, h.parent_dispatch_id))
     if (starts.length !== 1) fail('The original parent Worker input authorization is unavailable')
     const original = invocationSchema.parse(nativeObject(JSON.parse(starts[0]!.receipt)).invocation), message = db.getMessageById(mail.id)!
@@ -166,9 +174,10 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
       if (tree.tasks.some(child => child.parent_id === task.id && !['completed', 'failed'].includes(child.status)) || pending(scope)) continue
       if (hasTaskQuestionSettlementBlock(runtime, scope, task.id, worker.dispatchId)) continue
       const received = mails(scope, worker.dispatchId).filter(mail => mail.handoff.reply === 'resume')
-      if (received.some(mail => !mail.handoff.resume_request_id || db.getMutationReceipt(authority(runtime), mail.handoff.resume_request_id)?.state !== 'completed')) continue
       let turn = nativeTurn(runtime, worker.dispatchId, scope)
       if (!turn) continue
+      const parentFailed = received.length > 0 && handoffParentDisposition(turn, db.getWorkerDispatch(worker.dispatchId)?.state) === 'failed'
+      if (!parentFailed && received.some(mail => !mail.handoff.resume_request_id || db.getMutationReceipt(authority(runtime), mail.handoff.resume_request_id)?.state !== 'completed')) continue
       if (turn.outcome !== 'success' && db.getWorkerDispatch(worker.dispatchId)?.state !== 'stopped') await cleanup(scope, worker.dispatchId, turn.session_id, `${base}/${worker.dispatchId}/stop`, true)
       turn = nativeTurn(runtime, worker.dispatchId, scope)
       if (!turn) fail('The native terminal changed during its cleanup')
@@ -184,20 +193,20 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
         try {
           assertTaskQuestionSettlementReady(runtime, scope, task.id, worker.dispatchId)
           if (!ownerAlive() || !isDeepStrictEqual(nativeTurn(runtime, worker.dispatchId, scope), turn) || pending(scope) || readRootResultInventory(db, scope, workers(scope)).signature !== inventory) throw new RunSettlementWaiting('The Run changed before its execution settlement')
-          if (turn.outcome === 'success') {
+          if (turn.outcome === 'success' && !parentFailed) {
             const settled = db.settleWorkerReportInTransaction({ taskId: task.id, dispatchId: worker.dispatchId, outcome: 'succeeded', result })
             if (settled.action !== 'settled') fail('The original Worker lifecycle refused its observed native completion')
           } else db.updateTaskStatus(task.id, 'failed', result)
-          for (const mail of received) db.markAsReadAndDelivered([mail.id])
+          if (!parentFailed) for (const mail of received) db.markAsReadAndDelivered([mail.id])
           let mailId: string | null = null
           if (handoff?.requester_dispatch_id) {
             const parent = db.getDispatchContextById(handoff.requester_dispatch_id)
             if (!parent || parent.run_id !== scope.run_id || parent.task_id !== task.parent_id || handoff.parent_task_id !== task.parent_id) fail('The original handoff parent changed')
-            const payload = { schema: 'swa.handoff-completion.v1', source_task_id: task.id, source_dispatch_id: worker.dispatchId, parent_task_id: parent.task_id, parent_dispatch_id: parent.id, reply: handoff.reply, outcome: turn.outcome, acceptance: 'unreviewed', resume_request_id: handoff.reply === 'resume' ? randomUUID() : null }
+            const payload = { schema: 'swa.handoff-completion.v1', source_task_id: task.id, source_dispatch_id: worker.dispatchId, parent_task_id: parent.task_id, parent_dispatch_id: parent.id, reply: handoff.reply, outcome: parentFailed ? 'parent_interrupted' : turn.outcome, acceptance: 'unreviewed', resume_request_id: handoff.reply === 'resume' ? randomUUID() : null }
             mailId = `${task.id}/completed`
             db.insertMessage({ id: mailId, runId: scope.run_id, from: `dispatch:${worker.dispatchId}`, to: `dispatch:${parent.id}`, type: 'handoff', deliveryContract: 'audit_only', subject: 'SWA child execution completed', body: result, payload: JSON.stringify(payload) })
           }
-          const receipt = { project_id: scope.project_id, controller: scope.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, task_id: task.id, phase: 'execution_completed', acceptance: 'unreviewed', turn, result, mail_id: mailId }
+          const receipt = { project_id: scope.project_id, controller: scope.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, task_id: task.id, phase: 'execution_completed', acceptance: 'unreviewed', turn, result, mail_id: mailId, ...(parentFailed ? { continuation: 'parent_interrupted', unread_child_results: received.filter(mail => !mail.read).map(mail => mail.id) } : {}) }
           mutation.recordReceipt(receipt); db.db.exec('COMMIT'); return receipt
         } catch (error) { db.db.exec('ROLLBACK'); throw error }
       }) } catch (error) { if (error instanceof RunSettlementWaiting) continue; throw error }

@@ -1220,6 +1220,12 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 
 `question_mode: disabled | native` 只在新 Run、worker.start 或 Role 默认值中选择；旧记录没有该字段时使用 disabled。Run/Worker 未显式选择时沿准确角色版本继承其默认值，没有角色时为 disabled；当前 Worker 不支持中途切换。角色编辑、归档、复用和实际启动记录保留原模式。native 仅适用于固定 Pi 1.0.1 的 per-session 账号合同，对应 `native_launch.tools.mode: questions-only`、固定安装扩展来源和唯一允许工具 `swa_ask`；其它 Agent 或账号合同明确拒绝。GUI 依据当前 `control.questions` 声明及项目选择开放入口，未得到能力时保留已选模式并阻止启动。声明支持、来源配置、实际启动和真实提问成功分别记录。
 
+**角色与自主委派。** Command 与 Role 的 `delegation_mode: disabled | native` 独立于问答模式，省略时继承准确角色版本，没有角色时关闭。当前 native 仅支持 Pi per-session 账号及当前项目 `allowed_tools` 中的 `swa_delegate`。工具集合采用固定 collaboration 扩展，包含委派及显式启用的问答；关闭问答不自动关闭委派。当前 Worker 不允许中途更换工具模式。
+
+`swa.delegate` 只接收 `role_id/revision/input/completion_criteria/mode`，mode 为 work 或 consult。项目、Run、父 Task/Dispatch、原启动选择、session、lease 与 native toolCall 从实际调用者解析，模型不得提供。外层请求 ID 由实际 session/nativeSession/assistantEntry/toolCall 稳定派生，内层 worker.start 使用独立且确定的 ID；复用原 mutation_receipts，不增加调度或重试账本。Go 在每次调用和实际启动边界核当前项目、settings revision、start/send、父子 CLI、工具许可与原 Grant；consult 禁止继续委派。
+
+委派回执在子 Worker 启动确认或失败后完成，不持有请求等待子任务成果；ready、failed、rejected 和 unknown 保留实际状态。未知请求只查询原 ID，不更换 ID 重发。子任务结束沿既有 mail/resume 将成果送回父会话；父任务忙时等待，父任务失败、取消或停止时保留未读成果并允许失败结算，不声称父 Agent 已读取。角色版本、默认值和显式覆盖均保存到原始启动记录，同请求重试不能切换执行目标。实现与真实验收状态见[本轮任务](../tasks/swa-role-delegation-20261027.md)。
+
 questions-only 只允许以原文 question 创建问题或以 resume 读取所属原问题的答案，不接受路径、命令、模型、账号或任意收件人；原生文件和命令工具保持关闭。disabled 的原工具集合与启动参数不变。Worker preamble 从实际原启动选择取得模式：disabled 要求直接交付最终助手正文，由运行系统收集；questions-only 只说明可用的 `swa_ask` 和最终成果。原任务规格与验收条件保留，不能要求模型使用实际不可用的协作命令。consult 继续要求 disabled，不能隐式升级工具范围；既定 ToolsOff N4/N6 验收与本问答模式分别记录。
 
 CLI `run` 默认等待整个递归 Run；`wait` 用精确 controller/run_id/root task_id 重连，只观察现有工作。`--strict` 将任一递归子任务失败计为失败，非严格模式仍展示完整失败列表。退出码沿既有 2—7，新增 8 超时、9 需要回答或继续原问题、130 取消等待；取消等待不自动停止 Worker。`export` 默认读取已记录成果快照，`--audit` 收集完整原生记录，CLI 写入明确的新输出目录，GUI 下载实际数据。GUI 与 CLI 共用 `swa.run-view.v1`，显示后代、依赖、Dispatch、问题、阻塞、失败和成果。浏览器按项目保存三项 Run 身份，刷新仅恢复只读观察；忘记连接只清除浏览器记录。认证检查失败且命令未提交时清理本地待定请求，发出后的未知请求保持原 ID。

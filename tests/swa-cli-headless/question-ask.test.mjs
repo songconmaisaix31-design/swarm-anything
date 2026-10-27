@@ -24,7 +24,8 @@ try {
     "export { ORCHESTRATION_MUTATION_REQUEST_METHODS } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/runs/mutation-request-show';",
     "export { commandSchema, roleDefinitionSchema, questionToolParamsSchema, questionResumeBody } from './runtime/swa-orca/src/contracts';",
     "export { questionAskMethod, admitQuestionProducer, observeRunQuestions, assertQuestionResume, hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './runtime/swa-orca/src/question-ask';",
-    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation } from './runtime/swa-orca/src/run-settlement';",
+    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition } from './runtime/swa-orca/src/run-settlement';",
+    "export { assertDelegationParentStopOpen } from './runtime/swa-orca/src/delegation';",
     "export { inspectStructuredTrace } from './runtime/swa-orca/src/task-result';",
     "export { readRunView } from './runtime/swa-orca/src/run-view';"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
@@ -45,6 +46,39 @@ function storage(name) {
   const scope = { project_id: project, controller: 'question-storage-only', run_id: run.id, root_task_id: task.id, authority_domain: db.getOrCreateLocalMutationCallerFingerprint(), context: {} }
   return { db, runtime, project, run, task, dispatch, scope }
 }
+
+test('parent delegation rejects its exact pending stop or release, including unknown effects', async () => {
+  const { assertDelegationParentStopOpen } = createRequire(bundle)(bundle)
+  // 只验证真实 SQLite reservation 的权限与范围规则，不构造 Worker 或原生终止证据。
+  for (const action of ['worker.stop', 'worker.release']) {
+    const value = storage(`parent-${action}-reservation`), executor = getOrchestrationMutationExecutor(value.runtime)
+    const check = () => assertDelegationParentStopOpen(value.runtime, value.run.id, value.dispatch.id)
+    try {
+      for (const variant of ['other-authority', 'other-run', 'other-dispatch', 'completed-rejection']) {
+        const id = randomUUID(), caller = variant === 'other-authority' ? randomUUID() : value.scope.authority_domain
+        const request = { id, authToken: '', method: 'swa.controllerDeliver', orchestrationRequestId: id }
+        const receipt = { action, run_id: variant === 'other-run' ? randomUUID() : value.run.id, invocation: { command: { dispatch_id: variant === 'other-dispatch' ? randomUUID() : value.dispatch.id } } }
+        const operation = executor.run(request, { variant, action }, mutation => {
+          value.db.checkpointPendingMutationReceipt({ ...mutation.identity, receipt: JSON.stringify(receipt) })
+          if (variant === 'completed-rejection') { mutation.recordReceipt({ ...receipt, state: 'rejected', effects_applied: false }); return }
+          throw new OrchestrationError('operation_unknown', 'Preserve the original unrelated reservation')
+        }, caller)
+        if (variant === 'completed-rejection') await operation
+        else await assert.rejects(operation, { code: 'operation_unknown' })
+        assert.doesNotThrow(check)
+      }
+      const id = randomUUID(), request = { id, authToken: '', method: 'swa.controllerDeliver', orchestrationRequestId: id }
+      await assert.rejects(executor.run(request, { action }, mutation => {
+        value.db.checkpointPendingMutationReceipt({ ...mutation.identity, receipt: JSON.stringify({ action, run_id: value.run.id, invocation: { command: { dispatch_id: value.dispatch.id } } }) })
+        assert.throws(check, { code: 'scope_denied' })
+        throw new OrchestrationError('operation_unknown', 'Preserve the exact parent stop reservation')
+      }, value.scope.authority_domain), { code: 'operation_unknown' })
+      assert.throws(check, { code: 'scope_denied' })
+      await assert.rejects(executor.run(request, { action }, () => assert.fail('An unknown stop cannot execute twice'), value.scope.authority_domain), { code: 'operation_unknown' })
+      assert.throws(check, { code: 'scope_denied' })
+    } finally { value.db.close() }
+  }
+})
 
 test('rolled-back settlement can observe a new turn under the same request while unknown effects stay reserved', async () => {
   const { RunSettlementWaiting } = createRequire(bundle)(bundle)
@@ -176,6 +210,16 @@ test('original SQLite Task settlement isolates another Task question and defers 
     assert.equal(view.status, 'waiting_input')
     assert.equal(value.db.db.prepare("SELECT COUNT(*) count FROM messages WHERE type='escalation'").get().count, 0)
   } finally { value.db.close() }
+})
+
+test('handoff waits for a busy parent and permits failed or cancelled parents to settle without a resume', () => {
+  const { handoffParentDisposition } = createRequire(bundle)(bundle)
+  // 构造终态只验证结算规则；不作为模型、工具调用或停止的执行证据。
+  assert.equal(handoffParentDisposition(null, 'ready'), 'waiting')
+  assert.equal(handoffParentDisposition({ outcome: 'success' }, 'ready'), 'resume')
+  for (const outcome of ['error', 'aborted']) assert.equal(handoffParentDisposition({ outcome }, 'ready'), 'failed')
+  assert.equal(handoffParentDisposition({ outcome: 'success' }, 'stopped'), 'failed')
+  assert.equal(handoffParentDisposition({ outcome: 'success' }, 'starting'), 'waiting')
 })
 
 test('the original pending ask checkpoint remains visible in its Run and cannot reuse its request with different parameters', async () => {

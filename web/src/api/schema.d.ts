@@ -7752,6 +7752,8 @@ export interface components {
             default_model: string;
             /** @enum {unknown} */
             question_mode?: "disabled" | "native";
+            /** @enum {unknown} */
+            delegation_mode?: "disabled" | "native";
             skills: string[] | null;
             knowledge: string[] | null;
         };
@@ -7789,6 +7791,11 @@ export interface components {
              * @enum {unknown}
              */
             question_mode?: "disabled" | "native";
+            /**
+             * @description Explicit new Run/Worker delegation mode. Native requires Pi and current project permission for swa_delegate; omitted retains the selected role default or disabled.
+             * @enum {unknown}
+             */
+            delegation_mode?: "disabled" | "native";
             /** @constant */
             source?: "transcript";
             cursor?: string;
@@ -7995,6 +8002,7 @@ export interface components {
                     images?: components["schemas"]["observation"];
                     model_switch?: components["schemas"]["observation"];
                     questions?: components["schemas"]["observation"];
+                    delegation?: components["schemas"]["observation"];
                 };
                 requirements: components["schemas"]["requirements"];
             }[];
@@ -8166,6 +8174,18 @@ export interface components {
                 native_contract: "pi-cli-1.0.1";
                 extension: components["schemas"]["nativeConfigurationSource"];
                 allowed: "swa_ask"[];
+            } | {
+                /** @constant */
+                mode: "collaboration";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+                extension: components["schemas"]["nativeConfigurationSource"];
+                allowed: [
+                    "swa_delegate"
+                ] | [
+                    "swa_ask",
+                    "swa_delegate"
+                ];
             };
         };
         nativeLaunchPolicy: components["schemas"]["nativePiLaunchPolicy"] | components["schemas"]["nativeOpenCodeLaunchPolicy"] | components["schemas"]["nativeCodexLaunchPolicy"] | components["schemas"]["nativeClaudeLaunchPolicy"] | components["schemas"]["nativePiPerSessionLaunchPolicy"];

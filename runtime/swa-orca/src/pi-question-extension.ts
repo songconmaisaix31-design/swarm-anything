@@ -7,12 +7,13 @@ import { nativeObject, questionOriginSchema, questionRequestID, questionToolPara
 import { piQuestionDescription, piQuestionParameters } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 
 // 固定扩展只读取本次真实调用；请求标识不能由模型或重连次数决定。
-export default function registerQuestionTool(pi: ExtensionAPI) {
+export default function registerQuestionTool(pi: ExtensionAPI, collaboration = false) {
   const sessionId = readInjectedAgentSessionId(), proof = process.env[ORCA_AGENT_SESSION_SPAWN_TOKEN_ENV]
   if (!sessionId || !proof) throw new Error('The native question Worker identity is unavailable')
   const client = new RuntimeClient(undefined, undefined, undefined, undefined, undefined, undefined, { proof })
+  const toolsCurrent = () => collaboration ? [['swa_delegate'], ['swa_ask', 'swa_delegate']].some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed)) : isDeepStrictEqual(pi.getActiveTools(), ['swa_ask'])
   pi.on('before_agent_start', () => {
-    if (!isDeepStrictEqual(pi.getActiveTools(), ['swa_ask'])) {
+    if (!toolsCurrent()) {
       process.stderr.write('native_question_active_tools_changed\n')
       process.exit(1)
     }
@@ -23,7 +24,7 @@ export default function registerQuestionTool(pi: ExtensionAPI) {
     exposure: 'model-only', executionMode: 'sequential',
     parameters: Type.Unsafe(piQuestionParameters),
     async execute(toolCallId, input, signal, _onUpdate, context) {
-      if (!isDeepStrictEqual(pi.getActiveTools(), ['swa_ask'])) { process.stderr.write('native_question_active_tools_changed\n'); process.exit(1) }
+      if (!toolsCurrent() || !pi.getActiveTools().includes('swa_ask')) { process.stderr.write('native_question_active_tools_changed\n'); process.exit(1) }
       const params = questionToolParamsSchema.parse(input)
       const entries = context.sessionManager.getEntries().filter(entry => entry.type === 'message' && entry.message.role === 'assistant' && entry.message.content.some(block => block.type === 'toolCall' && block.id === toolCallId))
       if (entries.length !== 1) throw new Error('The actual native assistant tool entry is not unique')

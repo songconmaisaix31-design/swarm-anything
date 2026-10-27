@@ -24,7 +24,7 @@ import { agentSessionSendBodyFingerprint } from '../../../third_party/orca-v1.4.
 import { SendBodyStructure } from '../../../third_party/orca-v1.4.230/src/shared/rpc-contract/structured-agent-session-message-params'
 import type { OrchestrationDb } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/db/orchestration-db'
 import { iterateJournalEpochRows, readJournalSessionEpoch } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-row-table'
-import { agentSelectionSchema, nativeObject, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
+import { agentSelectionSchema, nativeObject, nativeToolModes, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
 import { readNativeOpenCodeSessionSource, validateOpenCodeExport } from './opencode-session-result'
 import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
 import { readPrivateOpenCodeInputKey } from './private-opencode-account'
@@ -701,7 +701,7 @@ export async function validateRecordedRunExport(runtime: OrcaRuntimeService, sco
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Claude account source changed before export')
       checks.push(() => { assertNativeClaudeCurrent(snapshot); validateClaudeExport(snapshot, serialized) })
     } else if (account.kind === 'pi-native-api-key-per-session') {
-      const snapshot = await inspectNativePiPolicy({ ...common, provider: account.provider, modelId: account.model_target.model_id, questionMode: selection.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled' })
+      const snapshot = await inspectNativePiPolicy({ ...common, provider: account.provider, modelId: account.model_target.model_id, ...nativeToolModes(selection.native_launch.tools) })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Pi account source changed before export')
       const env = privatePiEnvironment(join(account.private_root, sessionId), environment)
       checks.push(() => { assertNativePiSnapshotCurrent(snapshot); validatePiExport(snapshot, serialized, env) })
@@ -854,14 +854,14 @@ export async function completeTaskResult(runtime: OrcaRuntimeService, scope: Sco
       const inventory = readStructuredInputInventory(db, scope, worker.dispatchId)
       const bindings = structuredInputBindings(inventory, { scope, dispatchId: worker.dispatchId, sessionId, fence: original.binding.runtime_fence, selection })
       inputInventories.push({ dispatchId: worker.dispatchId, signature: inventory.signature })
-      const snapshot = await inspectNativePiPolicy({ executable: selection.executable, version: selection.version, sourceHome: account.source_home, projectId: scope.project_id, questionMode: selection.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled', provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(await readAgentSettings(), cwd) })
+      const snapshot = await inspectNativePiPolicy({ executable: selection.executable, version: selection.version, sourceHome: account.source_home, projectId: scope.project_id, ...nativeToolModes(selection.native_launch.tools), provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(await readAgentSettings(), cwd) })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Pi account source changed before export')
       await verifyPrivatePiSessionAccount(snapshot, sessionId)
       const home = join(account.private_root, sessionId)
       const privateSources = await Promise.all(['auth.json', 'settings.json', ...(snapshot.models === null ? [] : ['models.json'])].map(name => nativeConfigurationSource(join(home, name))))
       const trace = await readStructuredTrace({ agent: 'pi', path: join(data, 'workers', sessionId, 'provider-events.ndjson'), record, binding: original.binding, nativeId: head.handle.nativeId, runtimeId: z.string().min(1).parse(nativeWorker.runtime_epoch), maximum: Math.min(resultObservationLimits.source_bytes, maximum - used), requireClosed: resource.release_state === 'released', requirePrivatePath: path => requireNativeCodexPrivatePath(path, false) })
       const ready = trace.rows.find(row => row.event === 'policy_ready')
-      const expectedSources = [...snapshot.sources.pinnedFiles, ...privateSources.filter(source => basename(source.path) !== 'settings.json'), ...(snapshot.policy.tools.mode === 'questions-only' ? [snapshot.policy.tools.extension] : [])]
+      const expectedSources = [...snapshot.sources.pinnedFiles, ...privateSources.filter(source => basename(source.path) !== 'settings.json'), ...(snapshot.policy.tools.mode !== 'disabled' ? [snapshot.policy.tools.extension] : [])]
       if (!ready || !isDeepStrictEqual(nativeObject(ready.detail).sources, expectedSources)) return fail('The native Pi execution or private account source differs from its original observation')
       providerEvents = trace
       used += Buffer.byteLength(JSON.stringify(trace.value))

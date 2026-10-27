@@ -12,7 +12,7 @@ import { AskParams } from '../../../third_party/orca-v1.4.230/src/main/runtime/r
 import { structuredWorkerIdentities } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-worker-identity'
 import { agentSessionProviderHandleChainHead } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-provider-handle'
 import { getStructuredAgentSessionHost } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-wire/structured-agent-session-registry'
-import { strictPiQuestionResultSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { strictPiQuestionResultSchema, strictPiCollaborationRawSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { strictPiQuestionRawSchema, parseStrictPiJson } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { createIncrementalNdjsonFramer } from '../../../third_party/orca-v1.4.230/src/shared/main-process-ndjson-framer'
 import { replayJournal } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-open'
@@ -29,7 +29,7 @@ import { inspectStructuredTrace } from './task-result'
 function deny(code: string, message: string): never { throw new OrchestrationError(code, message, { effectsApplied: false }) }
 const rowsSchema = z.array(z.object({ request_id: z.string(), state: z.enum(['pending', 'completed']), receipt: z.string() }))
 
-function startForSession(runtime: OrcaRuntimeService, sessionId: string) {
+function startForSession(runtime: OrcaRuntimeService, sessionId: string, tool: 'swa_ask' | 'swa_delegate' | 'any' = 'swa_ask') {
   const db = runtime.getOrchestrationDb()
   const rows = rowsSchema.parse(db.db.prepare(`SELECT request_id,state,receipt FROM mutation_receipts WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND json_valid(receipt)=1
     AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.swa_input_binding.session_id')=?`).all(authority(runtime), sessionId))
@@ -37,7 +37,8 @@ function startForSession(runtime: OrcaRuntimeService, sessionId: string) {
   const row = rows[0]!, receipt = nativeObject(JSON.parse(row.receipt)), invocation = invocationSchema.parse(receipt.invocation)
   const selection = agentSelectionSchema.parse(receipt.selection), binding = structuredInputBindingSchema.parse(receipt.swa_input_binding)
   const dispatch = db.getDispatchContextById(binding.dispatch_id), task = dispatch && db.getTask(dispatch.task_id)
-  if (invocation.command.action !== 'worker.start' || invocation.command.request_id !== row.request_id || binding.parent_request !== row.request_id || binding.child_request !== `${row.request_id}/native` || receipt.child_request !== binding.child_request || !isDeepStrictEqual(selection, invocation.selection) || selection.agent_id !== 'pi' || selection.native_launch.account.kind !== 'pi-native-api-key-per-session' || selection.native_launch.tools.mode !== 'questions-only' || !dispatch || !task || dispatch.assignee_orca_session_id !== sessionId || dispatch.run_id !== invocation.scope.run_id || !isTaskDescendant(db, dispatch.run_id, invocation.scope.root_task_id, task.id)) deny('scope_denied', 'The native question source differs from its original Run, Dispatch and selection')
+  const tools = selection.native_launch.tools
+  if (invocation.command.action !== 'worker.start' || invocation.command.request_id !== row.request_id || binding.parent_request !== row.request_id || binding.child_request !== `${row.request_id}/native` || receipt.child_request !== binding.child_request || !isDeepStrictEqual(selection, invocation.selection) || selection.agent_id !== 'pi' || selection.native_launch.account.kind !== 'pi-native-api-key-per-session' || tools.mode === 'disabled' || tool !== 'any' && !tools.allowed.some(name => name === tool) || !dispatch || !task || dispatch.assignee_orca_session_id !== sessionId || dispatch.run_id !== invocation.scope.run_id || !isTaskDescendant(db, dispatch.run_id, invocation.scope.root_task_id, task.id)) deny('scope_denied', 'The native tool source differs from its original Run, Dispatch and selection')
   const run = db.getRun(dispatch.run_id)
   if (!run || run.legacy || !run.coordinator_handle) deny('scope_denied', 'The question Run has no current local consumer')
   const { scope, owner } = controllerScope(runtime, invocation.project.id, run.coordinator_handle)
@@ -45,15 +46,20 @@ function startForSession(runtime: OrcaRuntimeService, sessionId: string) {
   return { row, receipt, invocation, selection, binding, dispatch, scope, owner }
 }
 
-function producerIdentity(context: RpcContext) {
+export function producerIdentity(context: RpcContext, tool: 'swa_ask' | 'swa_delegate' | 'any' = 'swa_ask') {
   const { runtime } = context, sessionId = context.orchestrationCaller?.sessionId ?? context.orchestrationCompatibilityEvidence?.agentSessionId
   if (context.caller?.kind !== 'local-cli' || !sessionId || typeof sessionId !== 'string' || typeof context.swaQuestionProducerProof !== 'string') deny('scope_denied', 'The actual local question Worker source is required')
-  const identity = structuredWorkerIdentities.getBySessionId(sessionId), original = startForSession(runtime, sessionId)
+  const producer = nativePiToolSource(runtime, sessionId, tool)
+  const supplied = Buffer.from(context.swaQuestionProducerProof), actual = Buffer.from(producer.record.lease.ownerProcess!.spawnToken)
+  if (supplied.length !== actual.length || !timingSafeEqual(supplied, actual)) deny('scope_denied', 'The current native question Worker source proof is invalid')
+  return producer
+}
+
+export function nativePiToolSource(runtime: OrcaRuntimeService, sessionId: string, tool: 'swa_ask' | 'swa_delegate' | 'any') {
+  const identity = structuredWorkerIdentities.getBySessionId(sessionId), original = startForSession(runtime, sessionId, tool)
   const record = runtime.openedAgentSessionRecordStore()?.getRecord(sessionId), worker = runtime.getOrchestrationDb().getWorkerDispatch(original.dispatch.id)
   const owner = record?.lease.ownerProcess, head = record && agentSessionProviderHandleChainHead(record.providerHandleChain)
   if (!record || !identity || identity.hostScope.kind !== 'local' || identity.agent !== 'pi' || identity.dispatchId !== original.dispatch.id || identity.processIncarnation !== original.dispatch.process_incarnation || record.provider !== 'pi' || record.options?.model !== original.selection.model || record.location.wslDistro !== null || record.location.workspaceId !== original.owner.worktree_id || record.lease.claimStatus !== 'live' || record.lease.unreconciled || record.lease.handoffStage || record.lease.handoffOperationId || !owner || record.lease.runtimeFence !== original.binding.runtime_fence || !head || head.handle.agent !== 'pi' || head.handle.transport !== 'jsonl-rpc' || head.linkId !== record.lease.provenHandleLinkId || head.mintedAtFence !== record.lease.runtimeFence || !worker || !['starting', 'ready'].includes(worker.state) || worker.runtime_epoch !== runtime.getRuntimeId()) deny('worker_identity_changed', 'The native question Worker lease, source, fence or consumer is no longer current')
-  const supplied = Buffer.from(context.swaQuestionProducerProof), actual = Buffer.from(owner.spawnToken)
-  if (supplied.length !== actual.length || !timingSafeEqual(supplied, actual)) deny('scope_denied', 'The current native question Worker source proof is invalid')
   const account = original.selection.native_launch.account
   if (account.kind !== 'pi-native-api-key-per-session' || !('variable' in record.accountHome) || record.accountHome.variable !== 'PI_CODING_AGENT_DIR' || record.accountHome.path !== join(account.private_root, sessionId)) deny('worker_identity_changed', 'The actual native question account changed')
   assertDeliveryGrantCurrent(original.invocation)
@@ -61,7 +67,7 @@ function producerIdentity(context: RpcContext) {
 }
 
 function sourceFor(producer: ReturnType<typeof producerIdentity>, cwd?: string) {
-  return readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), ...(cwd === undefined ? {} : { cwd: realpathSync.native(cwd) }), provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api })
+  return readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), ...(cwd === undefined ? {} : { cwd: realpathSync.native(cwd) }), provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api, collaboration: producer.selection.native_launch.tools.mode === 'collaboration' })
 }
 
 function questionReceipts(runtime: OrcaRuntimeService, dispatchId: string) {
@@ -107,7 +113,7 @@ function inspectCall(context: RpcContext, requestId: string, params: unknown, cw
 
 export async function admitQuestionProducer(request: RpcRequest, params: unknown, context: RpcContext) {
   if (request.swaOwnerCapability !== undefined || !['status.get', 'orchestration.ask', 'orchestration.requestShow'].includes(request.method)) deny('scope_denied', 'The native question producer cannot invoke this method')
-  const producer = producerIdentity(context)
+  const producer = producerIdentity(context, request.method === 'status.get' ? 'any' : 'swa_ask')
   if (request.method === 'status.get') {
     if (Object.keys(nativeObject(params)).length || request.swaQuestionOrigin !== undefined) deny('scope_denied', 'Question producer status may only perform the original compatibility check')
     return
@@ -220,7 +226,7 @@ function nativeQuestionIdle(runtime: OrcaRuntimeService, original: ReturnType<ty
     if (row.event === 'failure') deny('operation_unknown', 'The actual native question provider recorded a failure')
     if (row.event === 'write_intent' && nativeObject(row.detail).command === 'prompt') lastPrompt = row.sequence
     if (row.event === 'native_record') {
-      const detail = nativeObject(row.detail), frame = strictPiQuestionRawSchema.parse(detail.frame)
+      const detail = nativeObject(row.detail), frame = (original.selection.native_launch.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : strictPiQuestionRawSchema).parse(detail.frame)
       if (!isDeepStrictEqual(parseStrictPiJson(z.string().parse(detail.raw_line)), frame)) deny('evidence_missing', 'The actual native question frame changed')
       if (frame.type === 'agent_settled') settled = row.sequence
       if (frame.type === 'response' && frame.command === 'get_state' && !frame.data.isStreaming && !frame.data.isCompacting && frame.data.pendingMessageCount === 0) idle = row.sequence
@@ -259,10 +265,10 @@ export function observeRunQuestions(runtime: OrcaRuntimeService, scope: Pick<Sco
         const worker = db.getWorkerDispatch(row.dispatch_id)
         inspectStructuredTrace({ agent: 'pi', record, binding: original.binding, nativeId: head.handle.nativeId, runtimeId: z.string().min(1).parse(worker?.runtime_epoch), requireClosed: true, rows: trace })
       } else if (record.lease.claimStatus !== 'live' || !record.lease.ownerProcess || record.lease.runtimeFence !== original.binding.runtime_fence) return unconfirmed()
-      const source = readPiQuestionEntries({ path: head.handle.nativeId, privateRoot: join(account.private_root, sessionId), provider: account.provider, modelId: account.model_target.model_id, api: account.model_target.api })
+      const source = readPiQuestionEntries({ path: head.handle.nativeId, privateRoot: join(account.private_root, sessionId), provider: account.provider, modelId: account.model_target.model_id, api: account.model_target.api, collaboration: original.selection.native_launch.tools.mode === 'collaboration' })
       let ended = false
       for (const entry of source.entries) {
-        if (entry.type !== 'message' || entry.message.role !== 'toolResult' || entry.message.isError) continue
+        if (entry.type !== 'message' || entry.message.role !== 'toolResult' || entry.message.toolName !== 'swa_ask' || entry.message.isError) continue
         const value = strictPiQuestionResultSchema.parse(entry.message.details)
         if (value.messageId !== question.message_id) continue
         const receipt = receipts.find(item => item.request_id === value.request_id && item.state === 'completed' && isDeepStrictEqual(item.value, value))

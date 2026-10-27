@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 import type { RpcContext, RpcRequest } from '../../../third_party/orca-v1.4.230/src/main/runtime/rpc/core'
 import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/orchestration-error'
-import { invocationSchema, nativeObject } from './contracts'
+import { invocationSchema, nativeObject, type Invocation } from './contracts'
 import { authority, controllerOwnerSchema, controllerScope, exactController, observeControllerExited, type Controller } from './controller-scope'
 import { admitNativeWorkerInputRPC } from './worker-input'
 import { assertDeliveryGrantCurrent } from './delivery-admission'
@@ -11,6 +11,7 @@ import { fixedTaskSpec, workerTaskSpec } from './collaboration-records'
 import { isTaskDescendant } from './run-view'
 import { questionReplyParams, readAnswerQuestion } from './question-answer'
 import { admitQuestionProducer } from './question-ask'
+import { admitDelegationProducer, isDelegationRequest } from './delegation'
 
 function deny(message: string): never { throw new OrchestrationError('scope_denied', message, { effectsApplied: false }) }
 const historyReads = new Set(['status.get', 'orchestration.requestShow', 'orchestration.runShow', 'orchestration.taskList', 'orchestration.workerShow', 'orchestration.workerList', 'orchestration.workerRead'])
@@ -21,10 +22,15 @@ export function isProductOwner(request: RpcRequest, context: RpcContext, capabil
   return context.caller?.kind === 'local-cli' && typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value, 'hex'), capability)
 }
 
-export async function admitControllerRPC(request: RpcRequest, input: unknown, context: RpcContext, capability: Buffer) {
+export async function admitControllerRPC(request: RpcRequest, input: unknown, context: RpcContext, capability: Buffer, admitDelegation?: (invocation: Invocation) => Promise<unknown>) {
   const params = input == null ? {} : nativeObject(input)
   if (request.swaQuestionProducerProof !== undefined || request.swaQuestionOrigin !== undefined) {
-    await admitQuestionProducer(request, params, { ...context, orchestrationCompatibilityEvidence: request.orchestrationCompatibilityEvidence })
+    const producerContext = { ...context, orchestrationCompatibilityEvidence: request.orchestrationCompatibilityEvidence }
+    if (isDelegationRequest(request, producerContext)) {
+      if (!admitDelegation) deny('Current project delegation admission is unavailable')
+      await admitDelegationProducer(request, params, producerContext, admitDelegation)
+    }
+    else await admitQuestionProducer(request, params, producerContext)
     return
   }
   const ownerBridge = isProductOwner(request, context, capability)
