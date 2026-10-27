@@ -56,3 +56,17 @@ Pi 停止路径原先把当前项目设置与旧启动记录全对象比较，�
 真实角色验收 `/workspace/swa-role-acceptance-6406-01` 在首条只读 capabilities 的 OpenCode installed 断言失败；configured/enabled 均 available，installed 为 unknown。尚未调用 role.create、worker.start 或模型。两个 Controller 关闭、Grant 撤销与服务退出均成功。最小复现 `/workspace/swa-opencode-version-probe-6406-01/result.json` 使用官方 Linux CLI 和安装物版本专用环境：175 毫秒内正常 close/code 0，stdout 为 `opencode v2.0.31`，stderr 为 INFO cli starting。根因为版本环境继承了产品固定 `OPENCODE_PRINT_LOGS=1`，而版本探针要求 stderr 为空。
 
 修复仅在版本专用环境删除该日志变量，Worker 日志及严格安装状态断言保留。固定官方源码确认仅值 `1` 开启 stderr 日志；安装物原 helper 加相同单键删除的局部真实复验 153 毫秒内 close/code 0，stdout 版本准确、stderr 空，原 Worker 环境仍为 `1`。该结果尚未经过新产品构建。独立源审、`pnpm typecheck:swa` 和 `git diff --check` 均通过；原件为上述目录的 `result-without-stderr-logging.json` 及 `.verification/role-delegation-20261027/opencode-version-typecheck.log`。
+
+该修复以 `f52094d57c2fdda49abc6c72d06d20e3c57fcdae` 提交推送。用户随后批准新增四目录删除，操作前重新完整核对归档、实际引用及保留安装；固定操作退出 0，准确四根已删除，原件为 `.verification/cloud-setup/space-role-6406-20261027-16/operation-01/`。清理后实际可用 4152741888 字节，高于当前完整交付起点 4030836736 字节；I6406/I5c25、归档、任务、凭据与失败记录保留。
+
+在空间准备期间独立执行 I6406 的纯 Pi N4，原件 `/workspace/swa-n4-acceptance-6406-01`，Run `run_7c6861b64114`。严格 driver 的九个源文件与安装提交逐字一致，观察器使用准确 Git archive；该结果只属于 `6406c4b9`。四个 Pi 均实际输出，目标停止回执为 stopped/closed_agent_terminal，原生 abort 成功且四个 custody 记录确认退出，其余三个 Worker 完成，其中主 Worker 完成追加输入后的第二轮。
+
+最小失败链为：目标 `ctx_675412221627` 停止成功后，Worker 为 stopped/process_stopped，Dispatch failed/last_failure=stopped；其 Task 仍 blocked，资源 owned/not_requested，根 Task 仍 ready。真实 journal 末态为 interrupted、缺少 outcome，`nativeTurn` 因缺 outcome 返回 null，跳过任务结算与释放。其余三个 Task completed 且资源 released。该 N4 整项失败，不把进程输出或成功停止代替完整交付。
+
+根因确认后，仅对经 executable、原请求、父进程及启动时刻核实的本次 CLI 观察者发送 SIGTERM，CLI 退出 130/run_wait_cancelled；原 driver 保存 FAIL 和原请求 `520b307b-d180-4c8c-b07b-2060f4c2aa18` 的未知状态，不重放或补记完成。Grant 已撤销。随后 serve EOF 返回 6/delivery_unknown：原 Worker 资源未释放、Controller 未关闭，私有 daemon retirement 为 busy，两个所属后代未自动退出。完整服务退出与自动清理均不通过，原失败记录保持。修复方案在 SWA 结算边界只识别准确原 stop 回执及真实退出，保留原生 outcome 缺失，将确认取消记为任务失败并沿已有 release；局部边界及新安装复验仍待执行。
+
+只读源审确认原 driver 在未知请求或资源未释放时有意保留 Controller；该私有终端使 daemon 拒绝退休。宿主核对 executable、boot ID、PID 启动时刻、父子关系和本次数据目录后，分别向确证 Controller 与私有 daemon 发送 SIGTERM；前者已消失，后者进入已退出的 Z 状态。手工收尾记录为 `manual-process-cleanup.json`，不会把原自动清理失败改为通过。
+
+停止结算小修仅识别原 interrupted/null outcome、准确完成的 stop 父子回执、停止状态及 released lease，并复用既有 collect 的完整原生退出校验；事务复核后将任务结算为 failed/cancellation，沿原 release 清理，同时支持用户已先完成 release 的顺序。原 journal 和模型文本保持。独立源审、12 项问答/委派/停止 SQLite 规则、runtime 类型检查及 diff 检查通过；日志为 `.verification/role-delegation-20261027/confirmed-stop-r1.log` 与 `confirmed-stop-typecheck-r1.log`。新安装真实 N4、strict 失败反馈、导出和服务退出仍待复验，N6 暂不启动。
+
+另以最新规则 bundle 对原 N4 两个只读数据库核验候选，准确停止 Worker 返回 `confirmed_worker_stop`，原 scope、启动/停止父子回执、Dispatch/resource 与释放后的 lease/fence 相符。未实例化运行服务、迁移数据库或写入原 journal。该局部检查只确认真实失败输入可进入新候选，不代表 collect、事务、后续释放或完整 Run 已通过。

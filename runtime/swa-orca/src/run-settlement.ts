@@ -15,6 +15,7 @@ import { invocationSchema, nativeObject, structuredInputBindingSchema, type Invo
 import { readRunTaskTree } from './run-view'
 import { readRootResultInventory, readNativeInputStatus, type completeTaskResult } from './task-result'
 import { hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './question-ask'
+import type { AgentSessionRecord } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-record'
 
 type CompleteResult = Awaited<ReturnType<typeof completeTaskResult>>
 type Collector = (scope: Scope, workspaceId: string, dispatchId?: string) => Promise<CompleteResult>
@@ -57,6 +58,29 @@ export function assertTaskQuestionSettlementReady(runtime: OrcaRuntimeService, s
 export function requestRunSettlement(runtime: OrcaRuntimeService, scope: Scope) { triggers.get(runtime)?.(scope) }
 export function runCleanupApproval(runtime: OrcaRuntimeService, sessionId: string) { return cleanupGuards.get(runtime)?.get(sessionId) }
 
+// 运行系统明确完成的停止与模型 verdict 分开保存；缺失的原生 outcome 不回填。
+export function confirmedWorkerStop(runtime: OrcaRuntimeService, scope: Scope, dispatchId: string, record: AgentSessionRecord) {
+  const db = runtime.getOrchestrationDb(), caller = authority(runtime), dispatch = db.getDispatchContextById(dispatchId), worker = db.getWorkerDispatch(dispatchId), resource = db.getWorkerTerminalResourceByOwner(dispatchId), run = db.getRun(scope.run_id)
+  if (scope.authority_domain !== caller || !dispatch || dispatch.run_id !== scope.run_id || dispatch.assignee_orca_session_id !== record.sessionId || dispatch.status !== 'failed' || dispatch.last_failure !== 'stopped' || !dispatch.capability_revoked_at || !dispatch.completed_at || worker?.state !== 'stopped' || worker.stage !== 'process_stopped' || worker.runtime_epoch !== runtime.getRuntimeId() || !resource || resource.owner_dispatch_id !== dispatchId || resource.process_incarnation !== dispatch.process_incarnation || !(resource.ownership_state === 'owned' && resource.release_state === 'not_requested' || resource.ownership_state === 'released' && resource.release_state === 'released') || !run || run.coordinator_handle !== scope.controller || record.lease.claimStatus !== 'released' || record.lease.ownerProcess !== null || record.lease.unreconciled || record.lease.deathEvidence?.kind !== 'exit-observed') return null
+  const rows = (action: 'worker.start' | 'worker.stop') => z.array(z.object({ request_id: z.string(), payload_hash: z.string(), receipt: z.string() })).parse(db.db.prepare(`SELECT request_id,payload_hash,receipt FROM mutation_receipts
+    WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND state='completed' AND json_valid(receipt)=1
+    AND json_extract(receipt,'$.action')=? AND json_extract(receipt,'$.run_id')=? AND json_extract(receipt,'$.native.dispatchId')=?
+    ${action === 'worker.stop' ? "AND json_extract(receipt,'$.native.alreadySettled')=0 AND json_extract(receipt,'$.native.processAction')='closed_agent_terminal'" : ''} LIMIT 2`).all(caller, action, scope.run_id, dispatchId))
+  const starts = rows('worker.start'), stops = rows('worker.stop')
+  if (starts.length !== 1 || stops.length !== 1) return null
+  const start = starts[0]!, stop = stops[0]!, opened = nativeObject(JSON.parse(start.receipt)), ended = nativeObject(JSON.parse(stop.receipt))
+  const first = invocationSchema.safeParse(opened.invocation), last = invocationSchema.safeParse(ended.invocation), binding = structuredInputBindingSchema.safeParse(opened.swa_input_binding)
+  if (!first.success || !last.success || !binding.success) return null
+  const original = first.data, current = last.data, input = binding.data, nativeStart = nativeObject(opened.native), nativeStop = nativeObject(ended.native)
+  const startChild = db.getMutationReceipt(caller, `${start.request_id}/native`), stopChild = db.getMutationReceipt(caller, `${stop.request_id}/native`)
+  if (!startChild?.receipt || startChild.state !== 'completed' || startChild.method !== 'orchestration.workerStart' || !stopChild?.receipt || stopChild.state !== 'completed' || stopChild.method !== 'orchestration.workerStop') return null
+  const childStart = nativeObject(JSON.parse(startChild.receipt)), childStop = nativeObject(JSON.parse(stopChild.receipt))
+  if (childStart.dispatchId !== dispatchId || childStart.taskId !== dispatch.task_id || childStart.state !== 'ready') return null
+  if (opened.project_id !== scope.project_id || ended.project_id !== scope.project_id || opened.controller !== scope.controller || ended.controller !== scope.controller || opened.root_task_id !== scope.root_task_id || ended.root_task_id !== scope.root_task_id || opened.child_request !== startChild.request_id || ended.child_request !== stopChild.request_id || !isDeepStrictEqual(original.scope, scope) || !isDeepStrictEqual(current.scope, scope) || original.project.id !== scope.project_id || current.project.id !== scope.project_id || current.project.root !== original.project.root || original.command.action !== 'worker.start' || original.command.request_id !== start.request_id || original.command.controller !== scope.controller || current.command.action !== 'worker.stop' || current.command.request_id !== stop.request_id || current.command.controller !== scope.controller || current.command.dispatch_id !== dispatchId || nativeStart.state !== 'ready' || nativeStart.taskId !== dispatch.task_id || original.selection?.agent_id !== record.provider || !isDeepStrictEqual(original.selection, opened.selection) || input.parent_request !== start.request_id || input.child_request !== startChild.request_id || input.dispatch_id !== dispatchId || input.session_id !== record.sessionId || input.agent !== record.provider || input.consumer_generation !== run.consumer_generation || !isDeepStrictEqual(childStart.swa_input_binding, input) || record.lease.deathEvidence.ownerFence !== input.runtime_fence || record.lease.runtimeFence <= input.runtime_fence) return null
+  for (const receipt of [nativeStop, childStop]) if (receipt.dispatchId !== dispatchId || receipt.state !== 'stopped' || receipt.alreadySettled !== false || receipt.processAction !== 'closed_agent_terminal') return null
+  return { source: 'confirmed_worker_stop' as const, request_id: stop.request_id, start_request_id: start.request_id, owner_fence: input.runtime_fence, start_payload_hash: start.payload_hash, stop_payload_hash: stop.payload_hash, child_payload_hash: stopChild.payload_hash }
+}
+
 function nativeTurn(runtime: OrcaRuntimeService, dispatchId: string, scope: Scope) {
   const db = runtime.getOrchestrationDb(), host = getStructuredAgentSessionHost()
   if (!host) fail('The actual structured session host is unavailable')
@@ -71,9 +95,11 @@ function nativeTurn(runtime: OrcaRuntimeService, dispatchId: string, scope: Scop
   const replay = replayJournal(journal, sessionId)
   if (!replay || replay.damage || replay.newer) fail('The original native turn journal is unavailable')
   const snapshot = renderJournalState(replay.state), latest = latestStructuredAgentSessionRequest(snapshot.items, snapshot.submissions)
-  if (!latest || latest.turnState === 'running' || !latest.outcome || snapshot.submissions.some(row => row.dispatchState === 'pending' || row.dispatchState === 'unknown')) return null
+  if (!latest || latest.turnState === 'running' || snapshot.submissions.some(row => row.dispatchState === 'pending' || row.dispatchState === 'unknown')) return null
   if (snapshot.items.some(item => (item.body.kind === 'question' || item.body.kind === 'approval') && item.body.resolution.state === 'pending')) return null
-  return { dispatch_id: dispatch.id, task_id: dispatch.task_id, session_id: sessionId, turn_id: latest.id, outcome: latest.outcome, epoch: replay.state.epoch, sequence: replay.state.lastSequence, fence: record.lease.runtimeFence, result: latestStructuredAgentSessionAssistantMessage(snapshot.items) }
+  const termination = latest.outcome === null && latest.kind === 'turn' && latest.turnState === 'interrupted' ? confirmedWorkerStop(runtime, scope, dispatchId, record) : null
+  if (!latest.outcome && !termination) return null
+  return { dispatch_id: dispatch.id, task_id: dispatch.task_id, session_id: sessionId, turn_id: latest.id, outcome: latest.outcome ?? 'cancellation', ...(termination ? { termination, native_outcome: null } : {}), epoch: replay.state.epoch, sequence: replay.state.lastSequence, fence: record.lease.runtimeFence, result: latestStructuredAgentSessionAssistantMessage(snapshot.items) }
 }
 
 export function validateHandoffInput(runtime: OrcaRuntimeService, invocation: Invocation) {
@@ -196,6 +222,11 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
       const complete = await collect(scope, owned.owner.worktree_id, worker.dispatchId), output = complete.workers[0]
       const actual = z.object({ availability: z.string(), final: z.object({ text: z.string() }).nullable().optional() }).parse(output?.native_session)
       if (!output || turn.outcome === 'success' && (actual.availability !== 'complete' || !actual.final?.text)) fail('The native turn has no complete actual delivery')
+      if (turn.termination) {
+        // released lease 的 collect 已由 inspectStructuredTrace 验证完整原生关闭证明。
+        const source = z.object({ native_session_id: z.string(), fence: z.number(), runtime_epoch: z.string(), custody: z.record(z.string(), z.unknown()) }).parse(output.source)
+        if (!output.provider_events || source.native_session_id !== turn.session_id || source.fence !== turn.termination.owner_fence || source.runtime_epoch !== runtime.getRuntimeId()) fail('The confirmed Worker stop has no matching complete native closure')
+      }
       const result = actual.final?.text ?? turn.result, inventory = readRootResultInventory(db, scope, workers(scope)).signature
       const assignment = task.spec.startsWith('{') ? z.object({ schema: z.literal('swa.handoff-task.v1'), handoff: z.object({ reply: z.enum(['resume', 'poll']), requester_dispatch_id: z.string().nullable(), parent_task_id: z.string() }) }).safeParse(JSON.parse(task.spec)) : null
       const handoff = assignment?.success ? assignment.data.handoff : null

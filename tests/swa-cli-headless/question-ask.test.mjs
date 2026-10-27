@@ -24,7 +24,7 @@ try {
     "export { ORCHESTRATION_MUTATION_REQUEST_METHODS } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/runs/mutation-request-show';",
     "export { commandSchema, roleDefinitionSchema, questionToolParamsSchema, questionResumeBody } from './runtime/swa-orca/src/contracts';",
     "export { questionAskMethod, admitQuestionProducer, observeRunQuestions, assertQuestionResume, hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './runtime/swa-orca/src/question-ask';",
-    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition } from './runtime/swa-orca/src/run-settlement';",
+    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition, confirmedWorkerStop } from './runtime/swa-orca/src/run-settlement';",
     "export { assertDelegationParentStopOpen, storedDelegationObservation } from './runtime/swa-orca/src/delegation';",
     "export { assertNativePiStopInvocation } from './runtime/swa-orca/src/agent-launch-admission';",
     "export { delegationRequestID, delegationWorkerRequestID } from './runtime/swa-orca/src/contracts';",
@@ -73,6 +73,69 @@ test('owned Pi stop retains its stable scope after project permissions change', 
     const changed = structuredClone(current); change(changed)
     assert.throws(() => assertNativePiStopInvocation(changed, original, requestId, dispatchId), /left its original scope/)
   }
+})
+
+test('cancelled settlement requires the exact completed stop, original start and released owner', () => {
+  const { confirmedWorkerStop, hashCanonical } = createRequire(bundle)(bundle)
+  const value = storage('confirmed-worker-stop-rule'), { db, runtime, scope } = value
+  try {
+    // 仅在真实 SQLite 中验证构造的权限/回执规则，不构造实际 CLI 或进程退出证明。
+    const session = randomUUID(), startId = randomUUID(), stopId = randomUUID(), incarnation = `structured:${session}`
+    const task = db.createTask({ runId: value.run.id, parentId: value.task.id, spec: 'Stop receipt boundary rule' })
+    const dispatch = db.createDispatchContext({ taskId: task.id, assigneeHandle: 'rule-worker', creator: { kind: 'system' }, maxDepth: 4 })
+    db.db.prepare('UPDATE runs SET coordinator_handle=? WHERE id=?').run(scope.controller, value.run.id)
+    db.db.prepare("UPDATE dispatch_contexts SET status='failed',last_failure='stopped',capability_revoked_at='rule-stop',completed_at='rule-stop',assignee_orca_session_id=?,process_incarnation=? WHERE id=?").run(session, incarnation, dispatch.id)
+    db.db.prepare("INSERT INTO worker_dispatches(dispatch_id,runtime_epoch,state,stage) VALUES (?,?,'stopped','process_stopped')").run(dispatch.id, runtime.getRuntimeId())
+    db.createWorkerTerminalResourceStatement({ dispatchId: dispatch.id, worktreeId: 'rule-workspace', terminalHandle: 'rule-worker', paneKey: null, processIncarnation: incarnation, ownership: 'owned' })
+    const selection = { agent_id: 'pi', adapter: 'rule-only', execution_mode: 'structured', executable: '/rule/pi', version: '1.0.1', model: 'stepfun/step-3.5-flash', provider: 'stepfun', external_target: 'pi', settings_source: { kind: 'native' }, settings_revision: 1, configuration_version: 'rule-only', native_launch: { schema: 'swa.native-launch.v1', account: { kind: 'pi-native-api-key-per-session', provider: 'stepfun', source_home: '/rule/source', auth_source: { path: '/rule/source/auth.json', version: 'rule-only' }, models_source: null, private_root: '/rule/private', model_target: { model_id: 'step-3.5-flash', api: 'openai-completions', base_url: 'https://api.stepfun.com/v1' } }, tools: { mode: 'disabled', native_contract: 'pi-cli-1.0.1' } } }
+    const caller = { id: 'rule-human', kind: 'human', project_id: value.project, settings_revision: 1 }, project = { id: value.project, root, settings: { revision: 1, allowed_tools: ['project_shell'] } }
+    const binding = { parent_request: startId, child_request: `${startId}/native`, dispatch_id: dispatch.id, agent: 'pi', execution_mode: 'structured', session_id: session, operation_id: 'rule-original-input', runtime_fence: 2, consumer_generation: db.getRun(value.run.id).consumer_generation, body: {} }
+    const receipt = (requestId, action, invocation, native) => ({ action, project_id: value.project, controller: scope.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, child_request: `${requestId}/native`, invocation, native })
+    const started = receipt(startId, 'worker.start', { command: { action: 'worker.start', controller: scope.controller, request_id: startId }, caller, project, scope, selection }, { dispatchId: dispatch.id, taskId: task.id, state: 'ready' })
+    Object.assign(started, { selection, swa_input_binding: binding })
+    const nativeStop = { dispatchId: dispatch.id, state: 'stopped', alreadySettled: false, processAction: 'closed_agent_terminal' }
+    const stopped = receipt(stopId, 'worker.stop', { command: { action: 'worker.stop', controller: scope.controller, dispatch_id: dispatch.id, request_id: stopId }, caller: { ...caller, settings_revision: 2 }, project: { ...project, settings: { revision: 2, allowed_tools: [] } }, scope }, nativeStop)
+    const save = (id, method, body) => {
+      const identity = { callerFingerprint: scope.authority_domain, requestId: id, method, payloadHash: hashCanonical(body) }
+      db.beginMutationReceipt(identity); db.completeMutationReceipt({ ...identity, receipt: JSON.stringify(body) })
+    }
+    save(startId, 'swa.controllerDeliver', started)
+    save(`${startId}/native`, 'orchestration.workerStart', { ...started.native, swa_input_binding: binding })
+    save(stopId, 'swa.controllerDeliver', stopped)
+    save(`${stopId}/native`, 'orchestration.workerStop', nativeStop)
+    const record = { sessionId: session, provider: 'pi', lease: { claimStatus: 'released', ownerProcess: null, runtimeFence: 3, unreconciled: false, deathEvidence: { kind: 'exit-observed', ownerFence: 2 } } }
+    const read = (candidate = record, currentScope = scope) => confirmedWorkerStop(runtime, currentScope, dispatch.id, candidate)
+    const counts = () => [db.db.prepare('SELECT count(*) n FROM tasks').get().n, db.db.prepare('SELECT count(*) n FROM mutation_receipts').get().n]
+    const before = counts(), proof = read()
+    assert.equal(proof?.source, 'confirmed_worker_stop'); assert.equal(proof.request_id, stopId); assert.equal(proof.owner_fence, 2)
+    assert.deepEqual(read(), proof); assert.deepEqual(counts(), before)
+    for (const sql of [
+      "UPDATE mutation_receipts SET state='pending' WHERE request_id=?",
+      "UPDATE mutation_receipts SET receipt=json_set(receipt,'$.native.alreadySettled',json('true')) WHERE request_id=?",
+      "UPDATE mutation_receipts SET receipt=json_set(receipt,'$.invocation.project.root','/different-project') WHERE request_id=?",
+      "UPDATE mutation_receipts SET receipt=json_set(receipt,'$.invocation.scope.run_id','different-run') WHERE request_id=?"
+    ]) {
+      db.db.exec('BEGIN'); try { db.db.prepare(sql).run(stopId); assert.equal(read(), null) } finally { db.db.exec('ROLLBACK') }
+    }
+    for (const [id, sql] of [
+      [`${stopId}/native`, "UPDATE mutation_receipts SET state='pending' WHERE request_id=?"],
+      [`${stopId}/native`, "UPDATE mutation_receipts SET receipt=json_set(receipt,'$.dispatchId','other-dispatch') WHERE request_id=?"],
+      [startId, "UPDATE mutation_receipts SET receipt=json_set(receipt,'$.swa_input_binding.session_id','other-session') WHERE request_id=?"],
+      [startId, "UPDATE mutation_receipts SET caller_fingerprint='other-authority' WHERE request_id=?"],
+      [dispatch.id, "UPDATE worker_dispatches SET runtime_epoch='other-runtime' WHERE dispatch_id=?"],
+      [dispatch.id, "UPDATE worker_terminal_resources SET release_state='requested' WHERE owner_dispatch_id=?"]
+    ]) {
+      db.db.exec('BEGIN'); try { db.db.prepare(sql).run(id); assert.equal(read(), null) } finally { db.db.exec('ROLLBACK') }
+    }
+    for (const lease of [{ claimStatus: 'live' }, { ownerProcess: {} }, { deathEvidence: null }, { deathEvidence: { kind: 'exit-observed', ownerFence: 1 } }, { runtimeFence: 2 }, { unreconciled: true }]) assert.equal(read({ ...record, lease: { ...record.lease, ...lease } }), null)
+    assert.equal(read(record, { ...scope, project_id: randomUUID() }), null)
+    db.db.exec('BEGIN')
+    try {
+      db.db.prepare("UPDATE worker_terminal_resources SET ownership_state='released',release_state='released' WHERE owner_dispatch_id=?").run(dispatch.id)
+      assert.deepEqual(read(), proof)
+    } finally { db.db.exec('ROLLBACK') }
+    assert.deepEqual(read(), proof); assert.deepEqual(counts(), before)
+  } finally { db.close() }
 })
 
 test('parent delegation rejects its exact pending stop or release, including unknown effects', async () => {
