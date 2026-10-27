@@ -1,0 +1,345 @@
+name: SWA Windows native candidate
+on:
+  workflow_dispatch:
+    inputs:
+      build_candidate:
+        description: 'Run a complete candidate only after reporting the failure MRE, cause and local validation'
+        type: boolean
+        required: false
+        default: false
+      probe_visual_studio:
+        description: 'Run only the pinned Windows toolchain and PATH MRE'
+        type: boolean
+        required: false
+        default: false
+  push:
+    paths:
+      - '.github/workflows/swa-windows-native.yml'
+      - 'package.json'
+      - 'pnpm-*.yaml'
+      - 'go.mod'
+      - 'go.sum'
+      - 'dependencies.lock.json'
+      - 'third_party/orca-v1.4.230/package.json'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'contracts/**'
+      - 'runtime/**'
+      - 'scripts/**'
+      - 'tests/swa-cli-headless/**'
+      - 'third_party/orca-v1.4.230/src/**'
+      - 'third_party/orca-v1.4.230/native/**'
+      - 'third_party/orca-v1.4.230/config/**'
+  pull_request:
+    paths:
+      - '.github/workflows/swa-windows-native.yml'
+      - 'package.json'
+      - 'pnpm-*.yaml'
+      - 'go.mod'
+      - 'go.sum'
+      - 'dependencies.lock.json'
+      - 'third_party/orca-v1.4.230/package.json'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'contracts/**'
+      - 'runtime/**'
+      - 'scripts/**'
+      - 'tests/swa-cli-headless/**'
+      - 'third_party/orca-v1.4.230/src/**'
+      - 'third_party/orca-v1.4.230/native/**'
+      - 'third_party/orca-v1.4.230/config/**'
+permissions:
+  contents: read
+concurrency:
+  group: swa-windows-native-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  retained-windows-build-evidence:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-build-evidence]') }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 39900064207
+          name: swa-windows-native-evidence-50d099ddf9787a283573a477fb5f29017aef6c89
+          path: ${{ runner.temp }}/swa-retained-windows-build-evidence-50d099dd
+      - name: Read only the retained N46 build failure evidence
+        shell: pwsh
+        run: |
+          & ./scripts/report-swa-windows-evidence.ps1 -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'swa-retained-windows-build-evidence-50d099dd') -ExpectedRevision '50d099ddf9787a283573a477fb5f29017aef6c89'
+  retained-windows-service-evidence:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-service-evidence]') }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 39846687508
+          name: swa-windows-native-evidence-4aef552c63dd1ab5cd787fd2514d92a7815b943c
+          path: ${{ runner.temp }}/swa-retained-windows-service-evidence
+      - name: Read only the retained service failure evidence
+        shell: pwsh
+        run: |
+          & ./scripts/report-swa-windows-evidence.ps1 -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'swa-retained-windows-service-evidence') -ExpectedRevision '4aef552c63dd1ab5cd787fd2514d92a7815b943c'
+  windows-process-incarnation-control:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-incarnation-control]') }}
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare only the pinned component package manager
+        shell: pwsh
+        run: |
+          npm install --prefix (Join-Path $env:RUNNER_TEMP 'swa-pnpm') --no-audit --no-fund pnpm@11.27.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned component package manager installation failed' }
+      - name: Control only actual ordinary process incarnations
+        shell: pwsh
+        run: |
+          $env:SWA_PI_PROBE_PHASE = 'preflight'
+          try {
+            $python = (& python -c 'import sys; print(sys.executable)').Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Actual component Python is unavailable' }
+            & ./scripts/probe-swa-windows-private-pi.ps1 -PnpmCli (Join-Path $env:RUNNER_TEMP 'swa-pnpm/node_modules/pnpm/bin/pnpm.cjs') -Python $python -Component process-incarnation
+          } catch {
+            $phase = $env:SWA_PI_PROBE_PHASE
+            if ($phase -cnotmatch '^[a-z][a-z-]{0,63}$') { $phase = 'unknown' }
+            Write-Host ('::error title=Process incarnation control failed::phase=' + $phase + '; kind=' + $_.Exception.GetType().FullName)
+            throw 'The process incarnation component failed; see the bounded phase/type metadata'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-windows-process-incarnation-control-${{ github.sha }}
+          path: |
+            .verification/swa-ci/windows-process-incarnation/driver-result.json
+            .verification/swa-ci/windows-process-incarnation/preparation.json
+            .verification/swa-ci/windows-process-incarnation/metadata-process.json
+            .verification/swa-ci/windows-process-incarnation/*.exit.txt
+            .verification/swa-ci/windows-process-incarnation/control/result.json
+            .verification/swa-ci/windows-process-incarnation/control/cim-exit-observations.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+  prior-windows-build-diagnostics:
+    if: ${{ (github.event_name == 'workflow_dispatch' && !inputs.build_candidate && !inputs.probe_visual_studio) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-diagnostics]') && !contains(github.event.head_commit.message, '[swa-windows-vs-probe]')) }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 39778043411
+          name: swa-windows-native-evidence-11717767f82a8a4070351ff74674aa0d268f79b2
+          path: ${{ runner.temp }}/swa-prior-windows-evidence
+      - name: Read only the retained service failure evidence
+        shell: pwsh
+        run: |
+          & ./scripts/report-swa-windows-evidence.ps1 -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'swa-prior-windows-evidence') -ExpectedRevision '11717767f82a8a4070351ff74674aa0d268f79b2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare only the pinned component package manager
+        shell: pwsh
+        run: |
+          npm install --prefix (Join-Path $env:RUNNER_TEMP 'swa-pnpm') --no-audit --no-fund pnpm@11.27.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned component package manager installation failed' }
+      - name: Control only the private directory creation component
+        shell: pwsh
+        run: |
+          $env:SWA_PI_PROBE_PHASE = 'preflight'
+          try {
+            $python = (& python -c 'import sys; print(sys.executable)').Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Actual component Python is unavailable' }
+            & ./scripts/probe-swa-windows-private-pi.ps1 -PnpmCli (Join-Path $env:RUNNER_TEMP 'swa-pnpm/node_modules/pnpm/bin/pnpm.cjs') -Python $python
+          } catch {
+            $phase = $env:SWA_PI_PROBE_PHASE
+            if ($phase -cnotmatch '^[a-z][a-z-]{0,63}$') { $phase = 'unknown' }
+            Write-Host ('::error title=Private Pi component failed::phase=' + $phase + '; kind=' + $_.Exception.GetType().FullName)
+            throw 'The private Pi component failed; see the bounded phase/type metadata'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-windows-private-directory-control-${{ github.sha }}
+          path: |
+            .verification/swa-ci/windows-private-directory/driver-result.json
+            .verification/swa-ci/windows-private-directory/preparation.json
+            .verification/swa-ci/windows-private-directory/metadata-process.json
+            .verification/swa-ci/windows-private-directory/*.exit.txt
+            .verification/swa-ci/windows-private-directory/control/result.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+  visual-studio-discovery-probe:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.probe_visual_studio) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-vs-probe]')) }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - name: Prepare only the pinned package manager
+        shell: pwsh
+        run: |
+          npm install --prefix (Join-Path $env:RUNNER_TEMP 'swa-pnpm') --no-audit --no-fund pnpm@11.27.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned pnpm installation failed' }
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 39769388709
+          name: swa-windows-native-evidence-82e1b09503486c14a9dececb5e3673827894c120
+          path: ${{ runner.temp }}/swa-path-prior-evidence
+      - name: Read the original call site and fetch its exact source
+        shell: pwsh
+        run: |
+          & ./scripts/report-swa-windows-evidence.ps1 -EvidenceRoot (Join-Path $env:RUNNER_TEMP 'swa-path-prior-evidence') -ExpectedRevision '82e1b09503486c14a9dececb5e3673827894c120'
+          git fetch --no-tags --depth=1 origin 82e1b09503486c14a9dececb5e3673827894c120
+          if ($LASTEXITCODE -ne 0) { throw 'The exact failed build source is unavailable' }
+      - name: Observe actual build PATH and Git resolution
+        shell: pwsh
+        run: |
+          $env:SWA_VS_PROBE_PHASE = 'driver-invocation'
+          try {
+            & ./scripts/probe-swa-visualstudio.ps1 -PnpmCli (Join-Path $env:RUNNER_TEMP 'swa-pnpm/node_modules/pnpm/bin/pnpm.cjs') -PathOnly
+          } catch {
+            $phases = @('driver-invocation', 'preflight', 'frozen-prerequisites', 'original-node-pin', 'download-work-guard', 'pinned-node-download', 'pinned-node-verification', 'path-and-git', 'baseline-finder', 'official-vs-discovery', 'experimental-probe-selection', 'official-developer-shell', 'developer-shell-finder', 'actual-compiler-version')
+            $phase = if ($env:SWA_VS_PROBE_PHASE -cin $phases) { $env:SWA_VS_PROBE_PHASE } else { 'unknown' }
+            $detail = $_.Exception.Message
+            if ($detail -match '(?i)(authorization|\bbearer\b|\bbasic\s+[A-Za-z0-9+/=]+|token|api[-_]?key|client[-_]?secret|password|cookie|credential)') { $detail = '[sensitive exception text omitted]' }
+            $detail = [regex]::Replace($detail, '(?i)https?://\S+', '[URL omitted]')
+            $detail = [regex]::Replace($detail, '(?i)[a-z]:[\\/]Users[\\/][^\\/\s"'']+', '[CI user home]')
+            $detail = [regex]::Replace($detail, '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '')
+            $message = 'phase=' + $phase + '; ' + $detail
+            if ($message.Length -gt 2000) { $message = $message.Substring(0, 2000) + ' [original evidence retained]' }
+            $escaped = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ('::error title=SWA Visual Studio local probe::' + $escaped)
+            throw
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-visualstudio-probe-${{ github.sha }}
+          path: |
+            .verification/swa-ci/vs-probe/*.json
+            .verification/swa-ci/vs-probe/*.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+  windows-native-candidate:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_candidate && !inputs.probe_visual_studio) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-windows-full]') && !contains(github.event.head_commit.message, '[swa-windows-diagnostics]') && !contains(github.event.head_commit.message, '[swa-windows-vs-probe]')) }}
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.2
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare the pinned package manager
+        shell: pwsh
+        run: |
+          npm install --prefix (Join-Path $env:RUNNER_TEMP 'swa-pnpm') --no-audit --no-fund pnpm@11.27.0
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned pnpm installation failed' }
+      - name: Build, archive, install and exercise the actual candidate
+        shell: pwsh
+        run: |
+          $env:SWA_CI_PHASE = 'driver-invocation'
+          try {
+            $python = (& python -c 'import sys; print(sys.executable)').Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Actual Python is unavailable' }
+            & ./scripts/verify-swa-windows-native.ps1 -PnpmCli (Join-Path $env:RUNNER_TEMP 'swa-pnpm/node_modules/pnpm/bin/pnpm.cjs') -Python $python -Edition combined -ControllerInputCheck
+          } catch {
+            $message = ('phase=' + $env:SWA_CI_PHASE + '; ' + $_.Exception.Message)
+            if ($message.Length -gt 2000) { $message = $message.Substring(0, 2000) + ' [truncated; retain original logs]' }
+            $escaped = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ('::error title=SWA Windows native candidate::' + $escaped)
+            throw
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-windows-native-evidence-${{ github.sha }}
+          path: |
+            .verification/swa-ci/windows/SOURCE
+            .verification/swa-ci/windows/result.json
+            .verification/swa-ci/windows/logs/*.log
+            .verification/swa-ci/windows/logs/*.exit.txt
+            .verification/swa-ci/windows/logs/installed-acl.json
+            .verification/swa-ci/windows/smoke/result.json
+            .verification/swa-ci/windows/smoke/readiness-eof/result.json
+            .verification/swa-ci/windows/smoke/readiness-eof/stdout.json
+            .verification/swa-ci/windows/smoke/readiness-eof/stderr.log
+            .verification/swa-ci/windows/smoke/readiness-eof/cim-exit-observations.json
+            .verification/swa-ci/windows/smoke/readiness-eof/ready-service-observation.json
+            .verification/swa-ci/windows/smoke/readiness-eof/web-http-observation.json
+            .verification/swa-ci/windows/smoke/readiness-eof/latest-actual-observation.json
+            .verification/swa-ci/windows/smoke/readiness-eof/actual-observation.json
+            .verification/swa-ci/windows/smoke/readiness-eof/unsettled.json
+            .verification/swa-ci/windows/service-observer-exit.json
+            .verification/swa-ci/windows/service-evidence-summary.json
+            .verification/swa-ci/windows/smoke/readiness-eof/service-query-evidence.json
+            .verification/swa-ci/windows/smoke/readiness-eof/service-process-lifecycle.json
+            .verification/swa-ci/windows/process-incarnation/result.json
+            .verification/swa-ci/windows/process-incarnation/continuity-snapshot-a.json
+            .verification/swa-ci/windows/process-incarnation/continuity-snapshot-b.json
+            .verification/swa-ci/windows/process-incarnation/continuity-snapshot-c.json
+            .verification/swa-ci/windows/process-incarnation/continuity-exit-wait.json
+            .verification/swa-ci/windows/process-incarnation/cim-exit-observations.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: swa-windows-combined-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/swa-artifacts/*.zip
+            ${{ runner.temp }}/swa-artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 7

@@ -8,6 +8,8 @@ const normalized = JSON.parse(JSON.stringify(spec.components.schemas).replaceAll
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const schema = { $id: 'https://astrocyte.local/http-v1', $defs: normalized };
+const swaSchema = JSON.parse(await readFile(new URL('../contracts/swa-cli.schema.json', import.meta.url), 'utf8'));
+ajv.addSchema(swaSchema, new URL('./swa-cli.schema.json', schema.$id).href);
 ajv.addSchema(schema);
 let count = 0;
 for (const [name, definition] of Object.entries(normalized)) {
@@ -23,7 +25,7 @@ for (const [path, methods] of Object.entries(spec.paths)) {
       for (const media of Object.values(message?.content ?? {})) {
         if (media.example === undefined) continue;
         const definition = JSON.parse(JSON.stringify(media.schema).replaceAll('#/components/schemas/', '#/$defs/'));
-        const validate = ajv.compile({ ...definition, $defs: normalized });
+        const validate = ajv.compile({ ...definition, $id: new URL(`./http-example-${count}`, schema.$id).href, $defs: normalized });
         if (!validate(media.example)) throw new Error(`${method} ${path} example invalid: ${ajv.errorsText(validate.errors)}`);
         count++;
       }

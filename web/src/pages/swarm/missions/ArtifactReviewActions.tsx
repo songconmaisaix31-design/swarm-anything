@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import styles from './MissionWorkspace.module.css';
 
 export function ArtifactReviewActions({ state, disabled, pending, onAccept, onReject }: { state: string; disabled: boolean; pending: boolean; onAccept: () => void; onReject: (reason: string) => void }) {

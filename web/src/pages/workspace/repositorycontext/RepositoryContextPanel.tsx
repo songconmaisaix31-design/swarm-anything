@@ -8,7 +8,7 @@ import { QueryState } from '../../../components/QueryState';
 import { CommandState } from '../../../components/CommandState';
 import { Field } from '../../../components/DetailPanel';
 import { commandError } from '../../../utils/commandError';
-import { SelectField } from '../../attention/FormControls';
+import { SelectField } from '../../../components/FormControls';
 import { RepositoryQueryFields } from './RepositoryQueryFields';
 import { RepositoryIndexView, RepositoryQueryResultView } from './RepositoryResults';
 import { boundedQuery, newRepositoryDraft, repositoryRequest } from './repositoryDraft';

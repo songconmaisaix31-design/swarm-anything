@@ -51,6 +51,31 @@ tags:
   - name: relay
     description: Human confirmed Works Relay access layer
 paths:
+  /local-projects/{id}/orca/commands:
+    post:
+      operationId: executeOrcaCommand
+      x-s1-supported: true
+      summary: Execute one authorized command against the installed private Orca runtime
+      description: Uses current project grants and fixed context. Mutations require the same canonical UUID in request_id and Idempotency-Key. Native Run, Task, Dispatch, receipt and transcript remain authoritative; unknown operations are never resent automatically. Authenticated human safety stops recheck exact native ownership and remain available after execution approval changes.
+      tags: [workspace]
+      security: [{HumanSession: []}, {AgentBearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/S2ID'}
+        - {name: Idempotency-Key, in: header, required: false, description: Required for mutation and original request lookup, schema: {type: string, format: uuid}}
+        - {name: X-CSRF-Token, in: header, required: false, description: Required for an authenticated human POST; project Agent bearer requests use their current scoped grant, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: './swa-cli.schema.json#/$defs/command'}}}
+      responses:
+        '200': {description: Actual native result and identities, content: {application/json: {schema: {$ref: './swa-cli.schema.json#/$defs/envelope'}}}}
+        '400': {$ref: '#/components/responses/S2CommandError'}
+        '403': {$ref: '#/components/responses/S2CommandError'}
+        '404': {$ref: '#/components/responses/S2CommandError'}
+        '409': {description: Actual native refusal or unknown outcome, content: {application/json: {schema: {oneOf: [{$ref: './swa-cli.schema.json#/$defs/envelope'}, {$ref: '#/components/schemas/ErrorV1'}]}}}}
+        '500': {$ref: '#/components/responses/S2CommandError'}
+        '501': {$ref: '#/components/responses/S2CommandError'}
+        '503': {$ref: '#/components/responses/S2CommandError'}
+        default: {$ref: '#/components/responses/S2CommandError'}
   /openviking/status:
     get:
       operationId: getOpenVikingStatus
@@ -9315,6 +9340,16 @@ components:
   responses:
     S2CommandError: {description: 'Invalid command, current permission denial, version conflict or unavailable dependency. No execution retry.', content: {application/json: {schema: {$ref: '#/components/schemas/ErrorV1'}}}}
   schemas:
+    SwaTaskSpecV1:
+      $ref: './swa-cli.schema.json#/$defs/taskSpec'
+    SwaRegisteredAgentV1:
+      $ref: './swa-cli.schema.json#/$defs/registeredAgent'
+    SwaAgentCapabilitiesV1:
+      $ref: './swa-cli.schema.json#/$defs/capabilities'
+    SwaAgentSelectionV1:
+      $ref: './swa-cli.schema.json#/$defs/agentSelection'
+    SwaNativeLaunchPolicyV1:
+      $ref: './swa-cli.schema.json#/$defs/nativeLaunchPolicy'
     OpenVikingStatusV1:
       type: object
       additionalProperties: false

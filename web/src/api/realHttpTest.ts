@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { startS1Server, type S1Server } from '../../../tests/s1/server.mjs';
-import { createApiClient } from './client';
+import { createApiClient } from './transport';
 
 /** 测试记录实际 HTTP 请求，Node cookie jar 只保存本次服务颁发的会话。 */
 export function recordedClient(server: Pick<S1Server, 'apiURL'>) {

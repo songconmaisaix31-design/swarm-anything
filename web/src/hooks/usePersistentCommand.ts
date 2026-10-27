@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError } from '../api/client';
-import { formatError } from './useReadApi';
+import { ApiError } from '../api/transport';
+import { formatError } from './useReadState';
 
 export interface CommandOutcome {
   requestID?: string;

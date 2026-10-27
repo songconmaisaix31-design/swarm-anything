@@ -11,10 +11,10 @@
   },
   "direct_dependencies": {
     "root": {
-      "@steipete/summarize": "0.25.1",
       "@redocly/cli": "2.60.0",
       "ajv": "8.20.0",
       "ajv-formats": "3.0.1",
+      "error-stack-parser": "2.1.4",
       "openapi-typescript": "7.13.0",
       "yaml": "2.9.1"
     },
@@ -38,15 +38,70 @@
       "vite": "8.3.4",
       "vitest": "5.0.3"
     },
+    "swa_runtime": {
+      "@anthropic-ai/claude-agent-sdk": "0.3.284",
+      "@anthropic-ai/sdk": "0.122.0",
+      "@earendil-works/pi-coding-agent": "1.0.1",
+      "@earendil-works/pi-ai": "1.0.1",
+      "@electron-toolkit/utils": "4.0.0",
+      "@floating-ui/dom": "1.8.0",
+      "@linear/sdk": "97.0.0",
+      "@modelcontextprotocol/sdk": "1.32.1",
+      "@noble/hashes": "1.8.0",
+      "@orca/process-host": "workspace:*",
+      "@orca/windows-registry": "workspace:*",
+      "@orca/windows-security": "workspace:*",
+      "@parcel/watcher": "2.5.6",
+      "@sanity/diff-match-patch": "3.2.1",
+      "@streamparser/json": "0.0.26",
+      "@vscode/windows-process-tree": "0.8.0",
+      "@xterm/addon-serialize": "0.15.0-beta.301",
+      "@xterm/addon-unicode11": "0.10.0-beta.301",
+      "@xterm/headless": "6.1.0-beta.303",
+      "@xterm/xterm": "6.1.0-beta.304",
+      "agent-browser": "0.27.0",
+      "diff": "8.0.4",
+      "electron-updater": "6.8.10",
+      "emojibase-data": "17.0.0",
+      "fflate": "0.8.3",
+      "graphql": "16.14.2",
+      "i18next": "26.4.2",
+      "jose": "6.2.3",
+      "jsonc-parser": "3.3.1",
+      "node-pty": "1.1.0",
+      "posthog-node": "5.52.5",
+      "proper-lockfile": "4.1.2",
+      "qrcode": "1.5.4",
+      "react": "19.2.8",
+      "react-dom": "19.2.8",
+      "react-i18next": "17.0.15",
+      "serve-sim": "0.1.47",
+      "smol-toml": "1.9.1",
+      "ssh2": "1.17.0",
+      "stream-chain": "4.2.6",
+      "stream-json": "3.7.0",
+      "tldts": "7.4.16",
+      "tweetnacl": "1.0.3",
+      "ws": "8.22.0",
+      "yaml": "2.9.1",
+      "zod": "4.6.5",
+      "@types/express": "5.0.6",
+      "@types/node": "24.19.2",
+      "@types/proper-lockfile": "4.1.4",
+      "@types/qrcode": "1.5.6",
+      "@types/react": "19.2.18",
+      "@types/react-dom": "19.2.7",
+      "@types/ssh2": "1.15.6",
+      "@types/ws": "8.18.1",
+      "electron": "43.7.8",
+      "esbuild": "0.28.2",
+      "node-gyp": "12.3.0",
+      "typescript": "6.0.3"
+    },
     "go": {
-      "github.com/dop251/goja": "v0.0.0-20261013122152-245c54f48cfc",
       "github.com/google/uuid": "v1.6.0",
-      "github.com/modelcontextprotocol/go-sdk": "v1.6.1",
-      "github.com/olivere/ndjson": "v1.0.1",
-      "github.com/sourcegraph/jsonrpc2": "v0.2.1",
-      "golang.org/x/net": "v0.61.0",
+      "github.com/prometheus/procfs": "v0.22.0",
       "golang.org/x/sys": "v0.49.0",
-      "mvdan.cc/sh/v3": "v3.14.1",
       "modernc.org/sqlite": "v1.60.1"
     }
   },
@@ -56,6 +111,28 @@
     "go.sum",
     "requirements-validation.txt"
   ],
+  "codex_model_catalog": {
+    "version": "0.163.0",
+    "source": "https://github.com/openai/codex",
+    "tag": "rust-v0.163.0",
+    "revision": "83086188ae0614bd882818ff1aa23f3194962012",
+    "upstream_path": "codex-rs/models-manager/models.json",
+    "git_blob": "72a78e0eacf94103f4babda2a5245aba4ce848c1",
+    "sha256": "943ca7fe1d19ed019054158303f0dbbd80b3bef43b3aa425a71aa7cb3fb52c2b",
+    "source_file": "assets/codex-0.163.0/models.json",
+    "installed_file": "runtime/codex-policy/models.json",
+    "license": "Apache-2.0",
+    "license_files": {
+      "LICENSE": {
+        "git_blob": "4606e72e042564097e8780d66c1d4dcb611869bd",
+        "sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc"
+      },
+      "NOTICE": {
+        "git_blob": "2805899d56d0332d175cfc613c67d45d6f006db7",
+        "sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+      }
+    }
+  },
   "validation_python": {
     "requirements": "requirements-validation.txt",
     "dependencies": {

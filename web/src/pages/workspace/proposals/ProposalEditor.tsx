@@ -8,7 +8,7 @@ import { usePersistentCommand } from '../../../hooks/usePersistentCommand';
 import { CommandState } from '../../../components/CommandState';
 import { QueryState } from '../../../components/QueryState';
 import { commandError } from '../../../utils/commandError';
-import { SelectField } from '../../attention/FormControls';
+import { SelectField } from '../../../components/FormControls';
 import { ProposalContentFields } from './ProposalContentFields';
 import { FixedInputPicker } from './FixedInputPicker';
 import { ProposalRevision } from './ProposalRevision';

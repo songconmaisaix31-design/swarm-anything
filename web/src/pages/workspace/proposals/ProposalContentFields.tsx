@@ -1,4 +1,4 @@
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import styles from './ProposalWorkspace.module.css';
 
 // 表单保存可编辑字符串；API 内容由生成类型约束的调用组件组装。

@@ -1,13 +1,13 @@
 # SWA 产品规格
 ## DDD 开发规格
 
-**Attention Mirror · 共同工作区 · Morphogenesis**
+**工作区 · 角色 · 任务 · Agent 执行**
 
-版本：v0.1　　日期：2026-10-09　　语言：Go + TypeScript
+版本：开发中　　日期：2026-10-23　　语言：Go + TypeScript
 
 **任务流程：用户目标与既有项目 → 提案及批准 → 蜂群执行 → 检查与成果 → 用户采用与经验回流。**
 
-资料沉淀作为可选入口：收藏 → 沉淀 → 品味筛选 → 工作区候选。Attention、Workspace、Swarm 保持各自业务归属，用户可围绕已有项目筹划任务。原整合方向见 [META_PLAN](META_PLAN.md)，当前实现与验证范围见根 [STATUS](../STATUS.md)。用户最新首版为抽取 Orca CLI 执行能力并交付可控 Swarm CLI，已审方案与接口边界见 §21.1；原 M2/M3 通用 CLI/MCP 及 M2—M6 保留后续规划，其 MCP 与完整 S3 不自动成为首版前置，适用关系见 [QUESTIONS](QUESTIONS.md)。
+用户围绕已有项目提交目标，由同一 Run 保存任务、递归交接和成果。Astrocyte 与 Attention Mirror 分别抽为独立项目；认知、资料与执行的最新归属以及 run/wait/export 合同见 §21.5。历史资料流程和旧 S3 章节保留对应产品语义，其存在不代表 SWA 必须编译或启动另两个产品。当前实现与实际验证范围见 [STATUS](../STATUS.md)，用户决定见 [QUESTIONS](QUESTIONS.md)。
 
 本规格定义新平台的业务规则、接口和开发任务。`docs/SPEC.md` 是开发规格正文；Word 是同版阅读件。修改规格时先改 Markdown，再生成阅读件。
 
@@ -29,7 +29,7 @@
 
 ### 实施方式
 
-已有产品由一个 Go 主程序维护业务状态，一个 TypeScript 前端提供三模块界面。判断、Agent 和索引组件通过端口接入，保持现有模块化单体结构。首版 CLI 按 §21.1 新增独立 `swa` 入口和抽取的 Node 执行后台，复用 Workspace App 准入；实际安装、运行及功能验收由首版任务登记。
+当前 SWA 由 `swa-server` 维护 Workspace/Swarm 业务状态，TypeScript 前端提供项目、角色、Run 与 Worker 界面；`swa` CLI 和原生 Node 执行后台共用 Workspace App 准入。Astrocyte、Attention Mirror 各有独立进程、数据库和前端，当前边界见 §21.5，旧混合模块与研究设计按 [LEGACY](LEGACY.md) 保留。实际安装、运行及功能验收由当前任务登记。
 
 已确认的产品约束见第 01 节；工程默认值可以通过短 ADR 调整。涉及自动执行权、资料外发、目标或产品范围的变化，先提交用户决定。
 
@@ -811,6 +811,12 @@ Windows 与 Linux CI 分开记录环境、SOURCE_SHA、实际命令和结果。�
 
 ### 21.1 既有产品的旧方向与首版 CLI 边界
 
+本轮[六卡整合任务](../tasks/swa-task-cards-20261022.md)沿用本节执行权威与授权，以CLI候选优先、共享React工作台的组合候选随后推进；准确基线、来源与文件归属见[整合入口](integration/openmausbot/00-context.md)。共享身份、状态、请求恢复、退出码与数量合同见[01合同](integration/openmausbot/01-contract.md)。本轮最终验收默认N=3且可配置，N是测试参数，不构成产品固定上限；旧两Worker记录保留其原范围。`max_workers`为任务批准的安全正整数额度，pending/unknown start保持占用，超限不得静默缩减。`max_workers=2`时第三席拒绝继续作为原准入用例。完整成果遇到当前原生分页容量不足必须明确失败。任务文件的公开形状见`swa-cli.schema.json`的`taskSpec`，HTTP命令仍传`spec_file`，不新增inline spec。
+
+本轮目标包括Windows x64与Linux，实际原生Agent来源及逐引擎平台限制见[适配矩阵](integration/openmausbot/02-agent-matrix.md)。本次已确认的人类跨创建者例外仅为`worker.send`：同项目当前settings、动作、目录/固定上下文、原生CLI/模型和外发批准独立准入，不继承创建者Agent Grant，不以其有效为人类权限来源，原创建者关联保留来源。跨创建者`worker.start`仍拒绝，Agent仍严格绑定原Grant与主体，人类自己的start沿原规则。投递前再次核当前批准、原Dispatch/session/selection/代次及原request；当前权限或来源失效不得产生输入。实际实现和真实HTTP/SQLite及原生消费者验证分别记录。真实模型测试预算不设费用上限；固定公开输入、ToolsOff、私有资料/账户保全、超时和资源/并发准入保持。未连接Windows环境不表示平台验收完成。
+
+Linux服务身份使用实际boot_id、原始start_ticks和UID，不填Windows创建时间；服务级归属与每Worker完整退出分别核验。D内部合同已经实现，要求独占subreaper引导器、精确pidfd和收养child回收、两次内核ECHILD、父确认及原引导器真实退出。准确`6890522e43d7b81e99b09ca94acc27b9d3a5c7dd`的Linux组合安装已完成14项普通进程检查，其中11项使用装内原件、3项为同SHA诊断；该结果不包括Agent账号、模型或N=3。准确字段与未知边界见[共享合同](integration/openmausbot/01-contract.md)。Codex 0.163无模型metadata仅证明其实际目录/配置/feature来源，不证明原账号路由、有效工具全集、ToolsOff或推理；独立rollout读取器已有，NativeLaunch及产品来源/模型接线继续按后继验收。“大部分Agent”的验收分母见QUESTIONS当前待答项，不擅自用注册数量判通过。
+
 产品底座使用 Go/TypeScript/SQLite，旧 Python 执行内核保持独立研究来源。[H2，第 1 节] summarize 等工具可使用所需 Python 依赖；机制按完整业务意义、来源和验证迁入，保持单一任务执行权威。现行语言决定见 QUESTIONS，早期绝对禁令不再作为当前接入条件。
 
 既有 Go/TypeScript/SQLite 产品保持现有模块与数据。最新[首版可控 Swarm CLI 任务](../tasks/swa-cli-v1-20261020.md)集成抽取出的 Orca 无界面执行后台，采用独立 `swa` 命令、安装根、profile、数据库、端点及所属进程；本机 Orca 保持原安装、配置、账户及会话。用户决定与隔离验收见 [QUESTIONS](QUESTIONS.md) 和首版任务。
@@ -836,7 +842,9 @@ CLI/HTTP 复用 App 的项目主体、批准及动作准入；具体原生源码
 
 合法已认证人类的自有安全停止保留原规则：严格核项目和原生进程所属，执行批准撤销及旧上下文版本不阻断安全停止；Agent的执行与撤销准入保持。关闭控制端与创建任务/Worker的准入必须共同核原生持久占用：创建先保留时，关闭须拒绝或等待其明确结算；关闭先保留时，新建及输入拒绝，unknown保持原屏障。关闭helper不能代替停止所属独立Worker。
 
-完整成果沿准确d7已审[方案§5.5](https://github.com/songconmaisaix31-design/swarm-anything/blob/d7f21242259739cfb49a4f68a19a1a8f28bcec32/docs/standards/swa-cli-headless-20261020.md)、§21.1.2及T07/T13实施。`worker read`保留原生有界预览与游标；`task result`从已核所属的实际原生journal及对应Agent自产transcript取得内容，采用成熟严格解析，检查身份、格式、读取一致性及12MiB上限，不迁移、修补或换源。terminal只有有界输出时明确标注，不能作为完整成果通过。计划停止A时分别返回真实状态、已有部分和incomplete/unavailable/unknown；坏源或来源变化明确失败。B的完整成果、固定业务判据和全部相关资源退出/归档/释放仍为根Task完成条件，不追加A完成条件。实际项目执行目标来自稳定AgentSelection并核现有批准；新数据根不预置Grant，服务启动不签发token。候选携带真实首次人工授权步骤及必要使用说明，真实结果按同一安装候选核验。
+完整成果沿准确d7已审[方案§5.5](https://github.com/songconmaisaix31-design/swarm-anything/blob/d7f21242259739cfb49a4f68a19a1a8f28bcec32/docs/standards/swa-cli-headless-20261020.md)、§21.1.2及T07/T13实施。`worker read`保留原生有界预览与游标；`task result`从已核所属的实际原生journal及对应Agent自产transcript取得内容，采用成熟严格解析，检查身份、格式、读取一致性、单源12MiB及完整多Worker结果96MiB上限，不迁移、修补或换源。terminal只有有界输出时明确标注，不能作为完整成果通过。指定停止一项Worker时分别返回真实状态、已有部分和incomplete/unavailable/unknown；坏源或来源变化明确失败。其余Worker的完整成果、预定业务成功判据和全部相关资源退出/归档/释放仍为根Task完成条件；指定停止项保持停止状态，不追加其成功完成条件。旧A/B用例保留其原范围。本轮N=3须验证停止一项后其余至少两项保留原身份继续及一次同session追加输入，额度是上限，不强迫创建满额Worker。实际项目执行目标来自稳定AgentSelection并核现有批准；新数据根不预置Grant，服务启动不签发token。候选携带真实首次人工授权步骤及必要使用说明，真实结果按同一安装候选核验。
+
+多Worker完整结果按[容量任务](../tasks/swa-result-capacity-20261023.md)区分单源、汇总和实际传输：每个journal按UTF-8字节保持12MiB/100000行，完整结果JSON为96MiB，task.result/run.export响应为128MiB；其他动作响应保持16MiB。run/wait --export消费同一完整导出界。Go默认转义和实际run_view/envelope也计入响应字节，两个总界分别拒绝，不截断或自动重发。当前容量选择基于原四份真实来源；完整N6及第二轮峰值仍须实际验证。
 
 CLI输出和所属生命周期依准确b3f0e229已审方案§7.5及C01—C09实施。`--json`在stdout只发布一个完整结果，stderr保存诊断；已成功解析并校验的原请求ID及实际selector须在失败或取消时保留，未知身份省略。真实HTTP ErrorV1转换为既有CLI envelope，完整HTTP原件保存在既有`error.data`，HTTP trace与命令原请求ID各保留其来源；原生结果及错误数据保持。真实网络效果未知时只查询原请求，不重发；取消当前CLI等待返回130，不据此停止Worker。stdout实际不可写时将已知关联和实际影响保留到stderr并非零退出，不再次发布结果。
 
@@ -848,9 +856,11 @@ CLI输出和所属生命周期依准确b3f0e229已审方案§7.5及C01—C09实�
 
 准确`740ccdf9a9dfa33901274fd8dccd37c4beacf1fd`的[方案§4.5.2—§4.5.5及§7.8](https://github.com/songconmaisaix31-design/swarm-anything/blob/740ccdf9a9dfa33901274fd8dccd37c4beacf1fd/docs/standards/swa-cli-headless-20261020.md)已由独立c3fca056局部接受。本节定稿其中的只读发现、设置源、capabilities DTO、稳定AgentSelection及现有批准的技术契约；程序实施仍须准确CR及实际运行。输入与模式路由见§21.1.2，控制端恢复见§21.1.3；用户工具范围仍按QUESTIONS中的实际决定执行。
 
-`swa capabilities --json`沿既有项目token及POST `/api/v1/local-projects/{id}/orca/commands`的`{action:"capabilities"}`进入App observe准入。App的现有执行端口增加`Capabilities(ctx, projectID, requirements)`，由orca adapter调用私有只读`swa.capabilities`。requirements来自当前App项目设置及适用批准，HTTP正文不能提供身份或工具授权。发现只访问产品实际注册、必要本机配置及命令解析，无controller helper、模型请求或原Orca运行前提。
+`swa capabilities --json`沿既有项目token及POST `/api/v1/local-projects/{id}/orca/commands`的`{action:"capabilities"}`进入App observe准入。现有执行端口为`Capabilities(ctx, projectID, projectRoot, requirements)`，projectRoot仅取已授权项目的p.Root，经内部bridge/client及私有只读`swa.capabilities`传递。requirements来自当前App项目设置及适用批准，HTTP正文不能提供project_root、身份或工具授权。Go在调用前后核canonical root、当前项目root/settings revision及适用Grant；Node在异步发现前后核目录身份和实际Agent settings快照，变化拒绝结果。发现只给静态配置提供项目隔离上下文，不为全部Agent生成未消费的selection；无controller helper、模型请求或原Orca运行前提。
 
 注册事实来自产品内抽取的definition与真实adapter构造的StructuredAgentRegistry，保留原生重复ID及能力方法校验。已注册、启用、已安装、已配置、可启动及start/send/read/stop/resume/tools分别给出实际来源和available/unavailable/unknown；静态名单、文件存在、声明能力及本次真实调用各有自己的来源，不能互相替代。发现不自动运行模型或建立Worker来刷新。
+
+首次请求的静态门要求registered/enabled/installed/configured及control.start声明真实available，并使用服务返回的真实model；configured只证明已观察配置来源，不证明密钥有效、网络或模型访问成功。尚无握手的launchable/read/tools可保持unknown而不当作PASS，任一明确unavailable仍阻止相应请求。GUI与验收驱动不得要求这些未握手项全部available而永久阻止首次发起，也不得将unknown补成可用。GUI仅在当前项目CLI、settings revision/start许可和新鲜快照相符时派生可提交状态，按钮与onSubmit共门，原pending/unknown请求不重发。实际controller/worktree选型及当前Grant、账号、ToolsOff、输入、fence准入原样保留；真实Worker的ready/thread/turn、delta、停止及完整成果分别提供后验，静态发现不可复用为启动许可。Codex policy_ready中的remote_control_status='disabled'不单独证明全部工具关闭，仍须原native_launch.tools与固定native contract的真实验证。本轮局部静态/早拒及GUI错误权限路径通过不升级为合法配置、首次模型启动、N或改后安装通过；阶段细则见[共享执行合同](integration/openmausbot/01-contract.md)。
 
 serve可显式接受`--agent-profile <既有原Orca profile绝对路径>`。省略时读取原生标准命令/defaults及本机Agent实际配置；指定时固定该只读源，复用classifyProfileStateStorage、openProfileStateDatabaseReadOnly/readProfileStateDomains取得同一snapshot中的settings/revision，legacy并存核原acceptance，JSON-only使用成熟JSON流筛选。明确源缺失、损坏或不匹配立即失败，不迁移、创建Store、写marker或更换来源。产品私有profile继续独立，秘密和原对话不进入清单、receipt或安装包。
 
@@ -940,12 +950,71 @@ type NativeLaunchPolicy = {
     }
   }
   tools: { mode: 'disabled'; native_contract: 'opencode-cli-2.0.31' }
+} | {
+  schema: 'swa.native-launch.v1'
+  account: {
+    kind: 'codex-native-api-key'
+    provider: 'openai'
+    source_home: string
+    auth_source: { path: string; version: string }
+    catalog_source: { path: string; version: string }
+    private_root: string
+    model_target: {
+      model_id: 'gpt-5.5'
+      api: 'openai-responses'
+      base_url: 'https://api.openai.com/v1'
+    }
+  }
+  tools: { mode: 'disabled'; native_contract: 'codex-cli-0.163.0' }
+} | {
+  schema: 'swa.native-launch.v1'
+  account: {
+    kind: 'claude-native-api-key'
+    provider: 'anthropic'
+    source_home: string
+    auth_source: { path: string; version: string }
+    private_root: string
+    model_target: {
+      model_id: 'claude-opus-5'
+      api: 'anthropic-messages'
+      base_url: 'https://api.anthropic.com'
+    }
+  }
+  tools: { mode: 'disabled'; native_contract: 'claude-cli-2.1.284-sdk-0.3.284' }
+} | {
+  schema: 'swa.native-launch.v1'
+  account: {
+    kind: 'pi-native-api-key-per-session'
+    provider: string
+    source_home: string
+    auth_source: { path: string; version: string }
+    models_source: { path: string; version: string } | null
+    private_root: string
+    model_target: {
+      model_id: string
+      api: 'openai-responses' | 'openai-completions' | 'azure-openai-responses'
+      base_url: string
+    }
+  }
+  tools: { mode: 'disabled'; native_contract: 'pi-cli-1.0.1' }
 }
 ```
 
-上述联合按account.kind及对应tools.native_contract严格验证，不允许交叉组合。本节后续Pi来源、参数和RPC细则适用于pi-native-api-key；OpenCode原生合同见§21.1.6。credential_updated_at为原生credential.time_updated的实际Unix毫秒，不能用观察时间替代。
+上述联合按account.kind及对应tools.native_contract严格验证；两个Pi分支共用`pi-cli-1.0.1`，其他Agent的工具合同不能错配。本节后续Pi来源、目标和原生参数规则同时约束两个Pi分支，目录布局和主动输入准入则按各自kind区分；OpenCode原生合同见§21.1.6。credential_updated_at为原生credential.time_updated的实际Unix毫秒，不能用观察时间替代。Codex新增分支已通过接口审查，直接消费者正在实施；字段定稿不表示真实账号、工具集合、Worker或模型已验。其auth_source固定为显式source_home下auth.json，catalog_source为实际安装根的`runtime/codex-policy/models.json`，内容须匹配固定官方完整原件。private_root为实际`SWA_DATA_DIR/codex/<projectId>`，每Worker的CODEX_HOME为其下`<sessionId>`，复用原LegacyAccountHome的CODEX_HOME变量/路径表示。selection继续绑定实际executable、version=0.163.0、model=gpt-5.5、provider=openai和configuration_version，不新增凭据ID、邮箱、账号值或独立配置账本。
 
-路径为实际canonical来源，version沿原配置snapshot的实际文件身份/版本；models_source=null要求实际不存在，后继出现视为变化。政策与原settings source/revision/configuration_version、原R/checkpoint共同固定原生选择，不保存凭据或另建账号账本。model_target绑定实际合成modelId/API/baseUrl，成熟URL解析拒绝账号信息、秘密查询、动态模板和未批准目标。API只允许已核最终请求消费者的openai-responses、openai-completions、azure-openai-responses，其他API保持政策unknown，不换模型或来源。
+Pi新增`pi-native-api-key-per-session`的strict合同，`private_root`精确指canonical `SWA_DATA_DIR/pi-workers/<实际projectId>`项目容器，不能带private_home或请求者提供的session字段；旧`pi-native-api-key/private_home`字段及解析语义保留。新主动start/send拒绝旧kind，须有完整已审policy、当前source、Grant与原输入批准；旧记录查询与原资源的安全stop/release继续沿原record、lease、provider handle和完整退出证明，不重新选择新分支。Schema解析或生成类型通过不替代这些实际准入门，也不表示账号、受管输入或模型已验。
+
+Codex通过官方`login --with-api-key`的私有stdin向各Worker独立HOME导入获准API key；登录子进程和app-server分别沿真实Job或Linux D结算，登录未知时不能重导入或提前启动模型进程。来源仅为显式`SWA_CODEX_API_KEY_HOME`，空配置允许服务启动并报告Codex未配置，合法目录缺auth同样未配置，不回退普通CODEX_HOME或读取原ChatGPT凭据。来源路径、当前账号、工具政策、原始事件、完整成果及平台归属须分别核验；设置路径本身不代表账号可用。Go/TS/Schema和直接消费者同步实施，维持原HTTP action/envelope，不自动取得人类会话或Grant。
+
+Claude单分支合同已冻结，直接消费者正在实施，字段通过不表示账号、SDK启动、ToolsOff或模型已验。固定实际CLI2.1.284与SDK0.3.284，selection的model/provider为claude-opus-5/anthropic；SDK的实际sdk.mjs、package和manifest同根来源进入configuration_version及当前来源检查。auth_source仅为显式`SWA_CLAUDE_API_KEY_HOME/settings.json`的真实版本，只接受严格`{env:{ANTHROPIC_API_KEY:<literal string>}}`，其它字段或来源整体拒绝；不回退原账号、读取OAuth/AUTH_TOKEN或执行helper。source实际根owner-only并与账号、安装/data、私有根和项目双向隔离，普通祖先不要求0700。private_root固定实际`SWA_DATA_DIR/claude/<projectId>`，各session的configRoot为其下`<sessionId>/config`，原accountHome保留`CLAUDE_CONFIG_DIR`变量/路径；key只在内部快照及受控child环境中，不复制来源settings或增加credential ID/config_source。bare禁用OAuth/keychain，不能把原OAuth登录作为该路线可用的证据。准确公开来源与未验范围见[适配矩阵](integration/openmausbot/02-agent-matrix.md)。
+
+Claude的固定native contract要求bare、tools空、disable-slash、strict空MCP和无session hooks等完整组合，并核首次启动前的政策面与每轮实际输入，不能以literal或事后的system/init工具数组替代安全门。SDK Query构造会发起或排队initialize；owner持久化后ready核真实身份并等待该原promise与受限metadata，不重复请求或伪称延迟初始化。实际SDK对象JSONL标为actual_sdk_messages，与CLI原始JSONL全文、原journal分别保留；原R/body/session/fence及真实user replay UUID须关联到原件主链和最新输入，result UUID不冒充user UUID。完整树、durable来源/handle/journal和最终库存校验通过后才发布退出；原root退出不替代该证明。相关实现和平台验收仍另行记录。
+
+Codex每个新thread固定真实model/provider、`environments:[]/selectedCapabilityRoots:[]/dynamicTools:[]`、禁止模型fallback且持久化；不得用`cwd/runtimeWorkspaceRoots`重新引入环境。原生reply须提供并核对实际thread/model/provider/history/path，缺失时拒绝或保留unknown，不以请求参数补造。每次turn/start固定原thread、本次输入的原clientUserMessageId、model和空environments，只允许批准的纯文本；活跃turn的同会话追加沿原turn/steer与实际expectedTurnId，绑定本次send自己的原R/operation/clientUserMessageId，不复用start的operation，也不增加目录、工具、模型或capability覆盖。启动的strict config、完整工具组合门、当前来源与项目权限在投递前再次核验；API-key或模型catalog不替代ToolsOff证据。
+
+Codex真实通知在journal合并前写入原`provider-events.ndjson`，保留同session/fence的序号、host观察时刻、原生method/params与已审raw line；delta来自实际agentMessage/reasoning通知，不能拆分最终assistant全文。该来源和完整rollout/journal分别保持单源12MiB，并共同计入96MiB完整结果上限，保留FD有界读、前后SourceVersion及秘密检查。原opaque native响应的`source.process/source.owner_process`是bootstrap所属身份：Windows保持`{pid,creation_time_ms,runtime_id}`，Linux为`{platform:'linux',pid,boot_id,start_ticks,owner_uid,runtime_id}`，ticks/UID为十进制字符串；native CLI身份单独取真实custody观测，不代替lease PID。最终tree事实由受控Tree的只读`readFinalObservation()`取得，未知或processless不返回完整tree proof；原root退出、stderr JSON或interrupt回执不足以释放。只有实际最终事实成功持久化后才能向session host发布退出；真实未创建bootstrap的processless沿原独立受证分支处理。这些新增来源由实际消费者另验，不以689的D14替代，也不增加无人消费的JSON Schema定义。
+
+路径为实际canonical来源，version沿原配置snapshot的实际文件身份/版本；models_source=null要求实际不存在，后继出现视为变化。政策与原settings source/revision/configuration_version、原R/checkpoint共同固定原生选择，不保存凭据或另建账号账本。model_target绑定实际合成modelId/API/baseUrl，成熟URL解析拒绝账号信息、秘密查询、动态模板和未批准目标。Pi分支API只允许已核最终请求消费者的openai-responses、openai-completions、azure-openai-responses；OpenCode、Codex及Claude按各自上述固定目标，不换模型或来源。
 
 原账号目录只读。原auth只接受该provider实际支持的原生api_key条目及literal key；非空credential.env、OAuth/refresh、models apiKey/oauth、命令或环境引用拒绝。auth和models使用成熟JSON及原ModelConfig的JSONC/schema，准确方案§13.3逐类表作为本节固定字段和投影清单：只保留所选provider/model/override及原composer顺序；未知有效字段、无法唯一合成的目标、虚拟模型、候选/网关路由拒绝。key及三层headers用同版本isCommandConfigValue/getConfigValueEnvVarNames只读分类，保留原生literal与转义语义；Headers成熟解析，大小写不敏感拒绝Authorization、Proxy-Authorization、X-Api-Key、Api-Key、Cookie、Set-Cookie。不能原块复制、删除不允许字段后继续、改凭据类型或复制refresh来宣称原账号保全。
 
@@ -953,21 +1022,135 @@ type NativeLaunchPolicy = {
 
 原model、所选override、内置及合成model的samplingParams只允许缺省或空对象，任何自有字段使整源拒绝。产品不开放每请求options/samplingParams/provider/onPayload/headers变换或任意RPC透传，逐命令strict DTO只提供原prompt/steer/follow_up、abort、状态、准确模型/thinking及固定关闭设置；当前固定输入仅text，prompt只含message、原生streamingBehavior和原请求标识。真实RPC→session.prompt→Agent loop→sdk/ModelRuntime的生产者、空扩展/资源及私有设置共同封闭请求覆盖；不能仅以get_state或no-tools证明最终请求安全，不替换原生provider或事后重写请求。
 
-private_home固定DataRoot/pi/<实际项目UUID>，不同项目不共享。已批准controller.open只创建空目录，发现不复制账号；秘密写入前用成熟Windows API设置并读回当前用户/SYSTEM保护DACL，拒绝重定向、未知owner、其他写入主体及与原Orca/账号/安装根重叠。当前Grant/CLI/model/tools批准后才将同一已验证来源投影到独占新auth/models文件；只读源、私有原生锁与运行写入分开。已有同项目Worker仅在来源/版本/provider/政策完全相同时复用，未知副本或不同来源且原资源未释放时拒绝，不能覆盖换账号。
+旧`pi-native-api-key`的private_home固定DataRoot/pi/<实际项目UUID>，保持历史项目共享HOME原义；它不能被悄改为容器或session路径。旧解析不授予新输入许可，已有记录不迁移、不覆盖账号或改写原selection/R。来源不足的旧完整成果明确不可用，安全stop/release独立保留原资源路径。
 
-内部`StructuredAgentLaunchAdmission.accountHome(sessionId,agent,currentHome):Promise<AgentSessionAccountHome>`从create前已登记的真实Worker identity/Dispatch及原父子R解析原选择。在prepareStructuredAgentSessionCreateForWorktree的resolve intent后、attach fingerprint前，原agentSessionAccountHome生成`{variable:'PI_CODING_AGENT_DIR',path:private_home}`并进入原record；非产品宿主沿原生产者，产品缺少R关联即拒绝。实际launch part完成后复核command/accountHome/env/argv，仍用原CLI、provider-process和seal。
+新分支要求controller.open只准备空项目容器，发现不复制账号；实际HOME为`join(private_root,真实Orca sessionId)`。create流程先生成UUID并登记StructuredWorkerIdentity，再由accountHome准备初次projection，随后持久化同一record/lease；首次无record不能补造身份。只有本次exclusive创建成功才写受控auth/models/settings，EEXIST不等于fresh，不覆盖或修复旧目录。已有record只核同原R/Dispatch/session及HOME，不重新导入；auth、settings、models-store、cache、sessions及临时/XDG目录均从本Worker HOME派生，不在项目容器共享。原来源保持只读，只在当前Grant/CLI/model/tools批准后投影明确已授权的API来源，不克隆旧profile。秘密写入前仍须建立并核验Windows当前用户/SYSTEM保护DACL，或Linux实际owner及HOME的0700权限，拒绝重定向、未知owner、其他写入主体和与原账号/Orca/安装根重叠；这些路径与来源门由实际消费者实现并验证。
 
-受限builder只在精确contract/实际版本及toolsOff政策成立时允许fullAccess=false；不得强设full-access。固定argv为--mode rpc、--offline、--no-approve、明确--provider/--model、--no-tools、--no-extensions、--no-skills、--no-prompt-templates、--no-themes、--no-context-files；原记录需要的绝对--session/--fork互斥，全部extraArgs拒绝。环境仅保留SYSTEMROOT、WINDIR、SYSTEMDRIVE、COMSPEC、PATHEXT、PATH、NUMBER_OF_PROCESSORS、PROCESSOR_ARCHITECTURE、PROCESSOR_IDENTIFIER、OS、LANG、LC_ALL、LC_CTYPE、TERM、COLORTERM及既有HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY，再明确写产品私有HOME/USERPROFILE/APPDATA/LOCALAPPDATA/TEMP/TMP、项目账号根、PI_OFFLINE=1、PI_SKIP_VERSION_CHECK=1和原seal身份。其他账号/key、NODE_OPTIONS/NODE_EXTRA_CA_CERTS、owner capability及原Orca身份不继承，网络配置值不输出或改动。
+内部`StructuredAgentLaunchAdmission.accountHome(sessionId,agent,currentHome):Promise<AgentSessionAccountHome>`从create前已登记的真实Worker identity/Dispatch及原父子R解析原选择。在prepareStructuredAgentSessionCreateForWorktree的resolve intent后、attach fingerprint前，新分支将`{variable:'PI_CODING_AGENT_DIR',path:join(private_root,sessionId)}`写入同一record；旧记录中的private_home原值不改。Pi原生get_state.sessionId与Orca sessionId分别核真实来源，不能要求相等；sessionFile须属于本Worker HOME/sessions。实际launch part完成后复核command/accountHome/env/argv，仍用原CLI、provider-process和seal；未知输入保原R和原HOME，不另建session或重投。
 
-私有settings固定compaction.enabled=false、retry.enabled=false、retry.provider.maxRetries=0、cacheWarming='off'；用真实set_auto_compaction/set_auto_retry成功回执再次关闭，并核get_state.autoCompactionEnabled=false，retry结合原回执/同版本源码/实际私有设置，不造状态字段。offline仅关闭原生启动刷新；模型仍须完成真实provider请求。no-approve使原项目设置为空，不能从公开项目重开资源、重试或请求变换。
+受限builder只在精确contract/实际版本及toolsOff政策成立时允许fullAccess=false；不得强设full-access。固定argv为--mode rpc、--offline、--no-approve、明确--provider/--model、--no-tools、--no-extensions、--no-skills、--no-prompt-templates、--no-themes、--no-context-files；原记录需要的绝对--session/--fork互斥，全部extraArgs拒绝。环境仅保留SYSTEMROOT、WINDIR、SYSTEMDRIVE、COMSPEC、PATHEXT、PATH、NUMBER_OF_PROCESSORS、PROCESSOR_ARCHITECTURE、PROCESSOR_IDENTIFIER、OS、LANG、LC_ALL、LC_CTYPE、TERM、COLORTERM及既有HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY，再明确写产品私有HOME/USERPROFILE/APPDATA/LOCALAPPDATA/TEMP/TMP、项目账号根、PI_OFFLINE=1、PI_SKIP_VERSION_CHECK=1和原seal身份。Linux固定NODE_USE_SYSTEM_CA=1使用系统信任库，TLS校验保持，任意外部NODE变量仍不继承。其他账号/key、NODE_OPTIONS/NODE_EXTRA_CA_CERTS、owner capability及原Orca身份不继承，网络配置值不输出或改动。
 
-首次和每次后续输入在serialized handOver等待后、adapter.dispatch前重读来源身份/版本/存在状态、逐类重解析/投影，并逐项比较实际私有auth/models/settings。Pi真实get_available_models/get_state证明provider/model/API/baseUrl、samplingParams及sessionId/sessionFile；原fence/归属由原R/Dispatch/session、expectedRuntimeFence及current consumer分别证明。继续核当前Go批准、原selection/model_target、停止/释放和完整所属Job；秘密只在内存比较，任一失配或未知拒绝。仅已审disabled政策映射为空required tools，空ProjectActionScope.Tools本身不证明Native关闭工具。
+私有settings固定compaction.enabled=false、retry.enabled=false、retry.provider.maxRetries=0、cacheWarming='off'；用真实set_auto_compaction/set_auto_retry成功回执再次关闭，并核get_state.autoCompactionEnabled=false，retry结合原回执/同版本源码/实际私有设置，不造状态字段。原生setter回执不证明异步磁盘save完成；新分支要求以同官方proper-lockfile4.1.2、同settings路径和realpath:false进行锁内有界读，实际stdin.write前再取新同步锁窗并末核，不能以每Worker HOME或早期snapshot代替。具体内部端口按下列冻结目标实施，实际执行仍待验。offline仅关闭原生启动刷新；模型仍须完成真实provider请求。no-approve/no-context-files不证明关闭cwd/.pi/settings.json；新分支先要求固定cwd该文件在首spawn及每次效果前均不存在，出现即拒绝，不换cwd或删字段后继续。
+
+**Pi内部B合同：冻结目标，实际执行待验。** 以下只扩展既有provider、queue、timeline、admission及成果消费者，不增加HTTP、NativeLaunch字段或JournalStepWriter/store协议。普通非SWA行为保持；A的形状/serde/示例结果不证明这些接线已经完成。
+
+来源与私有metadata的明确入口为：
+
+```typescript
+declare function requireNativePiSourceHome(input: {
+  sourceHome: string; protectedRoots: readonly string[]; env: NodeJS.ProcessEnv
+}): Promise<string>
+type PiApprovedModelMetadata = {
+  provider: string; models: readonly PiModelDTO[]
+  modelsSource: NativeConfigurationSource | null
+}
+declare function inspectPrivatePiModelMetadata(input: {
+  sources: NativePiSources; privateHome: string; provider: string
+  target: NativePiModelTarget
+  expectedModels: NativePiPerSessionSnapshot['models']
+}): Promise<PiApprovedModelMetadata>
+```
+
+requireNativePiSourceHome只核canonical普通私有目录和双向protectedRoots隔离，不读auth/settings或返回key。discovery无已授权projectRoot时报告unknown且不读；有项目时须在任何settings/auth读取前调用，full inspect新增required protectedRoots并在dynamic import/config/auth前再次调用。protectedRoots覆盖真实项目、原/managed账号及profile、安装/DATA、明确source和既有受保护根；不存在的保护根只核祖先与规范拼接，不伪造文件版本。固定官方1.0.1原件及已审启动/纯metadata模块清单先核字节hash和身份，再保存SourceVersion并在效果前重核，不能只凭manifest.version、首次stat或另一副本的hash。Pi discovery的版本效果也先过该来源门，再用已pin装内Node执行同entry的有界--version和固定安全诊断；受限launch不重复probe、不读取previous/sessionFile/forkFile，出现则拒绝，不借旧resume切换HOME。
+
+私有目录入口为initializePrivatePiWorkerRoot():Promise<string>、createPrivatePiProjectRoot(projectId):Promise<string>、createPrivatePiSessionHome(privateRoot,sessionId):Promise<string>；后者由materializePrivatePiSessionAccount(snapshot,sessionId):Promise<string>直接消费，verifyPrivatePiSessionAccount(snapshot,sessionId):Promise<void>只校原HOME。host初始化worker根，controller.open只准备空项目容器；实际mint/register后才exclusive创建HOME。metadata函数必须在该HOME已materialized且record真实存在后，以实际私有models文件或已证absence调用固定官方纯ModelConfig/composer，前后核投影/版本，不接收key、不调用auth/refresh/ModelRuntime。policy保存该真实approvedModelMetadata；原get_available_models回执另保存observedAvailableModels={sourceSequence,models:实际完整数组}，逐项核批准metadata、重复pair/额外provider及selected tuple恰一次，不将纯metadata冒充available，不过滤原回执或伪造默认库存。配置默认context/token/cost不构成远端能力或实际账单证明。
+
+disabledPiTools factory在当前批准/record/session/fence后创建唯一policy，launch与session复用同一实例。connection在实际managed spawn紧前同步调用assertSpawn(launch:ProviderProcessLaunch):void，消费最终sealed argv/env并核当前Grant、来源及受限启动配置，调用与spawn之间不插入await。attach(tree)只绑定原tree；真实onSpawned提交host owner后，ready(connection,{acquisitionGeneration:实际PiRpcSession.generation}):Promise<PiRpcState>才核tree.ready、owner/root/native并durable写首custody，再接管原set_auto_*和get_state。preowner unsolicited DTO直接失败，不缓存等后补owner。verifyCurrent只在入native队列前执行真实RPC；assertCurrent与末写守卫同步且不发RPC，避免在active queue等待自身。
+
+同entry的共享写入类型为：
+
+```typescript
+type ProviderWriteCleanup = () => void
+type ProviderWriteFinalAdmission = () => void | ProviderWriteCleanup
+type ProviderWriteAdmission = () => Promise<void | ProviderWriteFinalAdmission>
+type ProviderWriteSettlement = {
+  outcome: 'resolved' | 'rejected'; writeAttempted: boolean; cleanupCompleted: boolean
+}
+type PiRawContext = { sequence: number }
+type PiWriteContext = {
+  frame: JsonlRpcRecord; line: string; clientMessageId?: string
+}
+type PiLocalFailure = {
+  stage: 'source' | 'approval' | 'settings' | 'write' | 'protocol' | 'stdout' | 'custody' | 'persistence'
+  code: 'source_changed' | 'approval_changed' | 'settings_unverifiable' | 'write_unsettled'
+    | 'protocol_unverifiable' | 'stdout_incomplete' | 'custody_unverifiable' | 'trace_unavailable'
+  writeAttempted?: boolean
+}
+```
+
+queue的write(line,signal?,beforeWrite?,onSettled?:(fact:ProviderWriteSettlement)=>void):Promise<void>保留原前三参数；beginClose(error:Error):void只停止新条目和未写输入，不拆reader/已发pending。prompt在真实queue entry的异步批准、无settings锁阶段调用prepareInput(clientMessageId,frame):Promise<()=>void>：同步读取原binding.body，经成熟preparePiRpcPrompt异步准备并与实际frame比较，返回同步重核原binding/frame的闭包，组合进最后finalAdmission；prepare不表示accepted、不写stdin或新增pending表。顺序为await旧批准/early检查及prepareInput（无锁）→同步finalAdmission/输入重核/assertCurrent→policy.beforeWrite取得本次acquirePrivatePiSettingsGuardSync(settingsPath)并有界读，再核prepared input、当前binding和line序列化frame一致后，核真实native前缀基线/fsync write_intent→writeAttempted=true紧邻实际write→finally close FD/release→callback/drain齐备→同步onSettled→resolve/reject，成功才flush。guard只暴露assertCurrent/release，不跨RPC或模型等待；真实cleanup未结算不能先terminal，写后失败不得变neverReachedAgent。onSettled持久化失败须抛固定safe错误，使queue永久terminal，不靠不抛的failure通知假装阻住下一项。
+
+peer/connection的request(command,params?,options?):Promise<unknown>新增options.id、beforeWrite和onReply(frame:JsonlRpcRecord,context:PiRawContext):void，保留timeoutMs。id只取真实Submission.id/operation，Map.set/写前查碰撞，不换id重试；使用唯一原pending表，30秒prompt ACK期限含批准与排队。strict raw在任何warn/return/delete前取得同pending上下文，递归strict DTO、重复键、秘密和来源检查/append后同步onReply，最后才删entry/清timer/resolve；unknown、重复、timeout后id与idless不当下一项ACK。原line保留，不由本地错误造native帧；8MiB行、真实末LF/fatal UTF8/EOF与单源12MiB/100000行门继续，多Worker完整结果另受96MiB汇总界。ACK只表preflight，不能触发accepted；新受限lane只从唯一完整user message_end回显关联原Submission，agent_start只开cycle。真实accepted早于ACK时不能被后回执倒写，peer永久失败不因late ACK复活。
+
+timeline发布只报告原transition真实resolver、appendSteps的wrote及bound.publish事实：
+
+```typescript
+type ProviderTimelinePublishedReport = {
+  journalEpoch: string; published: boolean
+  steps: readonly (
+    | { kind: 'item'; written: boolean; itemId: string | null }
+    | { kind: 'settlement'; written: boolean; settlementId: string }
+  )[]
+}
+type PiObservedProjection = {
+  sourceSequence: number; eventType: ProviderTimelineEvent['type']
+  clientMessageId?: string; acquisitionGeneration: string; providerItem?: string
+  report: ProviderTimelinePublishedReport
+}
+type SwaPiSessionPolicy = {
+  nativeContract: 'pi-cli-1.0.1'
+  assertSpawn(launch: ProviderProcessLaunch): void
+  attach(tree: SwaProviderProcessTree): void
+  ready(connection: PiPolicyConnection, context: { acquisitionGeneration: string }): Promise<PiRpcState>
+  verifyCurrent(connection: PiPolicyConnection): Promise<PiRpcState>
+  assertCurrent(): void
+  prepareInput(clientMessageId: string, frame: JsonlRpcRecord): Promise<() => void>
+  beforeWrite(context: PiWriteContext): ProviderWriteCleanup
+  rawRecord(frame: unknown, line: string, response?: { id: string; command: string }): PiRawContext
+  writeSettled(context: PiWriteContext, outcome: 'resolved' | 'rejected',
+    phase: { writeAttempted: boolean; cleanupCompleted: boolean }): void
+  beginStop(input: { turnId: string | null }): void
+  projectionPublished(observed: PiObservedProjection): void
+  failure(reason: PiLocalFailure): void
+  closed(): void
+}
+```
+
+onPublished(report)沿transition→plan→assembler→lane传递；itemId来自实际resolver和原agentJournalItemKey，settlementId不推成全部mutation keys。只有wrote为true才称写过，published还须真实bound.publish返回；no-op报告false。held entry保同cause的sourceSequence/observer，text.delta进入coalescer不虚报落盘，text.close/flush才带真实report；报告含前序barrier不等于全由当前帧创建。projectionPublished(observed:PiObservedProjection):void只消费实际回调，仍须replay SQLite核epoch/row/结算，不能用callback发生或admission替代written。input.accepted可能仅改变opener，不补造user row，也不发不存在的user.message/assistant.message timeline事件；custody_closed后的本地生命周期tail不带伪造native sourceSequence或追加native投影。
+
+关闭端口beforeExitPublication?:()=>Promise<void>和兼容void|Promise<void>的onExit只共享一个latched publication Promise，固定次序为：
+
+1. beginClose停新写，保raw/pending及真实已写callback，等待真实EOF和D trusted完整final。
+2. await beforeExitPublication，仅finalize/flush/retry现native projections→drained→sink.written恰ok；不close、不等待自身verifiedExit，不提前turns.end/session.ended/release。
+3. 同policy.closed()核写入、source、EOF、D和上道barrier，durable custody_closed；已核取消允许完整关闭来源，模型仍是partial。
+4. 调用并await原onExit返回的exitDelivery；此时才生成原生命周期tail，strict lane不使用旧2秒race，tail真实drained/written后才发原void onLifecycle ended。该事件不声称已await宿主全部lease写。
+5. 最后置verifiedExit、通知listeners、允许close成功和releaseAfterExit。session/adapter close、acquire异常、retained connection及下次acquire都消费同一链，不能借raw lastCloseResult/root gone旁路。失败/超时保持unknown和原资源，不吞错误后release；preowner异常只做真实D独立cleanup，不造leaseowner或closed来源。
+
+policy通过inputBinding(clientMessageId):StructuredInputBinding同步读取原reserveInput/beforeInput checkpoint，缺失/多条、body fingerprint、session/fence或字节变更即拒，不新建请求表。writer cid同时核host Submission；write_intent中的真实submit前native文件基线为已证ENOENT或同FD完整前缀/leaf，不借以前相同正文。user echo、原native文件条目和journal按全部字段/真实顺序逐一对应；native entry id只取文件，raw message_end早于append不表文件已持久。task-result沿真实parent/child R、latest submittedSequence与原journal核最新输入后的完整assistant/settled/idle；snapshot all与observed available分开，pending/queued/unknown、取消或length不能用旧complete通过。
+
+结果沿现Witness/nativeChecks/finalNativeChecks，在全部异步读取后紧贴发布/导出同步重核raw/native FD/path/SourceVersion及前缀、journal epoch/last sequence、latest R库存、root children/Worker资源、原fence、独立owner runtime与service epoch及D final/实时owner，再无await导出。原生JSONL append无fsync只称observed；不能由物理D退出补raw/模型完整。failure(reason:PiLocalFailure):void永久保存首个固定失败并阻新效果，不抛二次异常妨碍收尾；writeSettled自身保存失败仍须向queue抛safe错误以阻flush。原错误/stack/credential不进trace或logger，未知字段/错误默认拒。合法stop只在真实beginStop与原host stop receipt下接纳完整取消DTO的精确Request aborted/Request was aborted，不用子串或aborted标签放行任意error，不把内部stop_id当原R。
+
+factory input `approveStop():()=>void`首次沿唯一pending的原parent/child stop R捕获cleanup闭包；idle cancel和直接requested close也须幂等进入beginStop。后续stopping仅允许abort/get_state，闭包同步末核原row/hash/fence/owner/consumer及资源，不重新借用新输入Grant；source/account和永久failure门继续生效。
+
+Linux新Pi分支沿完整已审policy/source/current Grant进入主动准入；`PiRpcSession.assertOwnedJob()`遇Linux observation必须存在该policy并同步调用`policy.assertCurrent()`，不套Windows成员结构。Windows仍核原Job assigned、root未退及真实native CLI的members/creationTimeMs。strict JSONL constructor以同policy走独立路径并提前return，不调用旧`observeProviderRecord`；该旧函数仍仅支持Windows中性投影，Linux拒绝保留，OpenCode的Linux保护也全部保留。两处主动阶段入口在上述前置下准入。
+
+真实无账号CLI窗口已验证两项metadata请求、EOF及完整D；原两回复随后通过完整严格DTO离线消费。该证据不覆盖生产受管peer、Host/Grant、真实input/abort/原生JSONL/完整成果、ToolsOff实际交互、模型、N3、Windows或新同S安装。统一coherent strict/契约/架构及准确候选仍须完成；原403形状、33项Go serde和264示例仅复用其A范围，不升级为B或平台执行通过。
 
 原生API key没有TTL字段时有效期为unknown，其余条件满足可以真实请求，账号远程有效性仍由实际结果证明。有实际明确期限的来源每次要求`expires_at - 当前时间 > 本次已批准最长执行时间 + 30秒`，期限或执行上限缺证、余量不足或到期拒绝；此未知拒绝不适用于原格式没有TTL的key。可能输入后继续按§21.1.2保全原R/operation/Job，不重选或重放。
 
 准确方案§13.6全部真实检查进入同一Worker计划：真实账号/明确模型、用户单CLI和空工具批准、原生子树/argv/env/私有文件及自产JSONL、实际工具效果、逐类来源/路由/请求覆盖和TTL边界、首次及后续输入、同安装候选双Worker/停止A/B同会话成果。仅用获准真实来源，未命中记INCONCLUSIVE、不伪造协议或时钟；工具/T11待答及旧Codex/S3各自限制保持。
 
 #### 21.1.6 OpenCode原生执行及完整成果
+
+**StepFun 与 Linux 接入增量。** NativeLaunch.account 新增严格分支 `kind:'opencode-native-stepfun-api-key'`、`provider:'stepfun'`，复用 OpenCode 的 `source_home/config_source/auth_source/database_source/credential_id/credential_updated_at/private_root` 字段；`model_target` 固定 `{model_id:'step-3.5-flash',api:'openai-completions',base_url:'https://api.stepfun.com/v1'}`，tools仍为 `{mode:'disabled',native_contract:'opencode-cli-2.0.31'}`。selection.model 为 `stepfun/step-3.5-flash`，实际请求必须为 `/chat/completions`。旧 DeepSeek 分支保持原严格目标。固定 Linux x64 官方 `@opencode/cli-linux-x64/bin/opencode` 与 Windows x64 官方 CLI 2.0.31 共用原 ACP 接口。
+
+两个 OpenCode 分支只接受显式 `SWA_OPENCODE_API_KEY_HOME`，不回退 HOME 或 Orca 默认账号；来源与项目、安装、运行数据及 Codex/Claude/Pi 保护根双向独立。Linux 当前 UID 的目录0700、文件0600；Windows保留私有DACL。StepFun 仅增加固定 `@opencode/ai/providers/openai-compatible` provider 与 `opencode.config.provider`，有效插件、空工具、credential、模型及 HTTP 目标逐项核对。发现声明、固定版本启动、认证和真实模型成果分别记录；本增量不宣称模型或双平台实测通过。
+
+每 Worker 独占新根，在 legacy auth 和 SQLite 均缺席时只执行一次官方 `auth import --standalone`。实际原 id/key、唯一 active credential、双管道 EOF、正常退出与完整原树关闭均确认后，才独占创建 legacy auth 投影。未知不重发，已有未知库不重新初始化，原来源不写入。Linux live server 核原 custody、native CLI 父链、`/proc` 程序和 boot/start/UID，并前后复核；Windows沿原 Job成员/birth。活体观察不宣称原子快照或 socket/pidfd关联。
+
+原 `swa_input_binding` 在真实 numeric ACP request ID 分配后由每 Worker 独立私有 HMAC key 封装。官方可写 `prompt` 事件核 MAC、session 与完整原文，恢复纯文本，把 actual messageID 和绑定写入原生 metadata；只有 `InboxDelivered` 投影的真实 user 行才可接受。提前 `input.accepted` 延后到该证据，并在相应 turn.end 前按原队列提交；接受结算还须等原 sink 写入完成、该事件实际发布以及真实 turn.userItemId 指向原 submission。零步骤或日志写入未确认均保持未知；写前拒绝和写后未知分别结算。模型 context 先复制再删除桥接字段，HTTP核原文、空工具及固定目标。attachments、resources、audience、slash 和问答工具仍拒绝。
+
+成果核完整原请求库存（含 `question.resume`）、numeric write、MAC/user/id/seq、每条已接受输入的真实 journal opener、最新输入之后同执行段的 assistant/idle、ACP回复和对应 journal turn。`final.text` 只来自同一已验最终 assistant 的 text 内容，沿原长度、秘密检查与末尾版本重核供 Task 交付和父任务邮件使用。新输入 pending/unknown 不能借旧 assistant 完成；严格 UTF-8、raw frame、EOF、fence/runtime及完整 D 沿原 provider 文件记录。OpenCode questions仍不可用，Pi规则保持。以下历史 DeepSeek 设计中的导入顺序和平台限定由本增量替代，原目标和工具约束继续保留。
 
 原Reviewer依据先行D01—D08接受`native-opencode33-plan.md`准确SHA256 `F18C0ED603668BE5A3FA1E49C8C9F2DF476D08C4824E17BBEC6C8BAD4AA63BD9`及O01—O10，主控据此核定本节接口。实际客户端固定@opencode/cli2.0.31及官方tag `22728d67461260d56bb9796b9b8f36e1de47202e`，复用Orca1.4.230原ACP适配器和原生exe；原默认deepseek/deepseek-v4-pro、built-in DeepSeek目标及原生key来源固定，禁止Aliyun。单次真实GET31的200仅证明该次认证读取及模型存在，原生执行和最终安装另行验收。
 
@@ -995,7 +1178,7 @@ structured launch admission增加disabledOpenCodeTools，与disabledPiTools各�
 
 | ADR | 决策 | 改动边界 |
 |---|---|---|
-| D01 | Go 模块化单体 + TS 前端 | 拆服务前先出现真实部署需求 |
+| D01 | 各产品使用 Go 模块化后端 + TS 前端 | 用户已要求三产品独立，按 §21.5 拆源码与部署入口 |
 | D02 | 三个业务上下文 + 共享判断端口 | 不再新增任务真相源或中央 LLM 控制面 |
 | D03 | Domain/App/Adapters/Composition 依赖，保持现有包边界 | 新抽象对应当前用例，不为规则整理重构既有模块 |
 | D04 | SQLite 业务状态，索引可重建 | 数据库实现变化不修改领域规则 |
@@ -1017,6 +1200,45 @@ structured launch admission增加disabledOpenCodeTools，与disabledPiTools各�
 ### 21.4 短 ADR 模板
 
 问题 → 选定做法 → 影响哪些契约 → 需要迁移的数据 → 回退方法。只有跨模块契约、持久化、权限或部署形态变化需要 ADR；普通函数实现不新增决策文档。
+
+### 21.5 独立产品与完整任务交付
+
+本节依据 2026-10-23 用户要求，覆盖历史章节中把三产品默认组合构建的安排。Astrocyte 拥有认知事件、注意力动力学、知识、经验、MCP 和 sleep；Attention Mirror 拥有资料导入、沉淀、品味、机会；SWA 拥有开发空间、项目权限、角色、会话及任务执行。每个产品具有独立源码、依赖、入口和数据目录，不依赖另一个 checkout 的本地 replace、软链接或运行中进程。必要集成显式配置，未配置时给出不可用原因。原用户数据库和历史迁移保全，不自动执行跨产品迁移。
+
+Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原表、ID、版本和完整资料引用。旧同库资料消费者通过显式 adapter 委派空间写入，原事务仍使用同连接；拆为独立产品后不能宣称跨数据库原子提交。
+
+| 对象 | 保存的业务事实 |
+| --- | --- |
+| Role | 职责、默认 Agent/模型及问题模式、技能及长期知识引用；有项目范围、版本和归档状态 |
+| Conversation | 当前讨论及追加要求；追加讨论不隐式调用模型 |
+| Task | 目标、依赖、验收条件和结果；固定角色版本及来源 |
+| Worker | 实际 Dispatch、进程与原生会话身份、输入和释放状态 |
+
+`run.submit` 接原 project/workdir/spec_file/input_file/agent/model/name/request_id，可选 role_id+revision、conversation_id 和 question_mode。Go 在原权限下组合 controller.open、task.create、worker.start；外部稳定 UUID 为首阶段身份，后两阶段确定派生，持久化完整 spec/input/context/selection。恢复只读取并验证原请求回执，unknown 不自动重发或生成新身份。`initial_workers` 省略为 1，显式值须在 1 至 max_workers 以内；它防止已批准的初始并发尚未启动就收尾，实际动态后代仍全部纳入观察。
+
+`question_mode: disabled | native` 只在新 Run、worker.start 或 Role 默认值中选择；旧记录没有该字段时使用 disabled。Run/Worker 未显式选择时沿准确角色版本继承其默认值，没有角色时为 disabled；当前 Worker 不支持中途切换。角色编辑、归档、复用和实际启动记录保留原模式。native 仅适用于固定 Pi 1.0.1 的 per-session 账号合同，对应 `native_launch.tools.mode: questions-only`、固定安装扩展来源和唯一允许工具 `swa_ask`；其它 Agent 或账号合同明确拒绝。GUI 依据当前 `control.questions` 声明及项目选择开放入口，未得到能力时保留已选模式并阻止启动。声明支持、来源配置、实际启动和真实提问成功分别记录。
+
+questions-only 只允许以原文 question 创建问题或以 resume 读取所属原问题的答案，不接受路径、命令、模型、账号或任意收件人；原生文件和命令工具保持关闭。disabled 的原工具集合与启动参数不变。Worker preamble 从实际原启动选择取得模式：disabled 要求直接交付最终助手正文，由运行系统收集；questions-only 只说明可用的 `swa_ask` 和最终成果。原任务规格与验收条件保留，不能要求模型使用实际不可用的协作命令。consult 继续要求 disabled，不能隐式升级工具范围；既定 ToolsOff N4/N6 验收与本问答模式分别记录。
+
+CLI `run` 默认等待整个递归 Run；`wait` 用精确 controller/run_id/root task_id 重连，只观察现有工作。`--strict` 将任一递归子任务失败计为失败，非严格模式仍展示完整失败列表。退出码沿既有 2—7，新增 8 超时、9 需要回答或继续原问题、130 取消等待；取消等待不自动停止 Worker。`export` 读取同 Run 的完整记录、原生成果和产物索引，CLI 写入明确的新输出目录，GUI 下载实际数据。GUI 与 CLI 共用 `swa.run-view.v1`，显示后代、依赖、Dispatch、问题、阻塞、失败和成果。
+
+原生问题生产沿固定 Pi 扩展、原本地 RuntimeClient 和经 Worker 来源准入的 `orchestration.ask`，复用原 question_threads 与等待机制。准入核当前实际 Worker/session/fence/Dispatch、原启动选择、当前 controller consumer、项目 send/固定上下文/外发批准，以及真实原生 assistant entry/toolCallId/参数；不从模型自报字段确定 Run。实际 lease 的私有进程来源证明只走本地运输，不进入模型参数、请求正文、回执或导出；它不构成同一 OS 用户之间的安全隔离。创建与等待请求由真实会话/entry/toolCallId 派生稳定 UUID，完成回放前同样核原来源，未知创建只查询原请求，不能用新请求绕过。一个 Dispatch 的待答问题或未确认创建阻止第二次创建；不同 Worker 的问题独立记录。首次工具调用早于启动结算时仅有界等待原启动完成，未完成前不创建问题。
+
+`question.answer` 接收准确 controller/run_id/root task_id/dispatch_id/question_id 和稳定 request_id，正文为 input_file 或 text 二选一。CLI `swa question answer` 读取明确文件；GUI 在同 Run 的原问题上提交文字，复用同公开 command。正文保留原文，须非空白且在32000 UTF-8字节以内。人类回答按当前项目 send、目录/固定上下文、原 selection 与外发批准独立授权，保留原创建者来源；Agent 继续绑定原 Grant。效果前重新核准后复用原 `orchestration.reply`、`db.answerQuestion` 和原 ask 唤醒，答案保存不证明模型已读。回答动作不附加模型输入；原 ask 仍等待时，答案沿原工具结果返回同一 Pi 会话。
+
+原 parent R 和 child R/native 持久记录准确答案与归属。同 R 改内容拒绝；未知只查询原 R，不自动重发；同问题另一回答 pending 时禁止换 R 绕过。已答同内容以原答案返回 duplicate，允许原 Worker 已释放，但当前项目授权和实际 controller consumer 仍须成立，不产生新输入；不同答案冲突、closed 拒绝。只有准确 parent/child 均完成且明确 rejected/effects_applied:false 才恢复 GUI 编辑，保留错误和当前页面正文，由用户显式修正后提交新 R。回答成功退出0，观察待答仍退出9并显示可执行回答及原 wait 命令。run_view 的 pending questions 与原记录派生的 answered_questions 分别展示，后者及完整答案进入同 Run 导出；完整集合和字节边界继续核验。
+
+原工具等待已 timeout/cancelled/connectionLost 时，保存答案不会重新执行已返回的工具。`question.resume` 提供明确继续入口，接收准确 controller/run_id/root task_id/dispatch_id/question_id 和新的稳定 request_id，不接受 text、input_file 或自定义指令。只有实际工具结果证明原等待已结束、答案已保存、同一当前 session/fence 与 consumer 有效，且原生记录和输入 journal 证明 idle、没有未知或待投递输入时才允许。它重新核当前人类独立 send/外发批准，沿原 helper→swa.workerSend→sendAgentTurn 投递固定正文“使用 swa_ask 的 resume 参数读取原问题 Q 的答案，并继续当前任务。”，不会复制答案或伪造工具结果。模型随后实际调用 resume:Q，原 ask 返回唯一答案；真实工具结果及后继模型轮次共同决定正常完成。没有 Conversation 的 Run 使用相同入口。
+
+`question.resume` 返回0只确认该次继续输入已接受；原请求未知时仅查询同 R，不能自动重发，已完成回放也不再次输入。新一轮确实结束但仍未读取答案时，重新呈现明确继续入口，由用户选择下一次请求。`answered_questions.read_state` 区分 answer_saved、read_unconfirmed、read_observed、continuation_required 和 interrupted；`continuation_required` 布尔仅在同名状态为 true。CLI 对尚需回答或继续的问题保持退出9：可以继续时给出 `swa question resume --project P --controller C --run R --task ROOT --dispatch D --question Q --request-id NEW_UUID --json`；证据不足时给原 wait/request 查询指引。GUI 同 Run 按相同库存显示继续按钮，并沿原 request.show 恢复，pending、未知或普通权限错误均不清除原请求锁。
+
+work 委派执行，consult 必须由实际工具策略禁止外部操作，notify 仅保存单向邮件且不新建 Task/Worker。交接保存原始来源、父任务、接收者、完成条件和 reply。`handoff.notify` 接收原 Controller、根任务、接收 Dispatch 和 `input_file`；Go 按当前项目权限读取并版本化该文件，原生邮件逐字保存 `invocation.input.text`。该操作不接收内联 `text`。notify 的 `delivery:stored` 只表示记录已保存；通知和完成邮件使用原 `audit_only` 合同，不进入会自动向模型投递的邮箱。reply=poll 由调用者观察；reply=resume 由原生完成消费者把真实子成果通过原邮件和经过当前权限检查的 worker.send 输入路径递交父会话。内部 `handoff` 引用 source_task_id/source_dispatch_id/parent_task_id/parent_dispatch_id/mail_id；后台核原记录、当前项目权限和原会话，外部请求不能提供该证明。邮件已保存、实际接受输入、父 Agent 继续输出分别记录。
+
+Run 自动收尾复用原 journal 完成通知、Task/Dispatch、完整成果 reader 和原 worker.stop/release，不新增调度器或第二任务状态库。Run 观察触发同 scope 的既有结算；问题库存同时核原问题、创建/等待回执及真实工具结果，覆盖报告、自动停止/释放、根任务交付与最终清理前复核。已保存但读取未确认的答案仍阻止自动交付；仅 Q=answered 或 Q=closed 不代表模型继续或停止完成。用户显式 stop 在原停止及退出证据确认后可沿原流程回收，保留 interrupted 与原答案，不宣称模型已读。所有实际后代、问题、未知输入和所属资源均须闭合；执行终态标记 `acceptance:unreviewed`，不代替验收条件审查。
+
+Agent 能力分别标记 declaration/configuration/probe/session/result 证据层级；安装、配置、可启动、实际控制和执行成功分别展示。图片、工具和模型切换分别声明，界面按实际可用操作开放。追加输入仅有原生接受证据才为 sent，明确无效果拒绝才为 not_sent，其余为 unknown；unknown 不自动重发。恢复区别 resumed/rebuilt/failed/unknown，保留真实模型、provider、非秘密账号来源及原会话。模型目录优先使用当前真实会话支持的账号目录；静态配置标为 unverified，不能回退其他账号后声称同来源。
+
+本轮验收使用 N=4、N=6 的真实公开任务，并分别报告平台、Agent/模型、原生输入与输出、停止隔离和最终资源释放。实现及局部测试不替代安装后实际验收；具体计划与剩余限制见[当前任务](../tasks/swa-evolution-20261023.md)。
 
 <!-- PAGEBREAK -->
 

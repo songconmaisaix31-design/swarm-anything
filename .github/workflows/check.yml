@@ -1,11 +1,53 @@
-name: S0 checks
+name: SWA checks
 on:
   push:
   pull_request:
 permissions:
   contents: read
 jobs:
+  swa-foundation:
+    if: ${{ github.event_name != 'push' || (!startsWith(github.ref, 'refs/tags/ci/swa-windows-') && !contains(github.event.head_commit.message, '[swa-windows-diagnostics]') && !contains(github.event.head_commit.message, '[swa-windows-vs-probe]') && !contains(github.event.head_commit.message, '[swa-windows-service-evidence]') && !contains(github.event.head_commit.message, '[swa-windows-incarnation-control]')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.2
+          cache: true
+      - name: Install the cross-platform development targets
+        run: pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filter @orca/process-host install --frozen-lockfile
+      - run: go mod download
+      - run: go mod verify
+      - run: pnpm check:contracts
+      - run: pnpm typecheck:swa
+      - name: Check task capacity rules without model calls
+        run: node --test tests/swa-cli-headless/task-budget.test.mjs
+      - name: Exercise CLI validation and authority boundaries
+        run: go test -count=1 -mod=readonly -v -skip '^TestOrcaCLIRealInstalledController$' ./cmd/swa
+      - name: Build the CLI without model credentials
+        shell: bash
+        run: |
+          mkdir -p .verification/swa-ci
+          revision=$(git rev-parse HEAD)
+          executable=.verification/swa-ci/swa
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            executable="$executable.exe"
+          fi
+          go build -mod=readonly -trimpath -ldflags="-X main.version=$revision" -o "$executable" ./cmd/swa
+          test "$("$executable" --version)" = "$revision"
   check:
+    if: ${{ github.event_name != 'push' || (!startsWith(github.ref, 'refs/tags/ci/swa-windows-') && !contains(github.event.head_commit.message, '[swa-windows-diagnostics]') && !contains(github.event.head_commit.message, '[swa-windows-vs-probe]') && !contains(github.event.head_commit.message, '[swa-windows-service-evidence]') && !contains(github.event.head_commit.message, '[swa-windows-incarnation-control]')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,13 +67,13 @@ jobs:
           go-version: 1.27.2
           cache: true
       - run: go mod download
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filter @orca/process-host install --frozen-lockfile
       - run: pnpm check
-      - run: go test -mod=readonly -race ./...
+      - run: pnpm check:race
         if: runner.os == 'Linux'
       - run: pnpm build
       - run: pnpm --dir web exec playwright install --with-deps chromium
-      - run: pnpm --dir web exec playwright test --workers=1
+      - run: pnpm --dir web exec playwright test --config e2e/swa-workspace.config.ts --workers=1
         if: runner.os == 'Windows'
       - run: pnpm test:e2e
         if: runner.os != 'Windows'

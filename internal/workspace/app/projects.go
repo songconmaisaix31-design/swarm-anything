@@ -26,6 +26,7 @@ type localProjectService struct {
 	refs            ProjectReferences
 	files           ProjectFiles
 	registry        NativeRegistry
+	externalCLI     ExternalCLIRegistry
 
 	nativeMessageMu      sync.RWMutex
 	nativeMessageOptions nativeMessageOptions
@@ -35,6 +36,24 @@ type localProjectService struct {
 
 func NewLocalProjectService(repo LocalProjectRepository, refs ProjectReferences, files ProjectFiles, registry NativeRegistry) *localProjectService {
 	return &localProjectService{repo: repo, refs: refs, files: files, registry: registry, discoveryGate: make(chan struct{}, 1)}
+}
+
+// 独立 SWA 使用 Orca Worker；未组装旧会话 Registry 时明确拒绝其专属操作。
+func (s *localProjectService) nativeAdapter(id string) (NativeAdapter, error) {
+	if s.registry == nil {
+		return nil, projectError(apierrors.UnsupportedCapability, "legacy native session control is not assembled; use the SWA Worker entry")
+	}
+	return s.registry.Adapter(id)
+}
+
+func (s *localProjectService) ConfigureExternalCLIRegistry(port ExternalCLIRegistry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if port == nil || s.externalCLI != nil {
+		return errors.New("external CLI registry requires one non-nil binding before serving")
+	}
+	s.externalCLI = port
+	return nil
 }
 
 func projectError(code apierrors.Code, message string) error {
@@ -145,7 +164,7 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 		}
 	}
 	for cli, root := range cmd.Settings.HistoryRoots {
-		if _, err := s.registry.Adapter(cli); err != nil {
+		if _, err := s.nativeAdapter(cli); err != nil {
 			return p, err
 		}
 		if _, err := s.files.CanonicalRoot(root); err != nil {
@@ -153,8 +172,14 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 		}
 	}
 	if cmd.Settings.ExternalModelCLI != "" {
-		if _, err := s.registry.Adapter(cmd.Settings.ExternalModelCLI); err != nil {
-			return p, err
+		if s.externalCLI != nil {
+			if err := s.externalCLI.ValidateExternalCLI(ctx, cmd.Settings.ExternalModelCLI); err != nil {
+				return p, err
+			}
+		} else {
+			if _, err := s.nativeAdapter(cmd.Settings.ExternalModelCLI); err != nil {
+				return p, err
+			}
 		}
 	}
 	// 当前 adapter 只提供选定上下文，拒绝原生协议无法限制范围的工具配置。
@@ -385,7 +410,7 @@ func (s *localProjectService) session(ctx context.Context, c domain.Caller, proj
 	if session.ProjectID != projectID {
 		return p, session, nil, projectError(apierrors.ScopeDenied, "native session belongs to another project")
 	}
-	a, err := s.registry.Adapter(session.CLI)
+	a, err := s.nativeAdapter(session.CLI)
 	return p, session, a, err
 }
 func (s *localProjectService) nativePermission(ctx context.Context, c domain.Caller, p domain.LocalProject, cli, action string) error {
@@ -478,7 +503,7 @@ func (s *localProjectService) StartNativeSession(ctx context.Context, c domain.C
 	if err != nil {
 		return session, err
 	}
-	adapter, err := s.registry.Adapter(cmd.CLI)
+	adapter, err := s.nativeAdapter(cmd.CLI)
 	if err != nil {
 		return session, err
 	}
@@ -620,7 +645,7 @@ func (s *localProjectService) stopOwned(ctx context.Context, session domain.Nati
 	if session.Ownership != "owned" {
 		return projectError(apierrors.ScopeDenied, "only a controller-owned native process may be stopped")
 	}
-	a, err := s.registry.Adapter(session.CLI)
+	a, err := s.nativeAdapter(session.CLI)
 	if err != nil {
 		return err
 	}
@@ -677,7 +702,7 @@ func (s *localProjectService) CheckProjectModel(ctx context.Context, c domain.Ca
 	if p.Settings.ExternalModelCLI == "" || p.Settings.ExternalModelCLI != cli {
 		return p, projectError(apierrors.ApprovalRequired, "project external model consent does not cover the selected CLI")
 	}
-	if _, err := s.registry.Adapter(cli); err != nil {
+	if _, err := s.nativeAdapter(cli); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -706,7 +731,7 @@ func (s *localProjectService) DiscoverNativeSessions(ctx context.Context, c doma
 	if err != nil {
 		return nil, err
 	}
-	a, err := s.registry.Adapter(cli)
+	a, err := s.nativeAdapter(cli)
 	if err != nil {
 		return nil, err
 	}

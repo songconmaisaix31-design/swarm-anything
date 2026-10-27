@@ -7,7 +7,7 @@ import { usePersistentCommand } from '../../../hooks/usePersistentCommand';
 import { QueryState } from '../../../components/QueryState';
 import { CommandState } from '../../../components/CommandState';
 import { commandError } from '../../../utils/commandError';
-import { SelectField, TextField } from '../../attention/FormControls';
+import { SelectField, TextField } from '../../../components/FormControls';
 import { lines } from './proposalDraft';
 import { GoalRevision } from './GoalRevision';
 import { goalStatuses } from './goalDraft';

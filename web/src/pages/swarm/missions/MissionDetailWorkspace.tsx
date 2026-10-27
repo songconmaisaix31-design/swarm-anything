@@ -8,7 +8,7 @@ import { QueryState } from '../../../components/QueryState';
 import { CommandState } from '../../../components/CommandState';
 import { Field } from '../../../components/DetailPanel';
 import { commandError } from '../../../utils/commandError';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import { MissionDetail, MissionTimeline, WorkItemDetail, WorkItemList } from './MissionRecords';
 import { MissionStopActions } from './MissionStopActions';
 import { WorkItemEditor } from './WorkItemEditor';

@@ -5,10 +5,10 @@ import { useCommand } from '../../hooks/useCommand';
 import { SectionCard } from '../../components/SectionCard';
 import { QueryState } from '../../components/QueryState';
 import { CommandState } from '../../components/CommandState';
-import { TextField } from '../attention/FormControls';
+import { TextField } from '../../components/FormControls';
 import { GitHubRepositoriesPanel } from '../workspace/GitHubRepositoriesPanel';
 import { matchesQuery } from '../../utils/search';
-import styles from '../attention/AttentionPage.module.css';
+import styles from '../../components/FormControls.module.css';
 
 export function DevelopmentSpacePanel({ query }: { query: string }) {
   const spaces = useProjectSpaces();

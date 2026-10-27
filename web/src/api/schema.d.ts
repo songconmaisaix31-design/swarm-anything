@@ -1,5 +1,25 @@
 // Generated from contracts/openapi.yaml. Run pnpm generate; do not edit.
 export interface paths {
+    "/local-projects/{id}/orca/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute one authorized command against the installed private Orca runtime
+         * @description Uses current project grants and fixed context. Mutations require the same canonical UUID in request_id and Idempotency-Key. Native Run, Task, Dispatch, receipt and transcript remain authoritative; unknown operations are never resent automatically. Authenticated human safety stops recheck exact native ownership and remain available after execution approval changes.
+         */
+        post: operations["executeOrcaCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/openviking/status": {
         parameters: {
             query?: never;
@@ -3178,6 +3198,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SwaTaskSpecV1: components["schemas"]["taskSpec"];
+        SwaRegisteredAgentV1: components["schemas"]["registeredAgent"];
+        SwaAgentCapabilitiesV1: components["schemas"]["capabilities"];
+        SwaAgentSelectionV1: components["schemas"]["agentSelection"];
+        SwaNativeLaunchPolicyV1: components["schemas"]["nativeLaunchPolicy"];
         OpenVikingStatusV1: {
             /** @constant */
             schema_version: 1;
@@ -7717,6 +7742,439 @@ export interface components {
             expected_revision: number;
             hidden: boolean;
         };
+        roleDefinition: {
+            name: string;
+            responsibilities: string;
+            default_agent: string;
+            default_model: string;
+            /** @enum {unknown} */
+            question_mode?: "disabled" | "native";
+            skills: string[] | null;
+            knowledge: string[] | null;
+        };
+        conversationDefinition: {
+            title: string;
+            role_id?: string;
+        };
+        /** @description Each action accepts only its documented fields. Mutations require the original canonical UUID; task/result paths are checked against current project directory permission. Trusted caller, native identities and context cannot be supplied here. */
+        command: {
+            /** @enum {unknown} */
+            action: "status" | "capabilities" | "run.submit" | "run.show" | "run.export" | "role.list" | "role.show" | "role.create" | "role.update" | "role.archive" | "conversation.list" | "conversation.show" | "conversation.create" | "conversation.append" | "handoff.notify" | "controller.open" | "controller.show" | "controller.close" | "controller.recover" | "task.create" | "task.show" | "task.list" | "task.complete" | "task.result" | "worker.start" | "worker.show" | "worker.list" | "worker.read" | "worker.send" | "worker.stop" | "worker.release" | "question.answer" | "question.resume" | "request.show";
+            project_id?: string;
+            controller?: string;
+            run_id?: string;
+            task_id?: string;
+            dispatch_id?: string;
+            question_id?: string;
+            /** Format: uuid */
+            request_id?: string;
+            workdir?: string;
+            spec_file?: string;
+            input_file?: string;
+            result_file?: string;
+            output_dir?: string;
+            name?: string;
+            agent?: string;
+            model?: string;
+            /**
+             * @description Explicit new Run/Worker question mode. Native requires the fixed Pi questions-only contract; omitted retains the selected role default or disabled.
+             * @enum {unknown}
+             */
+            question_mode?: "disabled" | "native";
+            /** @constant */
+            source?: "transcript";
+            cursor?: string;
+            limit?: number;
+            parent_task_id?: string;
+            /** @enum {unknown} */
+            handoff_mode?: "work" | "consult";
+            /** @enum {unknown} */
+            reply_mode?: "resume" | "poll";
+            completion_criteria?: string[];
+            role_id?: string;
+            conversation_id?: string;
+            revision?: number;
+            role?: components["schemas"]["roleDefinition"];
+            conversation?: components["schemas"]["conversationDefinition"];
+            /** @description question.answer preserves the exact nonblank text and enforces a 32000 UTF-8 byte limit at execution; existing conversation text retains its normalization. */
+            text?: string;
+        } & (unknown & unknown);
+        nativeError: {
+            code: string;
+            message: string;
+            /** @constant */
+            retryable: false;
+            required_action: string;
+            data?: unknown;
+        };
+        /** @description Result preserves actual native records and provenance. HTTP transport success is insufficient for mutation success; unknown outcomes retain the original request and resource ownership. */
+        envelope: {
+            ok: boolean;
+            request_id?: string;
+            runtime_id?: string;
+            authority_domain?: string;
+            controller?: string;
+            run_id?: string;
+            task_id?: string;
+            dispatch_id?: string;
+            question_id?: string;
+            result?: unknown;
+            error?: components["schemas"]["nativeError"];
+        };
+        /** @description Contents of the approved task specification file selected by command.spec_file, not inline HTTP command fields. max_workers is the authorized task Worker quota; its maximum is the JavaScript safe-integer precision boundary, not a runtime capacity guarantee. Current permissions, reservations, resources and complete-inventory limits are checked separately. */
+        taskSpec: {
+            goal: string;
+            source_repo: string;
+            source_revision: string;
+            success_criteria: string[];
+            max_workers: number;
+            /** @description Number of initially requested Workers that must be created before automatic Run completion; defaults to one and cannot exceed max_workers. Actual recursive descendants are always included. */
+            initial_workers?: number;
+            conversation_id?: string;
+            role_id?: string;
+            role_revision?: number;
+            context?: {
+                references?: {
+                    material_id?: string;
+                    revision?: number;
+                }[] | null;
+                files?: string[] | null;
+            } | null;
+        };
+        registeredAgent: {
+            /** @constant */
+            schema: "swa.registered-agent.v1";
+            id: string;
+            adapter: string;
+            /** @enum {unknown} */
+            execution_mode: "structured" | "terminal";
+            /** @constant */
+            registered: true;
+            source: {
+                /** @enum {unknown} */
+                kind: "structured-registry" | "tui-launcher";
+            };
+            source_revision: string;
+            registry: {
+                /** @constant */
+                orca_version: "1.4.230";
+                artifact_sha256: string;
+            };
+            runtime: {
+                runtime_id: string;
+                authority_domain: string;
+                data_root: string;
+                install_root: string;
+            };
+        } & ({
+            /** @constant */
+            execution_mode?: "structured";
+            source?: {
+                /** @constant */
+                kind?: "structured-registry";
+            };
+        } | {
+            /** @constant */
+            execution_mode?: "terminal";
+            source?: {
+                /** @constant */
+                kind?: "tui-launcher";
+            };
+        });
+        settingsSource: {
+            /** @enum {unknown} */
+            kind: "native" | "orca-profile";
+            path?: string;
+            revision?: number;
+        };
+        observation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+            /** @enum {unknown} */
+            basis?: "declaration" | "configuration" | "probe" | "session" | "result";
+        };
+        installedObservation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+            /** @enum {unknown} */
+            basis?: "declaration" | "configuration" | "probe" | "session" | "result";
+            executable?: string;
+            version?: string;
+        };
+        configuredObservation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+            /** @enum {unknown} */
+            basis?: "declaration" | "configuration" | "probe" | "session" | "result";
+            model?: string;
+            provider?: string;
+            account_source?: string;
+        };
+        modelCatalogObservation: {
+            /** @enum {unknown} */
+            origin: "live-session" | "probe" | "configured" | "unknown";
+            /** @enum {unknown} */
+            availability: "verified" | "unverified";
+            models: {
+                id: string;
+                label: string;
+                provider?: string;
+            }[];
+            /** Format: date-time */
+            observed_at?: string;
+        };
+        requirements: {
+            settings_revision: number;
+            allow_directory: boolean;
+            allowed_subdirs: string[] | null;
+            allowed_actions: string[] | null;
+            allowed_tools: string[] | null;
+            grant_actions: string[] | null;
+            external_model_cli: string;
+            allow_agent_control: boolean;
+        };
+        capabilities: {
+            /** @constant */
+            schema: "swa.capabilities.v1";
+            source_revision: string;
+            registry: {
+                /** @constant */
+                orca_version: "1.4.230";
+                artifact_sha256: string;
+            };
+            discovery: {
+                /** @constant */
+                host: "local";
+                platform: string;
+                observed_at: string;
+                settings_source: components["schemas"]["settingsSource"];
+            };
+            agents: {
+                id: string;
+                adapter: string;
+                /** @constant */
+                execution_mode: "structured";
+                registered: components["schemas"]["observation"];
+                enabled: components["schemas"]["observation"];
+                installed: components["schemas"]["installedObservation"];
+                configured: components["schemas"]["configuredObservation"];
+                launchable: components["schemas"]["observation"];
+                authenticated?: components["schemas"]["observation"];
+                model_catalog?: components["schemas"]["modelCatalogObservation"];
+                declared_features?: {
+                    images: boolean;
+                    model_switch: boolean;
+                    /** @enum {unknown} */
+                    steering: "inject" | "queue";
+                };
+                control: {
+                    start: components["schemas"]["observation"];
+                    send: components["schemas"]["observation"];
+                    read: components["schemas"]["observation"];
+                    stop: components["schemas"]["observation"];
+                    resume: components["schemas"]["observation"];
+                    tools: components["schemas"]["observation"];
+                    images?: components["schemas"]["observation"];
+                    model_switch?: components["schemas"]["observation"];
+                    questions?: components["schemas"]["observation"];
+                };
+                requirements: components["schemas"]["requirements"];
+            }[];
+        };
+        nativeConfigurationSource: {
+            path: string;
+            version: string;
+        };
+        nativePiLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "pi-native-api-key";
+                provider: string;
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                models_source: components["schemas"]["nativeConfigurationSource"] | null;
+                private_home: string;
+                model_target: {
+                    model_id: string;
+                    /** @enum {unknown} */
+                    api: "openai-responses" | "openai-completions" | "azure-openai-responses";
+                    /** Format: uri */
+                    base_url: string;
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+            };
+        };
+        nativeOpenCodeLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "opencode-native-api-key";
+                /** @constant */
+                provider: "deepseek";
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                config_source: components["schemas"]["nativeConfigurationSource"];
+                database_source: components["schemas"]["nativeConfigurationSource"];
+                credential_id: string;
+                credential_updated_at: number;
+                private_root: string;
+                model_target: {
+                    /** @constant */
+                    model_id: "deepseek-v4-pro";
+                    /** @constant */
+                    api: "opencode-native-deepseek";
+                    /** @constant */
+                    base_url: "https://api.deepseek.com";
+                };
+            } | {
+                /** @constant */
+                kind: "opencode-native-stepfun-api-key";
+                /** @constant */
+                provider: "stepfun";
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                config_source: components["schemas"]["nativeConfigurationSource"];
+                database_source: components["schemas"]["nativeConfigurationSource"];
+                credential_id: string;
+                credential_updated_at: number;
+                private_root: string;
+                model_target: {
+                    /** @constant */
+                    model_id: "step-3.5-flash";
+                    /** @constant */
+                    api: "openai-completions";
+                    /** @constant */
+                    base_url: "https://api.stepfun.com/v1";
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "opencode-cli-2.0.31";
+            };
+        };
+        nativeCodexLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "codex-native-api-key";
+                /** @constant */
+                provider: "openai";
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                catalog_source: components["schemas"]["nativeConfigurationSource"];
+                private_root: string;
+                model_target: {
+                    /** @constant */
+                    model_id: "gpt-5.5";
+                    /** @constant */
+                    api: "openai-responses";
+                    /** @constant */
+                    base_url: "https://api.openai.com/v1";
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "codex-cli-0.163.0";
+            };
+        };
+        nativeClaudeLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "claude-native-api-key";
+                /** @constant */
+                provider: "anthropic";
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                private_root: string;
+                model_target: {
+                    /** @constant */
+                    model_id: "claude-opus-5";
+                    /** @constant */
+                    api: "anthropic-messages";
+                    /** @constant */
+                    base_url: "https://api.anthropic.com";
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "claude-cli-2.1.284-sdk-0.3.284";
+            };
+        };
+        nativePiPerSessionLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "pi-native-api-key-per-session";
+                provider: string;
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                models_source: components["schemas"]["nativeConfigurationSource"] | null;
+                private_root: string;
+                model_target: {
+                    model_id: string;
+                    /** @enum {unknown} */
+                    api: "openai-responses" | "openai-completions" | "azure-openai-responses";
+                    /** Format: uri */
+                    base_url: string;
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+            } | {
+                /** @constant */
+                mode: "questions-only";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+                extension: components["schemas"]["nativeConfigurationSource"];
+                allowed: "swa_ask"[];
+            };
+        };
+        nativeLaunchPolicy: components["schemas"]["nativePiLaunchPolicy"] | components["schemas"]["nativeOpenCodeLaunchPolicy"] | components["schemas"]["nativeCodexLaunchPolicy"] | components["schemas"]["nativeClaudeLaunchPolicy"] | components["schemas"]["nativePiPerSessionLaunchPolicy"];
+        agentSelection: {
+            agent_id: string;
+            adapter: string;
+            /** @constant */
+            execution_mode: "structured";
+            executable: string;
+            version: string;
+            model: string;
+            provider: string;
+            external_target: string;
+            settings_source: components["schemas"]["settingsSource"];
+            settings_revision: number;
+            configuration_version: string;
+            native_launch: components["schemas"]["nativeLaunchPolicy"];
+        };
     };
     responses: {
         /** @description Invalid command, current permission denial, version conflict or unavailable dependency. No execution retry. */
@@ -7747,6 +8205,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    executeOrcaCommand: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for mutation and original request lookup */
+                "Idempotency-Key"?: string;
+                /** @description Required for an authenticated human POST; project Agent bearer requests use their current scoped grant */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: components["parameters"]["S2ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["command"];
+            };
+        };
+        responses: {
+            /** @description Actual native result and identities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["envelope"];
+                };
+            };
+            400: components["responses"]["S2CommandError"];
+            403: components["responses"]["S2CommandError"];
+            404: components["responses"]["S2CommandError"];
+            /** @description Actual native refusal or unknown outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["envelope"] | components["schemas"]["ErrorV1"];
+                };
+            };
+            500: components["responses"]["S2CommandError"];
+            501: components["responses"]["S2CommandError"];
+            503: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
     getOpenVikingStatus: {
         parameters: {
             query?: never;

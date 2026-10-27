@@ -1,0 +1,26 @@
+{
+  "source": {
+    "kind": "actual_folded_journal_metadata_projection",
+    "report_sha256": "36f3d7f94bdbd666da0c887223e382eaaaef674e3672a5870d619084d537e829",
+    "journal_rows": 10,
+    "input_body": "OMITTED_FROM_METADATA_FIXTURE",
+    "request_id": "97372aeb-fee5-4bb9-a224-5a077b6b511a"
+  },
+  "sessionId": "392a0f05-8eec-4aae-b428-baa0558d422f",
+  "fence": 1,
+  "user": {
+    "itemId": "orca:1792764029235-8187e7103b70eed98f08f3e8d119cfe2",
+    "turnScope": { "kind": "thread" }
+  },
+  "turn": {
+    "itemId": "legacy:pi:392a0f05-8eec-4aae-b428-baa0558d422f:turn-lifecycle%3Ap%3A392a0f05-8eec-4aae-b428-baa0558d422f%3Arun%253Af2969746-cd24-48a0-ac22-5bfd8c3d1f69%253A1",
+    "body": {
+      "kind": "turn",
+      "turnId": "p:392a0f05-8eec-4aae-b428-baa0558d422f:run%3Af2969746-cd24-48a0-ac22-5bfd8c3d1f69%3A1",
+      "state": "completed",
+      "outcome": "failure",
+      "userItemId": "orca:1792764029235-8187e7103b70eed98f08f3e8d119cfe2"
+    },
+    "turnScope": { "kind": "thread" }
+  }
+}

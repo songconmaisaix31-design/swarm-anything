@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { usePersistentCommand } from '../../hooks/usePersistentCommand';
 import { CommandState } from '../../components/CommandState';
-import { TextField } from '../attention/FormControls';
+import { TextField } from '../../components/FormControls';
 import { setProjectProgress } from './progressClient';
 import type { ProjectProgress, ProjectProgressResult } from './progressPresentation';
-import styles from '../attention/AttentionPage.module.css';
+import styles from '../../components/FormControls.module.css';
 
 export function ProjectManualProgressForm({ progress, disabled, onSaved, onBlockedChange }: { progress: ProjectProgress; disabled: boolean; onSaved: () => void; onBlockedChange: (blocked: boolean) => void }) {
   const [status, setStatus] = useState(progress.source === 'human' ? progress.status : '');

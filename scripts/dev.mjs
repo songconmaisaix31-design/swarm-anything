@@ -2,31 +2,30 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { actualListeningURL, root, web, findGo, launchLogged, requireFile, stop, verificationOutputRoot } from './process.mjs';
-import { summarizeEnvironment } from './summarize.mjs';
 
-await requireFile('cmd/server/main.go');
+await requireFile('cmd/swa-server/main.go');
 await requireFile('web/index.html');
 const verification = verificationOutputRoot();
 await mkdir(verification, { recursive: true });
-const temporary = await mkdtemp(join(verification, 'astrocyte-dev-'));
+const temporary = await mkdtemp(join(verification, 'swa-dev-'));
 const executable = join(temporary, process.platform === 'win32' ? 'server.exe' : 'server');
 const toolTemporary = join(temporary, 'tool-temp');
-let env = { ...process.env, TEMP: toolTemporary, TMP: toolTemporary, GOTMPDIR: toolTemporary,
+const env = { ...process.env, SWA_DATA_DIR: process.env.SWA_DATA_DIR ?? join(verification, 'swa-dev-data'), TEMP: toolTemporary, TMP: toolTemporary, GOTMPDIR: toolTemporary,
   GOCACHE: process.env.GOCACHE ?? join(verification, 'go-cache'), ASTROCYTE_TEST_VITE_CACHE: join(temporary, 'vite-cache') };
+env.SWA_PORT = env.SWA_PORT ?? env.ASTROCYTE_PORT ?? '8787';
+env.ASTROCYTE_PORT = env.SWA_PORT;
+env.ASTROCYTE_WEB_PORT = env.SWA_WEB_PORT ?? env.ASTROCYTE_WEB_PORT ?? '5173';
+for (const name of ['ASTROCYTE_DATA_DIR', 'ASTROCYTE_WEB_DIR', 'SWA_WEB_DIR']) delete env[name];
 await mkdir(toolTemporary, { recursive: true });
 await mkdir(env.GOCACHE, { recursive: true });
 if (process.argv.includes('--ephemeral')) {
-  env.ASTROCYTE_DATA_DIR = join(temporary, 'data');
-  // 浏览器检查仅使用本次显式授权的提取与模型配置。
-  env.ASTROCYTE_ENABLE_CODEX_DISTILLATION = 'false';
-  env.ASTROCYTE_ENABLE_SUMMARIZE = 'false';
+  env.SWA_DATA_DIR = join(temporary, 'data');
   env.ASTROCYTE_PROJECT_DISCOVERY_ROOTS = JSON.stringify([root]);
   // 真实采集的 Chrome 范围通过 S1 helper 显式传入。
   for (const name of Object.keys(env)) {
     if (name.toUpperCase().startsWith('ASTROCYTE_DOUYIN_')) delete env[name];
   }
 }
-env = await summarizeEnvironment(env);
 const children = [];
 let stopping = false;
 let shutdownPromise;
@@ -90,7 +89,7 @@ async function waitForAPI(child, apiURL) {
 }
 
 try {
-  const build = await launchLogged(await findGo(), ['build', '-mod=readonly', '-o', executable, './cmd/server'], { cwd: root, env, detached: process.platform !== 'win32' }, temporary, 'build');
+  const build = await launchLogged(await findGo(), ['build', '-mod=readonly', '-o', executable, './cmd/swa-server'], { cwd: root, env, detached: process.platform !== 'win32' }, temporary, 'build');
   children.push(build);
   const result = await build.drain();
   if (result.code !== 0) throw new Error(`Actual Go build failed (${result.code ?? result.signal}); stdout=${build.log.stdout}; stderr=${build.log.stderr}`);
@@ -98,6 +97,7 @@ try {
     const webChild = await launch(process.execPath, [join(root, 'scripts/vite-server.mjs')], web, 'vite', true, { ...env, ASTROCYTE_WEB_PORT: env.ASTROCYTE_WEB_PORT ?? '5173' });
     const webURL = await actualListeningURL(webChild, { type: 'vite_listening', field: 'web_url', label: 'Actual Vite', expectedPort: Number(env.ASTROCYTE_WEB_PORT ?? 5173), ipc: true });
     env.ASTROCYTE_WEB_PORT = new URL(webURL).port;
+    env.SWA_ALLOWED_ORIGIN = webURL;
     const apiChild = await launch(executable, [], root, 'api');
     const apiURL = await actualListeningURL(apiChild, { type: 'http_listening', field: 'api_url', label: 'Actual Go', expectedPort: Number(env.ASTROCYTE_PORT ?? 8787) });
     await waitForAPI(apiChild, apiURL);

@@ -3,7 +3,7 @@ import { swarmApi, type SwarmMission } from '../../../api/swarm';
 import type { components } from '../../../api/schema';
 import { usePersistentCommand } from '../../../hooks/usePersistentCommand';
 import { CommandState } from '../../../components/CommandState';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import { commandError } from '../../../utils/commandError';
 import { WorkItemFields, type WorkItemDraft } from './WorkItemFields';
 import styles from './MissionWorkspace.module.css';

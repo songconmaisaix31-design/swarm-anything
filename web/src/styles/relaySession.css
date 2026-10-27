@@ -7,4 +7,23 @@
 .relay-session-coverage dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .relay-session-coverage dt { color: var(--color-text-muted); font-size: var(--text-sm); }
 .relay-session-coverage dd { margin: var(--space-1) 0 0; }
+.ac-workbench .cg-muted { font-size: 12px; color: var(--ac-muted); }
+.ac-workbench .cg-table-scroll { max-width: 100%; overflow: auto; overscroll-behavior: contain; }
+.ac-workbench .cg-events { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.ac-workbench .cg-events th { font-size: 11px; color: var(--ac-muted); font-weight: 500; white-space: nowrap; background: var(--ac-subtle); border-bottom: 1px solid var(--ac-line); padding: 11px 12px; }
+.ac-workbench .cg-events td { padding: 12px; vertical-align: top; border-bottom: 1px solid var(--ac-line); overflow-wrap: anywhere; }
+.ac-workbench .cg-events tbody tr:last-child td { border-bottom: 0; }
+.ac-workbench .cg-event-id { font-family: ui-monospace, Consolas, monospace; font-size: 10px; min-width: 100px; max-width: 210px; color: var(--ac-muted); }
+.ac-workbench .cg-events td:nth-child(2) { min-width: 100px; }
+.ac-workbench .cg-events td:nth-child(3) { min-width: 120px; }
+.ac-workbench .cg-nowrap { white-space: nowrap; }
+.ac-workbench .cg-pagination { display: flex; justify-content: space-between; align-items: center; gap: 15px; border-top: 1px solid var(--ac-line); padding-top: 17px; margin-top: 18px; color: var(--ac-muted); font-size: 12px; }
+.ac-workbench .cg-pagination b { font-weight: 500; color: var(--ac-text); }
+.ac-workbench .cg-pagination > div { display: flex; gap: 8px; }
+.ac-workbench .cg-pagination button:disabled { opacity: .45; }
+.ac-workbench .cg-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; }
+.ac-workbench .cg-field > span { color: var(--ac-muted); }
+.ac-workbench .cg-field select, .ac-workbench .cg-field input { font: inherit; color: var(--ac-text); border: 1px solid var(--ac-line); border-radius: 8px; padding: 9px 10px; min-height: 38px; min-width: 125px; max-width: 100%; background: var(--ac-surface); }
+.ac-workbench .cg-field select:focus-visible { outline: 2px solid var(--ac-green); outline-offset: 3px; }
 @media (max-width: 760px) { .relay-session-filters { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .ac-workbench .cg-field input, .ac-workbench .cg-field select { min-width: 0; width: 100%; } }

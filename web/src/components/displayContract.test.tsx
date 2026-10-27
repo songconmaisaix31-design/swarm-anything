@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MaterialList } from '../pages/attention/AttentionPage';
-import { MaterialSummary } from '../pages/attention/MaterialWorkspace';
 import { MissionList, MissionDetail, WorkItemList, WorkItemDetail } from '../pages/swarm/SwarmPage';
 import { ProjectDetail, ProposalList, ProposalDetail, SessionList, SessionDetail } from '../pages/workspace/WorkspacePage';
 import { DesignGraph, DesignTimeline, ResearchRoutes } from './DesignExamples';
@@ -9,7 +7,6 @@ import type { components } from '../api/schema';
 
 type S = components['schemas'];
 // 明确的函数参数输入只验证显示契约，不表示存在相应来源、会话或执行结果。
-const material: S['MaterialV1'] = { id: 'input-material', kind: 'paper', source_locator: '输入定位', lifecycle: 'active', current_revision: 1, title: '输入标题' };
 const workItem: S['SwarmWorkItemV1'] = { id: 'input-workitem', mission_id: 'input-mission', version: 2, state: 'open', title: '输入工作项', inputs: [], dependencies: [], write_paths: ['src/api'], required_capabilities: [], artifact_inputs: [], attempts: 0, fence: 0, artifact_id: 'input-artifact', reason: '' };
 const mission: S['SwarmMissionV1'] = { id: 'input-mission', version: 3, state: 'blocked', reason: '输入阻塞原因', work_item_count: 1, no_progress: 0, settled_operations: 0, created_at: '2026-10-15T00:00:00Z', last_progress_at: '2026-10-15T00:00:00Z', reserved: { calls: 0, tokens: 0, money: null, currency: '' }, used: { calls: null, tokens: null, money: null, currency: '' }, grant: { id: 'input-grant', epoch: 1, proposal_id: 'input-proposal', proposal_revision: 1, project_id: 'input-project', root: '输入目录', goal: '输入目标', inputs: [], actions: [], write_paths: ['src/api'], budget: { calls: null, tokens: null, money: null, currency: '' }, limits: { max_work_items: 1, max_attempts: 1, max_no_progress: 1, no_progress_seconds: 300, max_active: 1, deadline: '2026-10-16T00:00:00Z' }, expires_at: '2026-10-16T00:00:00Z' } };
 const artifact: S['SwarmArtifactV1'] = { id: 'input-artifact', version: 1, work_item_id: workItem.id, operation_id: 'input-operation', session_id: 'input-session', fence: 1, inputs: [], commit: '输入commit', base_commit: '输入base', object_ref: '输入对象', checks_ref: '输入检查', project_checks_ref: '输入项目检查', changed_paths: ['src/api'], context_packet_id: 'input-packet', state: 'submitted', acceptance_id: '', accepted_by: '', accepted_actor_kind: '', review_reason: '', reviewed_by: '', reviewed_at: null, experience_id: '', experience_status: '', execution_outcome: 'unknown', execution_failure_code: '', usage: null, created_at: '2026-10-15T00:00:00Z' };
@@ -18,31 +15,6 @@ const project: S['ProjectV1'] = { id: 'input-project', name: '输入项目', roo
 const proposal: S['ProposalV1'] = { id: 'input-proposal', revision: 1, version: 1, status: 'declined', created_at: '2026-10-15T00:00:00Z', updated_at: '2026-10-15T00:00:00Z', content: { title: '输入提案', goal: { id: 'input-goal', revision: 1 }, inputs: null, scope: { project_id: 'input-project', roots: null, actions: null, tools: null, external_targets: null, write_paths: null, max_concurrency: 1, settings_revision: 1 }, deliverables: ['输入交付物'], success_criteria: ['输入成功条件'], budget: { calls: null, tokens: null, money_minor: null, currency: '' }, stops: { deadline: '2026-10-16T00:00:00Z', conditions: ['输入停止条件'], max_work_items: 1, max_attempts: 1, no_progress_seconds: 1, max_no_progress_rounds: 1 } } };
 const session: S['SessionV1'] = { id: 'input-session', adapter: 'input-adapter', native_session_id: null, project_id: 'input-project', binding_status: 'unavailable', capabilities: { native_resume: null, handoff: null }, context_state: 'unknown' };
 const select = () => { throw new Error('静态显示测试不得触发操作'); };
-
-describe('资料显示契约', () => {
-  it('显示全部资料类型输入', () => {
-    const html = renderToStaticMarkup(<MaterialList items={(['paper', 'video', 'text', 'file'] as const).map(kind => ({ ...material, id: kind, kind }))} onSelect={select} />);
-    for (const label of ['论文', '视频', '文本', '文件']) expect(html).toContain(label);
-  });
-  it('长中文标题保留完整内容和两行显示样式', () => {
-    const title = '中文标题'.repeat(50);
-    const html = renderToStaticMarkup(<MaterialList items={[{ ...material, title }]} onSelect={select} />);
-    expect(html).toContain(title);
-    expect(html).toContain('line-clamp-2');
-  });
-  it('完整显示失败输入状态', () => {
-    expect(renderToStaticMarkup(<MaterialList items={[{ ...material, import_status: 'failed' }]} onSelect={select} />)).toContain('失败');
-  });
-  it('完整显示归档输入状态', () => {
-    expect(renderToStaticMarkup(<MaterialList items={[{ ...material, lifecycle: 'archived' }]} onSelect={select} />)).toContain('已归档');
-  });
-  it('缺失字段保持未提供或未知', () => {
-    const html = renderToStaticMarkup(<MaterialSummary item={material} />);
-    expect(html).toContain('收藏理由');
-    expect(html).toContain('未提供');
-    expect(html).toContain('人工使用');
-  });
-});
 
 describe('项目、提案和会话显示契约', () => {
   it('显示项目原始目录和标识', () => {

@@ -6,12 +6,13 @@ import { useProjectSpace } from '../../hooks/useAttention';
 import { useCommand } from '../../hooks/useCommand';
 import { CommandState } from '../../components/CommandState';
 import { QueryState } from '../../components/QueryState';
-import { SelectField, TextField } from '../attention/FormControls';
-import { lines } from '../attention/model';
+import { SelectField, TextField } from '../../components/FormControls';
 import { formatDateTime } from '../../utils/format';
 import { nativeActionAllowed } from './nativePermission';
 import { nativeHistoryMessage, stoppedOutput } from './nativePresentation';
-import styles from '../attention/AttentionPage.module.css';
+import styles from '../../components/FormControls.module.css';
+
+const lines = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean);
 
 type Project = components['schemas']['LocalProjectV1'];
 type Packet = components['schemas']['LocalContextPacketV1'];

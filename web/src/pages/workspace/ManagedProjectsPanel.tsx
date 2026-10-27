@@ -9,7 +9,7 @@ import { SectionCard } from '../../components/SectionCard';
 import { CollectionOverview } from '../../components/CollectionOverview';
 import { QueryState } from '../../components/QueryState';
 import { CommandState } from '../../components/CommandState';
-import { SelectField, TextField } from '../attention/FormControls';
+import { SelectField, TextField } from '../../components/FormControls';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
 import { NativeProjectPanel } from './NativeProjectPanel';
 import { ProjectAgentAccess } from './ProjectAgentAccess';
@@ -17,7 +17,7 @@ import { ProjectProgressPanel } from './ProjectProgressPanel';
 import { RegisteredProjectsPanel } from './RegisteredProjectsPanel';
 import { matchesQuery } from '../../utils/search';
 import styles from './LocalProjectsPanel.module.css';
-import formStyles from '../attention/AttentionPage.module.css';
+import formStyles from '../../components/FormControls.module.css';
 
 export function ManagedProjectsPanel({ agents, query, initialRoot = '', initialName = '' }: { agents: ReadApiState<components['schemas']['LocalAgentListV1']>; query: string; initialRoot?: string; initialName?: string }) {
   const projects = useReadApi(signal => localProjectsApi.listProjects({ signal }));

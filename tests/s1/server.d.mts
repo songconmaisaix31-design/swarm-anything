@@ -15,6 +15,8 @@ export interface S1Server {
   query(sql: string, ...parameters: (string | number)[]): Record<string, string | number | null>[];
 }
 export function startS1Server(options?: {
+  /** 明确选择独立 SWA composition；默认保留原产品测试。 */
+  product?: 'legacy' | 'swa';
   browser?: boolean;
   /** 显式隔离 Relay 的 LOCALAPPDATA 和 v0.2-access，默认注册表为空。 */
   relay?: boolean;

@@ -4,9 +4,9 @@
 
 ## 目录与模块
 
-保持现有 Go、React、TypeScript、SQLite 和目录。现有业务上下文为 Attention、Workspace、Swarm，共享判断能力为 Judgment；各自职责与公开接口见 SPEC §2、§12。新增模块先经主 Agent 确认并写入规格，不为并行开发重构既有模块。
+保持现有 Go、React、TypeScript、SQLite 和目录。当前 SWA 业务上下文为 Workspace、Swarm，保留 Judgment 的纯业务规则和端口；当前入口与归属见 SPEC §21.5。认知和资料实现分别归独立 Astrocyte、Attention Mirror 仓库，跨产品调用须经过显式集成；旧组合来源见 [LEGACY](LEGACY.md)。新增模块先经主 Agent 确认并写入规格。
 
-现有代码使用 `internal/<context>/domain`、`internal/<context>/app`、`internal/adapters` 与 `cmd/server`，前端位于 `web`，进程外契约位于 `contracts`。现有模块继续遵守 SPEC §3 的 Domain 无 I/O、app 定义消费方端口、adapter 实现端口和入口组装约束。
+现有代码使用 `internal/<context>/domain`、`internal/<context>/app`、`internal/adapters` 与 `cmd/swa`、`cmd/swa-server`，前端位于 `web`，进程外契约位于 `contracts`。现有模块继续遵守 SPEC §3 的 Domain 无 I/O、app 定义消费方端口、adapter 实现端口和入口组装约束。
 
 新增和修改代码统一采用 SPEC §3 的 Domain/App/Adapters/Composition 依赖关系。Domain 无 I/O；App 声明所需端口并调用 Domain；Adapters 实现端口；Composition 创建具体实现并注入依赖。CLI/MCP/HTTP 只负责协议边界，共用 App 的业务语义。保持现有包边界，不为分层整理重构已有模块；简单存取只保留必要层次，不建立只有转发作用的层次。
 
@@ -43,4 +43,4 @@ Worker 先依据规格、验收、业务样例与变更边界编写测试计划�
 
 涉及依赖边界的改动提交 PR 前执行现有 `scripts/check-architecture.mjs`；越界先返修。该脚本检查 Domain/app/context/transport 的导入边界，业务调用与动态注册还需对应验证。新增模块在其任务中补充必要规则，检查结果按实际覆盖报告。
 
-构建、测试和 Go vet 遵守 RESOURCES 的运行窗口。没有业务代码修改的管理文档清理执行文档核对和链接检查；不把文档检查结果写为功能验收通过。
+构建、测试和 Go vet 遵守 RESOURCES 的当前资源安排。没有业务代码修改的管理文档清理执行文档核对和链接检查；不把文档检查结果写为功能验收通过。

@@ -46,6 +46,8 @@ type Service interface {
 type service struct {
 	storageSchemaVersion int
 	attention            bool
+	swa                  bool
+	execution            bool
 }
 
 // NewService 创建 S0 服务。
@@ -56,6 +58,11 @@ func NewService(storageSchemaVersion int) Service {
 // NewAttentionService 报告已经组装的 S1 导入能力。
 func NewAttentionService(storageSchemaVersion int) Service {
 	return &service{storageSchemaVersion: storageSchemaVersion, attention: true}
+}
+
+// NewSWAService 描述独立 SWA 当前组装；具体 Agent 能力由项目查询提供。
+func NewSWAService(storageSchemaVersion int, execution bool) Service {
+	return &service{storageSchemaVersion: storageSchemaVersion, swa: true, execution: execution}
 }
 
 func (s *service) Health(ctx context.Context) (HealthResponse, error) {
@@ -77,13 +84,16 @@ func (s *service) Foundation(ctx context.Context) (FoundationResponse, error) {
 	if s.attention {
 		stage = "S1"
 	}
+	if s.swa {
+		stage = "SWA"
+	}
 	return FoundationResponse{
 		SchemaVersion: SchemaVersion,
 		Stage:         stage,
 		Capabilities: Capabilities{
 			Imports:      s.attention,
 			Approvals:    false,
-			Execution:    false,
+			Execution:    s.execution,
 			NativeResume: false,
 			Handoff:      false,
 		},

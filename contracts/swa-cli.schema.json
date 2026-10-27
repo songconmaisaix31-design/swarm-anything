@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astrocyte.local/contracts/swa-cli.schema.json",
+  "title": "SWA native execution command and response",
+  "$defs": {
+    "taskSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "source_repo", "source_revision", "success_criteria", "max_workers"],
+      "properties": {
+        "goal": {"type": "string", "minLength": 1},
+        "source_repo": {"type": "string", "minLength": 1},
+        "source_revision": {"type": "string", "minLength": 1},
+        "success_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "max_workers": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "initial_workers": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "Number of initially requested Workers that must be created before automatic Run completion; defaults to one and cannot exceed max_workers. Actual recursive descendants are always included."},
+        "conversation_id": {"type": "string", "minLength": 1},
+        "role_id": {"type": "string", "minLength": 1},
+        "role_revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "context": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "references": {"type": ["array", "null"], "items": {
+              "type": "object", "additionalProperties": false,
+              "properties": {"material_id": {"type": "string"}, "revision": {"type": "integer"}}
+            }},
+            "files": {"type": ["array", "null"], "items": {"type": "string"}}
+          }
+        }
+      },
+      "description": "Contents of the approved task specification file selected by command.spec_file, not inline HTTP command fields. max_workers is the authorized task Worker quota; its maximum is the JavaScript safe-integer precision boundary, not a runtime capacity guarantee. Current permissions, reservations, resources and complete-inventory limits are checked separately."
+    },
+    "registeredAgent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "id", "adapter", "execution_mode", "registered", "source", "source_revision", "registry", "runtime"],
+      "properties": {
+        "schema": {"const": "swa.registered-agent.v1"}, "id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1},
+        "execution_mode": {"enum": ["structured", "terminal"]}, "registered": {"const": true},
+        "source": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"enum": ["structured-registry", "tui-launcher"]}}},
+        "source_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "registry": {"type": "object", "additionalProperties": false, "required": ["orca_version", "artifact_sha256"], "properties": {"orca_version": {"const": "1.4.230"}, "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+        "runtime": {"type": "object", "additionalProperties": false, "required": ["runtime_id", "authority_domain", "data_root", "install_root"], "properties": {"runtime_id": {"type": "string", "minLength": 1}, "authority_domain": {"type": "string", "minLength": 1}, "data_root": {"type": "string", "minLength": 1}, "install_root": {"type": "string", "minLength": 1}}}
+      },
+      "oneOf": [
+        {"properties": {"execution_mode": {"const": "structured"}, "source": {"properties": {"kind": {"const": "structured-registry"}}}}},
+        {"properties": {"execution_mode": {"const": "terminal"}, "source": {"properties": {"kind": {"const": "tui-launcher"}}}}}
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "enum": ["status", "capabilities", "run.submit", "run.show", "run.export", "role.list", "role.show", "role.create", "role.update", "role.archive", "conversation.list", "conversation.show", "conversation.create", "conversation.append", "handoff.notify", "controller.open", "controller.show", "controller.close", "controller.recover", "task.create", "task.show", "task.list", "task.complete", "task.result", "worker.start", "worker.show", "worker.list", "worker.read", "worker.send", "worker.stop", "worker.release", "question.answer", "question.resume", "request.show"] },
+        "project_id": { "type": "string", "minLength": 1 },
+        "controller": { "type": "string", "minLength": 1 },
+        "run_id": { "type": "string", "minLength": 1 },
+        "task_id": { "type": "string", "minLength": 1 },
+        "dispatch_id": { "type": "string", "minLength": 1 },
+        "question_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "format": "uuid" },
+        "workdir": { "type": "string", "minLength": 1 },
+        "spec_file": { "type": "string", "minLength": 1 },
+        "input_file": { "type": "string", "minLength": 1 },
+        "result_file": { "type": "string", "minLength": 1 },
+        "output_dir": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "agent": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "question_mode": { "enum": ["disabled", "native"], "description": "Explicit new Run/Worker question mode. Native requires the fixed Pi questions-only contract; omitted retains the selected role default or disabled." },
+        "source": { "const": "transcript" },
+        "cursor": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "parent_task_id": {"type": "string", "minLength": 1},
+        "handoff_mode": {"enum": ["work", "consult"]}, "reply_mode": {"enum": ["resume", "poll"]},
+        "completion_criteria": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "role_id": {"type": "string", "minLength": 1}, "conversation_id": {"type": "string", "minLength": 1},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "role": {"$ref": "#/$defs/roleDefinition"}, "conversation": {"$ref": "#/$defs/conversationDefinition"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 32000, "description": "question.answer preserves the exact nonblank text and enforces a 32000 UTF-8 byte limit at execution; existing conversation text retains its normalization."}
+      },
+      "allOf": [{"if": {"properties": {"action": {"const": "question.answer"}}, "required": ["action"]}, "then": {
+        "properties": {"controller": {}, "run_id": {}, "task_id": {}, "dispatch_id": {}, "question_id": {}, "request_id": {}},
+        "required": ["controller", "run_id", "task_id", "dispatch_id", "question_id", "request_id"],
+        "oneOf": [{"properties": {"input_file": {}}, "required": ["input_file"]}, {"properties": {"text": {}}, "required": ["text"]}]
+      }}, {"if": {"properties": {"action": {"const": "question.resume"}}, "required": ["action"]}, "then": {
+        "properties": {"controller": {}, "run_id": {}, "task_id": {}, "dispatch_id": {}, "question_id": {}, "request_id": {}},
+        "required": ["controller", "run_id", "task_id", "dispatch_id", "question_id", "request_id"],
+        "not": {"anyOf": [{"properties": {"text": {}}, "required": ["text"]}, {"properties": {"input_file": {}}, "required": ["input_file"]}]}
+      }}],
+      "description": "Each action accepts only its documented fields. Mutations require the original canonical UUID; task/result paths are checked against current project directory permission. Trusted caller, native identities and context cannot be supplied here."
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason", "source"],
+      "properties": {
+        "status": {"enum": ["available", "unavailable", "unknown"]},
+        "reason": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "checked_at": {"type": "string"},
+        "basis": {"enum": ["declaration", "configuration", "probe", "session", "result"]}
+      }
+    },
+    "roleDefinition": {
+      "type": "object", "additionalProperties": false, "required": ["name", "responsibilities", "default_agent", "default_model", "skills", "knowledge"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 200}, "responsibilities": {"type": "string", "minLength": 1, "maxLength": 16000},
+        "default_agent": {"type": "string", "minLength": 1}, "default_model": {"type": "string", "minLength": 1},
+        "question_mode": {"enum": ["disabled", "native"]},
+        "skills": {"type": ["array", "null"], "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 2048}},
+        "knowledge": {"type": ["array", "null"], "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 2048}}
+      }
+    },
+    "conversationDefinition": {
+      "type": "object", "additionalProperties": false, "required": ["title"],
+      "properties": {"title": {"type": "string", "minLength": 1, "maxLength": 200}, "role_id": {"type": "string", "minLength": 1}}
+    },
+    "modelCatalogObservation": {
+      "type": "object", "additionalProperties": false, "required": ["origin", "availability", "models"],
+      "properties": {
+        "origin": {"enum": ["live-session", "probe", "configured", "unknown"]}, "availability": {"enum": ["verified", "unverified"]},
+        "models": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "label"], "properties": {"id": {"type": "string", "minLength": 1}, "label": {"type": "string", "minLength": 1}, "provider": {"type": "string", "minLength": 1}}}},
+        "observed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "executionObservation": {
+      "type": "object", "additionalProperties": false, "required": ["selection", "launch", "control", "result", "authenticated", "delivery", "resume", "model_catalog"],
+      "properties": {
+        "selection": {"type": "object", "additionalProperties": false, "required": ["agent", "adapter", "version", "execution_mode", "provider", "model", "account_source"], "properties": {"agent": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1}, "execution_mode": {"const": "structured"}, "provider": {"type": "string", "minLength": 1}, "model": {"type": "string", "minLength": 1}, "account_source": {"type": "string", "minLength": 1}}},
+        "launch": {"$ref": "#/$defs/observation"}, "control": {"$ref": "#/$defs/observation"}, "result": {"$ref": "#/$defs/observation"}, "authenticated": {"$ref": "#/$defs/observation"},
+        "delivery": {"type": "object", "additionalProperties": false, "required": ["state", "phase", "source"], "properties": {"state": {"enum": ["sent", "not_sent", "unknown"]}, "phase": {"enum": ["journaled", "queued", "accepted", "rejected", "unknown"]}, "source": {"type": "string", "minLength": 1}, "request_id": {"type": "string", "minLength": 1}, "operation_id": {"type": "string", "minLength": 1}}},
+        "resume": {"type": "object", "additionalProperties": false, "required": ["state", "source"], "properties": {"state": {"enum": ["not_requested", "resumed", "rebuilt", "failed", "unknown"]}, "source": {"type": "string", "minLength": 1}, "session_id": {"type": "string", "minLength": 1}}},
+        "model_catalog": {"$ref": "#/$defs/modelCatalogObservation"}
+      }
+    },
+    "settingsSource": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {"kind": {"enum": ["native", "orca-profile"]}, "path": {"type": "string", "minLength": 1}, "revision": {"type": "integer", "minimum": 0}}
+    },
+    "requirements": {
+      "type": "object", "additionalProperties": false,
+      "required": ["settings_revision", "allow_directory", "allowed_subdirs", "allowed_actions", "allowed_tools", "grant_actions", "external_model_cli", "allow_agent_control"],
+      "properties": {
+        "settings_revision": {"type": "integer", "minimum": 1},
+        "allow_directory": {"type": "boolean"},
+        "allowed_subdirs": {"type": ["array", "null"], "items": {"type": "string"}},
+        "allowed_actions": {"type": ["array", "null"], "items": {"type": "string"}},
+        "allowed_tools": {"type": ["array", "null"], "items": {"type": "string"}},
+        "grant_actions": {"type": ["array", "null"], "items": {"type": "string"}},
+        "external_model_cli": {"type": "string"}, "allow_agent_control": {"type": "boolean"}
+      }
+    },
+    "nativeConfigurationSource": {
+      "type": "object", "additionalProperties": false, "required": ["path", "version"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1}}
+    },
+    "nativeLaunchPolicy": {"oneOf": [{"$ref": "#/$defs/nativePiLaunchPolicy"}, {"$ref": "#/$defs/nativeOpenCodeLaunchPolicy"}, {"$ref": "#/$defs/nativeCodexLaunchPolicy"}, {"$ref": "#/$defs/nativeClaudeLaunchPolicy"}, {"$ref": "#/$defs/nativePiPerSessionLaunchPolicy"}]},
+    "nativeClaudeLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "claude-native-api-key"}, "provider": {"const": "anthropic"}, "source_home": {"type": "string", "minLength": 1},
+            "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "private_root": {"type": "string", "minLength": 1},
+            "model_target": {"type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"], "properties": {"model_id": {"const": "claude-opus-5"}, "api": {"const": "anthropic-messages"}, "base_url": {"const": "https://api.anthropic.com"}}}
+          }
+        },
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "claude-cli-2.1.284-sdk-0.3.284"}}}
+      }
+    },
+    "nativeCodexLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "catalog_source", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "codex-native-api-key"}, "provider": {"const": "openai"}, "source_home": {"type": "string", "minLength": 1},
+            "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "catalog_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "private_root": {"type": "string", "minLength": 1},
+            "model_target": {"type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"], "properties": {"model_id": {"const": "gpt-5.5"}, "api": {"const": "openai-responses"}, "base_url": {"const": "https://api.openai.com/v1"}}}
+          }
+        },
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "codex-cli-0.163.0"}}}
+      }
+    },
+    "nativeOpenCodeLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {"oneOf": [{
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "config_source", "database_source", "credential_id", "credential_updated_at", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "opencode-native-api-key"}, "provider": {"const": "deepseek"}, "source_home": {"type": "string", "minLength": 1},
+            "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "config_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "database_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "credential_id": {"type": "string", "minLength": 1}, "credential_updated_at": {"type": "integer", "minimum": 0}, "private_root": {"type": "string", "minLength": 1},
+            "model_target": {"type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"], "properties": {"model_id": {"const": "deepseek-v4-pro"}, "api": {"const": "opencode-native-deepseek"}, "base_url": {"const": "https://api.deepseek.com"}}}
+          }
+        }, {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "config_source", "database_source", "credential_id", "credential_updated_at", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "opencode-native-stepfun-api-key"}, "provider": {"const": "stepfun"}, "source_home": {"type": "string", "minLength": 1},
+            "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "config_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "database_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "credential_id": {"type": "string", "minLength": 1}, "credential_updated_at": {"type": "integer", "minimum": 0}, "private_root": {"type": "string", "minLength": 1},
+            "model_target": {"type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"], "properties": {"model_id": {"const": "step-3.5-flash"}, "api": {"const": "openai-completions"}, "base_url": {"const": "https://api.stepfun.com/v1"}}}
+          }
+        }]},
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "opencode-cli-2.0.31"}}}
+      }
+    },
+    "nativePiLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "models_source", "private_home", "model_target"],
+          "properties": {
+            "kind": {"const": "pi-native-api-key"}, "provider": {"type": "string", "minLength": 1},
+            "source_home": {"type": "string", "minLength": 1}, "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "models_source": {"oneOf": [{"$ref": "#/$defs/nativeConfigurationSource"}, {"type": "null"}]},
+            "private_home": {"type": "string", "minLength": 1},
+            "model_target": {
+              "type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"],
+              "properties": {"model_id": {"type": "string", "minLength": 1}, "api": {"enum": ["openai-responses", "openai-completions", "azure-openai-responses"]}, "base_url": {"type": "string", "format": "uri"}}
+            }
+          }
+        },
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "pi-cli-1.0.1"}}}
+      }
+    },
+    "nativePiPerSessionLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "models_source", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "pi-native-api-key-per-session"}, "provider": {"type": "string", "minLength": 1},
+            "source_home": {"type": "string", "minLength": 1}, "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "models_source": {"oneOf": [{"$ref": "#/$defs/nativeConfigurationSource"}, {"type": "null"}]},
+            "private_root": {"type": "string", "minLength": 1},
+            "model_target": {
+              "type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"],
+              "properties": {"model_id": {"type": "string", "minLength": 1}, "api": {"enum": ["openai-responses", "openai-completions", "azure-openai-responses"]}, "base_url": {"type": "string", "format": "uri"}}
+            }
+          }
+        },
+        "tools": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "pi-cli-1.0.1"}}},
+          {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract", "extension", "allowed"], "properties": {"mode": {"const": "questions-only"}, "native_contract": {"const": "pi-cli-1.0.1"}, "extension": {"$ref": "#/$defs/nativeConfigurationSource"}, "allowed": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"const": "swa_ask"}}}}
+        ]}
+      }
+    },
+    "agentSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent_id", "adapter", "execution_mode", "executable", "version", "model", "provider", "external_target", "settings_source", "settings_revision", "configuration_version", "native_launch"],
+      "properties": {
+        "agent_id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1}, "execution_mode": {"const": "structured"},
+        "executable": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1}, "provider": {"type": "string", "minLength": 1}, "external_target": {"type": "string", "minLength": 1},
+        "settings_source": {"$ref": "#/$defs/settingsSource"}, "settings_revision": {"type": "integer", "minimum": 0}, "configuration_version": {"type": "string", "minLength": 1}, "native_launch": {"$ref": "#/$defs/nativeLaunchPolicy"}
+      }
+    },
+    "installedObservation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "reason", "source"],
+      "properties": {"status": {"enum": ["available", "unavailable", "unknown"]}, "reason": {"type": "string", "minLength": 1}, "source": {"type": "string", "minLength": 1}, "checked_at": {"type": "string"}, "basis": {"enum": ["declaration", "configuration", "probe", "session", "result"]}, "executable": {"type": "string"}, "version": {"type": "string"}},
+      "if": {"properties": {"status": {"const": "available"}}}, "then": {"required": ["executable", "version"]}
+    },
+    "configuredObservation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "reason", "source"],
+      "properties": {"status": {"enum": ["available", "unavailable", "unknown"]}, "reason": {"type": "string", "minLength": 1}, "source": {"type": "string", "minLength": 1}, "checked_at": {"type": "string"}, "basis": {"enum": ["declaration", "configuration", "probe", "session", "result"]}, "model": {"type": "string"}, "provider": {"type": "string"}, "account_source": {"type": "string"}},
+      "if": {"properties": {"status": {"const": "available"}}}, "then": {"required": ["model", "provider", "account_source"]}
+    },
+    "capabilities": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "source_revision", "registry", "discovery", "agents"],
+      "properties": {
+        "schema": {"const": "swa.capabilities.v1"}, "source_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "registry": {"type": "object", "additionalProperties": false, "required": ["orca_version", "artifact_sha256"], "properties": {"orca_version": {"const": "1.4.230"}, "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+        "discovery": {"type": "object", "additionalProperties": false, "required": ["host", "platform", "observed_at", "settings_source"], "properties": {"host": {"const": "local"}, "platform": {"type": "string"}, "observed_at": {"type": "string"}, "settings_source": {"$ref": "#/$defs/settingsSource"}}},
+        "agents": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "adapter", "execution_mode", "registered", "enabled", "installed", "configured", "launchable", "control", "requirements"], "properties": {
+          "id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1}, "execution_mode": {"const": "structured"},
+          "registered": {"$ref": "#/$defs/observation"}, "enabled": {"$ref": "#/$defs/observation"}, "installed": {"$ref": "#/$defs/installedObservation"}, "configured": {"$ref": "#/$defs/configuredObservation"}, "launchable": {"$ref": "#/$defs/observation"},
+          "authenticated": {"$ref": "#/$defs/observation"}, "model_catalog": {"$ref": "#/$defs/modelCatalogObservation"},
+          "declared_features": {"type": "object", "additionalProperties": false, "required": ["images", "model_switch", "steering"], "properties": {"images": {"type": "boolean"}, "model_switch": {"type": "boolean"}, "steering": {"enum": ["inject", "queue"]}}},
+          "control": {"type": "object", "additionalProperties": false, "required": ["start", "send", "read", "stop", "resume", "tools"], "properties": {"start": {"$ref": "#/$defs/observation"}, "send": {"$ref": "#/$defs/observation"}, "read": {"$ref": "#/$defs/observation"}, "stop": {"$ref": "#/$defs/observation"}, "resume": {"$ref": "#/$defs/observation"}, "tools": {"$ref": "#/$defs/observation"}, "images": {"$ref": "#/$defs/observation"}, "model_switch": {"$ref": "#/$defs/observation"}, "questions": {"$ref": "#/$defs/observation"}}},
+          "requirements": {"$ref": "#/$defs/requirements"}
+        }}}
+      }
+    },
+    "nativeError": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "required_action"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "retryable": { "const": false },
+        "required_action": { "type": "string", "minLength": 1 },
+        "data": {}
+      },
+      "additionalProperties": false
+    },
+    "envelope": {
+      "type": "object",
+      "required": ["ok"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "request_id": { "type": "string" },
+        "runtime_id": { "type": "string" },
+        "authority_domain": { "type": "string" },
+        "controller": { "type": "string" },
+        "run_id": { "type": "string" },
+        "task_id": { "type": "string" },
+        "dispatch_id": { "type": "string" },
+        "question_id": { "type": "string" },
+        "result": {},
+        "error": { "$ref": "#/$defs/nativeError" }
+      },
+      "additionalProperties": false,
+      "description": "Result preserves actual native records and provenance. HTTP transport success is insufficient for mutation success; unknown outcomes retain the original request and resource ownership."
+    }
+  },
+  "$ref": "#/$defs/command"
+}
