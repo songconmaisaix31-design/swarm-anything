@@ -70,3 +70,9 @@ Pi 停止路径原先把当前项目设置与旧启动记录全对象比较，�
 停止结算小修仅识别原 interrupted/null outcome、准确完成的 stop 父子回执、停止状态及 released lease，并复用既有 collect 的完整原生退出校验；事务复核后将任务结算为 failed/cancellation，沿原 release 清理，同时支持用户已先完成 release 的顺序。原 journal 和模型文本保持。独立源审、12 项问答/委派/停止 SQLite 规则、runtime 类型检查及 diff 检查通过；日志为 `.verification/role-delegation-20261027/confirmed-stop-r1.log` 与 `confirmed-stop-typecheck-r1.log`。新安装真实 N4、strict 失败反馈、导出和服务退出仍待复验，N6 暂不启动。
 
 另以最新规则 bundle 对原 N4 两个只读数据库核验候选，准确停止 Worker 返回 `confirmed_worker_stop`，原 scope、启动/停止父子回执、Dispatch/resource 与释放后的 lease/fence 相符。未实例化运行服务、迁移数据库或写入原 journal。该局部检查只确认真实失败输入可进入新候选，不代表 collect、事务、后续释放或完整 Run 已通过。
+
+停止结算修复以 `31be1c06de231cd0828e60e3cb9e180c84f3cf76` 提交推送，完整 combined 构建、归档、解包、新安装、D12 12/12 及无模型 HTTP/Web/服务正常退出全部通过。证据为 `.verification/swa-linux/evidence/31be1c06de231cd0828e60e3cb9e180c84f3cf76-combined-role-dev-02/`。仅清理准确 Go 编译缓存后继续模型验收。
+
+角色场景 `/workspace/swa-role-acceptance-31be-01` 的实际 capabilities 已确认 Pi 1.0.1 与 OpenCode 2.0.31 installed/configured 均 available，版本日志修复通过实际服务复验。默认角色 Pi 启动请求退出 0/native ready，随后验收脚本错误地为 `request show --controller` 追加 `--project`，CLI 以 validation_failed/2 拒绝；同错误影响 owner 收集启动记录，故整项失败。最小复现为同时传两个 scope，修复只让该查询保留 controller 并继续由环境提供项目和令牌；产品代码未改，无需完整重建。
+
+两处脚本的语法与独立源审通过，实际 I31be 的八个无令牌参数用例均越过 XOR 验证并在认证前以 scope_denied/3 停止，未发送 HTTP 或模型请求；原双 scope 仍拒绝。探针首轮错误要求认证失败响应包含 project_id，移除该探针断言后通过，原件为 `.verification/role-delegation-20261027/request-scope-local-check.json`。旧角色场景两 Grant 已撤销，原 service 退出 6 保留。Pi 进程已不在，但原 trace 未保存完整 custody_closed，不能据此声称原生退出验收通过；确认身份后人工终止 primary Controller，私有 daemon 随后自行退出。原 Worker、任务和未知收尾记录保持，下一次使用新独立场景，不重放旧请求。

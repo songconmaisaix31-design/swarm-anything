@@ -54,9 +54,10 @@ async function cli(project, args, rejected = []) {
   await appendFile(join(values.output, 'commands.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 })
   const env = { ...process.env, SWA_ENDPOINT: config.endpoint, SWA_PROJECT_ID: scope.project_id, SWA_PROJECT_TOKEN: tokens[project] }
   delete env.SWA_RESTRICTED_PROJECT_TOKEN
+  const projectArgs = args[0] === 'request' && args[1] === 'show' && args.includes('--controller') ? [] : ['--project', scope.project_id]
   let output, exit = 0
   try {
-    output = await execute(swa, [...args, '--project', scope.project_id, '--json'], { cwd: scope.project_root, env, timeout: 150_000, maxBuffer: 12 * 1024 * 1024, windowsHide: true })
+    output = await execute(swa, [...args, ...projectArgs, '--json'], { cwd: scope.project_root, env, timeout: 150_000, maxBuffer: 12 * 1024 * 1024, windowsHide: true })
   } catch (error) {
     if (!Number.isInteger(error.code) || error.signal || error.killed) {
       await appendFile(join(values.output, 'commands.jsonl'), JSON.stringify({ ...entry, state: 'UNKNOWN', reason: 'CLI did not return a complete ordinary exit' }) + '\n')
