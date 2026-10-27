@@ -12,7 +12,7 @@ Node 24.16.0、pnpm 11.27.0、Go 1.27.2 均在现有 `.verification/cloud-setup/
 
 旧 I31be N4 `run_f52d63acb2e7` 已实际确认取消结算和释放，因两份 journal 超过旧 12 MiB 失败；32 MiB 修复已在 I6b，但 I6b 的 N4 从未启动。原请求 `6484c4b4-9ed6-47cd-83c8-1e8a4ff90cb9` unknown、CLI/serve 6及人工收尾记录保持。下一步在包含两项新修复的同一安装验证角色、Pi → OpenCode → Pi 开发、取消交接、同服务浏览器及 N4/N6；实际 owner 支持 roles/delegation/delegation-cancel/n4/n6，N4/N6 成果审阅需可写 stdin。
 
-用户批准的17批四副本已删除，清理后约4.29GB；完成 I6b 安装和检查后约1.0GB可用。18批仅两个 I6b candidate/package 中间副本已完成归档逐文件核对及 check-only，新增删除问题已提交用户，尚未获准或执行；见 `.verification/cloud-setup/space-role-6b9-20261027-18/`。I6b/I31be、全部归档、任务、凭据与失败原件保留。两根清理只提供阶段模型空间，不能据此启动下一次完整构建；额外旧成功编译中间目录与旧 I31be 正在只读调查，尚无新增删除授权。
+用户批准的17批四副本已删除，清理后约4.29GB；完成 I6b 安装和检查后约1.0GB可用。18批两个 I6b candidate/package 中间副本已完成归档逐文件核对及 check-only，删除问题待用户答复，未执行；见 `.verification/cloud-setup/space-role-6b9-20261027-18/`。19批为旧 I31be 及准确三个旧编译目录 `build-gkQkH9`、`build-GLeR47`、`build-un2dFf`，工具源审、独立审查及 Root check-only 均通过，新增四路径删除问题也已提交，尚未获准或执行；见 `.verification/cloud-setup/space-compiler-6b9-20261027-19/OPERATION-READY.md` 和 `check-01/`。旧安装可从归档恢复，编译中间对象只能由保留源码与工具链重建。当前 I6b 及其编译目录、全部归档、任务、凭据与失败原件保留。两批授权分别确认，实际19操作要求18先完成；两批预计清理后约4.27GB，构建前仍须重新检查实际空间。角色、N2 与完整 N4/N6 均安排到包含 `3e1d4820` 修复的统一新安装，I6b 的 N4 未启动。
 
 角色默认不同模型的测试使用新独立 Pi 来源 `/workspace/swa-stepfun-role-models-20261027-01`，默认 `stepfun/step-3.5-flash-2603`，显式覆盖为 OpenCode `stepfun/step-3.5-flash`。官方 CLI 已读到两个配置模型，容量为保守客户端限制；默认 Pi 已实际启动，OpenCode 覆盖与完整模型结果尚待通过。凭据不得读取或输出到对话。开发测试仍可用旧独立 Pi 来源。公开只读 Go SDK 位于 `/workspace/swa-public-toolchains/go-1.27.2`，服务工具链由 `SWA_PROJECT_TOOLCHAIN_ROOTS` 显式选择，不能挂载主仓库的私有 setup 目录。浏览器使用同一 owner 服务及现有 Cookie，入口 `tests/swa-product-acceptance/browser-observe.mjs`。
 
