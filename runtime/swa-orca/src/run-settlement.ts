@@ -13,7 +13,7 @@ import { latestStructuredAgentSessionRequest, latestStructuredAgentSessionAssist
 import { authority, controllerScope, recorded } from './controller-scope'
 import { invocationSchema, nativeObject, structuredInputBindingSchema, type Invocation, type Scope } from './contracts'
 import { readRunTaskTree } from './run-view'
-import { readRootResultInventory, readNativeInputStatus, type completeTaskResult } from './task-result'
+import { readRootResultInventory, readNativeInputStatus, journalReadWithinBounds, type completeTaskResult } from './task-result'
 import { hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './question-ask'
 import type { AgentSessionRecord } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-record'
 
@@ -91,7 +91,7 @@ function nativeTurn(runtime: OrcaRuntimeService, dispatchId: string, scope: Scop
   if (!record) return null
   const journal = host.deps.journalDatabase.db
   const bound = z.object({ count: z.number(), bytes: z.number() }).parse(journal.prepare('SELECT COUNT(*) count,COALESCE(SUM(LENGTH(CAST(row_json AS BLOB))),0) bytes FROM journal_rows WHERE session_id=?').get(sessionId))
-  if (bound.count > 100_000 || bound.bytes > 12 * 1024 * 1024) fail('The complete native turn journal exceeds its read bound')
+  if (!journalReadWithinBounds(bound)) fail('The complete native turn journal exceeds its read bound')
   const replay = replayJournal(journal, sessionId)
   if (!replay || replay.damage || replay.newer) fail('The original native turn journal is unavailable')
   const snapshot = renderJournalState(replay.state), latest = latestStructuredAgentSessionRequest(snapshot.items, snapshot.submissions)

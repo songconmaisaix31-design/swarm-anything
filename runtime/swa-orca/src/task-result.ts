@@ -56,7 +56,11 @@ import { validateClaudeExport } from './claude-session-policy'
 import { claudeProviderHandleLeafUuid } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-provider-handle-encoding'
 import { isRootClaudeFrame } from '../../../third_party/orca-v1.4.230/src/main/claude/claude-turn-opening'
 
-export const resultObservationLimits = Object.freeze({ source_bytes: 12 * 1024 * 1024, result_bytes: 96 * 1024 * 1024, response_bytes: 128 * 1024 * 1024 })
+export const resultObservationLimits = Object.freeze({ source_bytes: 12 * 1024 * 1024, journal_bytes: 32 * 1024 * 1024, journal_rows: 100_000, result_bytes: 96 * 1024 * 1024, response_bytes: 128 * 1024 * 1024 })
+export function journalReadWithinBounds(bound: { count: number; bytes: number | null }) {
+  const bytes = bound.bytes ?? 0
+  return Number.isSafeInteger(bound.count) && bound.count >= 0 && bound.count <= resultObservationLimits.journal_rows && Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= resultObservationLimits.journal_bytes
+}
 const maximum = resultObservationLimits.source_bytes
 const sourceWitnesses = new Map<string, { path: string; identity: string; nativeSession: string; bytes: Buffer }>()
 const headerSchema = z.looseObject({ type: z.literal('session'), version: z.literal(3), id: z.uuid(), timestamp: z.iso.datetime(), cwd: z.string().min(1), parentSession: z.string().optional() })
@@ -896,7 +900,7 @@ export async function completeTaskResult(runtime: OrcaRuntimeService, scope: Sco
     const { journal, rows, snapshot } = await readPrivateJournal(data, host.deps.journalDatabase.stateDirectory, journalDB => {
       const bound = z.object({ count: z.number(), bytes: z.number().nullable(), max_seq: z.number().nullable() }).parse(journalDB.prepare('SELECT COUNT(*) AS count, SUM(LENGTH(CAST(row_json AS BLOB))) AS bytes, MAX(seq) AS max_seq FROM journal_rows WHERE session_id=? AND epoch=?').get(sessionId, readJournalSessionEpoch(journalDB, sessionId)))
       used += (nativeSession === undefined ? 0 : Buffer.byteLength(JSON.stringify(nativeSession))) + (bound.bytes ?? 0)
-      if (used > maximum || (bound.bytes ?? 0) > resultObservationLimits.source_bytes || bound.count <= 0 || bound.count > 100_000) return fail('The required journal is missing or exceeds the declared result bound')
+      if (used > maximum || bound.count <= 0 || !journalReadWithinBounds(bound)) return fail('The required journal is missing or exceeds the declared result bound')
       const journal = replayJournal(journalDB, sessionId)
       if (!journal || journal.damage || journal.newer || journal.state.lastSequence !== bound.max_seq) return fail('The actual native journal is damaged, incomplete or has a newer schema')
       const rows = [...iterateJournalEpochRows(journalDB, sessionId, journal.state.epoch)]

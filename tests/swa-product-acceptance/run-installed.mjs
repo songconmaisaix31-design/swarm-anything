@@ -2201,9 +2201,9 @@ async function run() {
   if (!token) throw new NotRun('current_project_grant_token_not_supplied_no_human_bootstrap')
   if (!(process.platform === 'linux' && values.agent === 'codex' && values.model === 'gpt-5.5' || piTarget || openCodeTarget)) throw new NotRun('selected_platform_and_agent_source_contract_not_implemented')
   resultLimits = object(requireRuntime('./task-result.cjs').resultObservationLimits)
-  for (const key of ['source_bytes', 'result_bytes', 'response_bytes']) assert.ok(Number.isSafeInteger(resultLimits[key]) && resultLimits[key] > 0)
+  for (const key of ['source_bytes', 'journal_bytes', 'journal_rows', 'result_bytes', 'response_bytes']) assert.ok(Number.isSafeInteger(resultLimits[key]) && resultLimits[key] > 0)
   assert.equal(resultLimits.source_bytes, 12 * 1024 * 1024)
-  assert.ok(resultLimits.result_bytes >= resultLimits.source_bytes && resultLimits.response_bytes > resultLimits.result_bytes)
+  assert.ok(resultLimits.journal_bytes >= resultLimits.source_bytes && resultLimits.result_bytes >= resultLimits.journal_bytes && resultLimits.response_bytes > resultLimits.result_bytes)
   if (structured) {
     if (!windows) {
       const processNode = await stat('/proc/self/exe', { bigint: true }), installedNode = await stat(node, { bigint: true })
@@ -2654,6 +2654,9 @@ async function run() {
     }
     const journal = new DatabaseSync(original.source.journal_database, { readOnly: true })
     try {
+      const bound = journal.prepare('SELECT COUNT(*) count,SUM(LENGTH(CAST(row_json AS BLOB))) bytes FROM journal_rows WHERE session_id=? AND epoch=?').get(worker.journal.session_id, worker.journal.epoch)
+      assert.ok(bound.count <= resultLimits.journal_rows && (bound.bytes ?? 0) <= resultLimits.journal_bytes, 'actual_export_journal_exceeds_declared_bound')
+      assert.equal(worker.journal.rows.length, bound.count, 'actual_export_journal_rows_missing')
       for (const row of worker.journal.rows) {
         const actual = journal.prepare('SELECT ts,row_json FROM journal_rows WHERE session_id=? AND epoch=? AND seq=?').get(worker.journal.session_id, row.epoch, row.seq)
         assert.ok(actual && actual.ts === row.ts)

@@ -38,6 +38,7 @@ export type StructuredWorkerLaunchAdmission = {
 }
 
 export type StructuredWorkerStartAdmission = StructuredWorkerLaunchAdmission & { mode: AgentLaunchMode }
+export type StructuredWorkerModelLaunchAdmission = StructuredWorkerStartAdmission & { model: string; effort?: string }
 export type StructuredWorkerPreambleAdmission = { sessionId: string; agent: string; dispatchId: string }
 
 export type StructuredAgentLaunchAdmission = {
@@ -55,6 +56,7 @@ export type StructuredAgentLaunchAdmission = {
   afterAttach?(input: StructuredAgentAttachedAdmission): Promise<void>
   beforeWorkerStart?(input: StructuredWorkerStartAdmission): Promise<void | (() => void)>
   workerCommandSettings?(input: StructuredWorkerLaunchAdmission): Promise<StructuredAgentCommandSettings>
+  workerModelLaunchSupport?(input: StructuredWorkerModelLaunchAdmission): Promise<boolean>
   createCommandSettings?(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings>
   workerPreambleMode?(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only' | 'collaboration' | 'project'>
 }
@@ -95,6 +97,10 @@ export function admitStructuredWorkerStart(input: StructuredWorkerStartAdmission
 
 export function admitStructuredWorkerCommandSettings(input: StructuredWorkerLaunchAdmission): Promise<StructuredAgentCommandSettings | undefined> {
   return launchAdmission?.workerCommandSettings ? launchAdmission.workerCommandSettings(input) : Promise.resolve(undefined)
+}
+
+export function admitStructuredWorkerModelLaunch(input: StructuredWorkerModelLaunchAdmission): Promise<boolean | undefined> {
+  return launchAdmission?.workerModelLaunchSupport ? launchAdmission.workerModelLaunchSupport(input) : Promise.resolve(undefined)
 }
 
 export function admitStructuredAgentCreateCommandSettings(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings | undefined> {

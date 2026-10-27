@@ -36,7 +36,7 @@ import { requireWorkerAuthority, type WorkerEffect } from './worker-topology'
 import { prepareLocalWorkerStart } from './worker-start-validation'
 import { deliverAndSettleWorkerStartReadiness } from './worker-start-readiness-settlement'
 import type { WorkerStartMutation } from './worker-start-mutation'
-import { admitStructuredWorkerCommandSettings, admitStructuredWorkerStart } from '../../../../structured-agent-launch-composition'
+import { admitStructuredWorkerCommandSettings, admitStructuredWorkerModelLaunch, admitStructuredWorkerStart } from '../../../../structured-agent-launch-composition'
 
 export async function startLocalWorker(args: {
   params: WorkerStartInput
@@ -79,11 +79,20 @@ export async function startLocalWorker(args: {
       params.from,
       callerSession
     )
-    openCodeModelLaunchSupported = await probeWorkerOpenCodeModelLaunchSupport(
-      runtime,
-      launchParams,
-      { worktree: requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree }
-    )
+    const target = requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree
+    const worktreeId = requestedWorktree === 'current' ? callerWorkspaceId : (await runtime.showManagedTerminalWorkspace(target)).id
+    // 受控 ACP 使用已批准的私有模型配置；普通终端仍由原 TUI 探针判定。
+    const structuredModelSupported = await admitStructuredWorkerModelLaunch({
+      mutation: orchestrationMutation,
+      controller: params.from,
+      runId: run.id,
+      worktreeId,
+      agent: launchParams.agent,
+      mode: args.mode.mode,
+      model: launchParams.model,
+      effort: launchParams.effort
+    })
+    openCodeModelLaunchSupported = structuredModelSupported === true || await probeWorkerOpenCodeModelLaunchSupport(runtime, launchParams, { worktree: target })
   }
 
   const { agent, launch } = prepareLocalWorkerStart({

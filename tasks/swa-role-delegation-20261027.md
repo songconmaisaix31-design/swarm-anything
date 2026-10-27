@@ -76,3 +76,15 @@ Pi 停止路径原先把当前项目设置与旧启动记录全对象比较，�
 角色场景 `/workspace/swa-role-acceptance-31be-01` 的实际 capabilities 已确认 Pi 1.0.1 与 OpenCode 2.0.31 installed/configured 均 available，版本日志修复通过实际服务复验。默认角色 Pi 启动请求退出 0/native ready，随后验收脚本错误地为 `request show --controller` 追加 `--project`，CLI 以 validation_failed/2 拒绝；同错误影响 owner 收集启动记录，故整项失败。最小复现为同时传两个 scope，修复只让该查询保留 controller 并继续由环境提供项目和令牌；产品代码未改，无需完整重建。
 
 两处脚本的语法与独立源审通过，实际 I31be 的八个无令牌参数用例均越过 XOR 验证并在认证前以 scope_denied/3 停止，未发送 HTTP 或模型请求；原双 scope 仍拒绝。探针首轮错误要求认证失败响应包含 project_id，移除该探针断言后通过，原件为 `.verification/role-delegation-20261027/request-scope-local-check.json`。旧角色场景两 Grant 已撤销，原 service 退出 6 保留。Pi 进程已不在，但原 trace 未保存完整 custody_closed，不能据此声称原生退出验收通过；确认身份后人工终止 primary Controller，私有 daemon 随后自行退出。原 Worker、任务和未知收尾记录保持，下一次使用新独立场景，不重放旧请求。
+
+验收脚本修复以 `d0d7a822` 提交推送，产品代码未变，复用 I31be。第二次角色场景 `/workspace/swa-role-acceptance-31be-02` 已实际确认 Pi 1.0.1/OpenCode 2.0.31 installed/configured available；仅指定角色/版本时，Pi 按默认 `stepfun/step-3.5-flash-2603` 启动，同请求 `8a68001c-6c6b-4113-ae69-f50afd04bd63` 复用同 Worker。显式覆盖 OpenCode/`stepfun/step-3.5-flash` 时，旧 TUI 模型校验在创建原生 Worker 前拒绝，CLI 退出 6，原请求 `22bcc71b-fdc4-4382-acb6-0d6766f78588` pending；没有 OpenCode 会话或模型调用。其余角色拒绝路径、完整结果和导出尚未完成。
+
+最小复现使用官方 OpenCode 2.0.31 的 `acp --help` 与现有模型准备规则：ACP 无 `--model` 参数，通过私有配置和原生会话设置选择模型；旧 TUI 探针仅识别旧版本，错误用于受控 ACP。原件为 `.verification/role-delegation-20261027/opencode-model-preflight/case-8l8uwf/`。修复增加结构化模型准入钩子，复用原请求、项目/Run、完整选择、当前 Go 许可及前后 reservation 检查，仅接受固定 OpenCode 2.0.31 原生合同；普通 TUI 探针及最终启动准入继续生效。6 项实际 startLocalWorker/SQLite 构造规则、`pnpm typecheck:swa`、diff 检查与独立审查通过；规则没有启动 Worker 或模型，不替代新安装验证。类型日志为 `.verification/role-delegation-20261027/acp-model-typecheck-r1.log`。
+
+角色第二次失败的 Pi stop/release、完整 custody_closed 与 Grant 撤销均确认；primary Controller 因原 pending 请求未关闭，原 service 退出 6 保留。按准确进程身份人工终止 Controller 后 daemon 自动退出，独立记录为该输出目录的 `manual-process-cleanup.json`。不改变原验收失败或请求状态。
+
+I31be 的 N4 复验 `/workspace/swa-n4-acceptance-31be-01`，Run `run_f52d63acb2e7`，四个 Pi 原生输出共同区间约 41.32 毫秒。活动中的 Worker2 停止后，Task 已正确结算为 failed/cancellation，native_outcome 保留 null，termination 来源为 confirmed_worker_stop，资源释放；原取消结算修复通过实际路径。另两个正常完成 Worker 的 journal 分别为 15034969/16108476 字节，超过原 12 MiB，结算被拒绝，Task 仍 blocked。CLI 自行退出 6/operation_unknown，driver 保存原请求 `6484c4b4-9ed6-47cd-83c8-1e8a4ff90cb9` unknown，未到导出或成果审阅。容量根因、完整原 journal 只读复现及局部修复见[本轮 journal 容量任务](swa-journal-capacity-20261027.md)。
+
+该 N4 四个原生 Worker 均有完整 custody_closed、真实退出及 released lease；Grant 撤销确认。尚未结算的资源使原 service 返回 6，自动退出仍失败。宿主复核 boot、UID、executable、cwd、启动时刻、准确 argv 和子树后，仅向遗留 Controller 1000706 发送 SIGTERM，观察其消失，daemon 1000315 随后自行退出。独立人工记录为该输出目录 `manual-process-cleanup.json`；原 Run、任务、CLI 和服务失败保持。N6 尚未运行。
+
+用户明确确认删除新四副本：31be candidate/package、I6406 和 I5c25。执行前重新逐文件核对全部归档成员、内容、当前进程引用与保留文件，准确四根删除成功，退出 0；可用空间 809992192→4293480448 字节，当前 I31be、全部归档、数据、凭据及失败原件保留。原件为 `.verification/cloud-setup/space-role-31be-20261027-17/operation-01/`；原授权仅覆盖这四根。

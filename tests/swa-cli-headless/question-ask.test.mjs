@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const requireRuntime = createRequire(join(root, 'runtime/swa-orca/package.json'))
@@ -27,10 +28,12 @@ try {
     "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition, confirmedWorkerStop } from './runtime/swa-orca/src/run-settlement';",
     "export { assertDelegationParentStopOpen, storedDelegationObservation } from './runtime/swa-orca/src/delegation';",
     "export { assertNativePiStopInvocation } from './runtime/swa-orca/src/agent-launch-admission';",
+    "export { startJournalRowFold } from './third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-open';",
+    "export { renderJournalState } from './third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-reducer';",
     "export { delegationRequestID, delegationWorkerRequestID } from './runtime/swa-orca/src/contracts';",
     "export { initializeCollaborationRecords, writeCollaborationRecords, resolveCollaborationReferences } from './runtime/swa-orca/src/collaboration-records';",
     "export { hashCanonical } from './third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt';",
-    "export { inspectStructuredTrace } from './runtime/swa-orca/src/task-result';",
+    "export { inspectStructuredTrace, resultObservationLimits, journalReadWithinBounds } from './runtime/swa-orca/src/task-result';",
     "export { readRunView } from './runtime/swa-orca/src/run-view';"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
     external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
@@ -50,6 +53,49 @@ function storage(name) {
   const scope = { project_id: project, controller: 'question-storage-only', run_id: run.id, root_task_id: task.id, authority_domain: db.getOrCreateLocalMutationCallerFingerprint(), context: {} }
   return { db, runtime, project, run, task, dispatch, scope }
 }
+
+test('journal capacity counts SQLite UTF-8 bytes and keeps source, result and wire budgets separate', () => {
+  const { resultObservationLimits: limits, journalReadWithinBounds } = createRequire(bundle)(bundle)
+  assert.equal(limits.journal_bytes, 32 * 1024 * 1024); assert.equal(limits.journal_rows, 100_000)
+  assert.equal(limits.source_bytes, 12 * 1024 * 1024); assert.equal(limits.result_bytes, 96 * 1024 * 1024); assert.equal(limits.response_bytes, 128 * 1024 * 1024)
+  // 构造普通文本验证容量规则，不生成原生会话或模型完成记录。
+  const db = new DatabaseSync(':memory:')
+  try {
+    db.exec('CREATE TABLE capacity_text(body TEXT NOT NULL)')
+    const text = '汉'.repeat(Math.floor(limits.journal_bytes / 3)) + 'x'.repeat(limits.journal_bytes % 3)
+    db.prepare('INSERT INTO capacity_text(body) VALUES (?)').run(text)
+    const read = () => db.prepare('SELECT COUNT(*) count,SUM(LENGTH(CAST(body AS BLOB))) bytes FROM capacity_text').get()
+    assert.equal(read().bytes, limits.journal_bytes); assert.equal(journalReadWithinBounds(read()), true)
+    db.exec("UPDATE capacity_text SET body=body||'x'")
+    assert.equal(read().bytes, limits.journal_bytes + 1); assert.equal(journalReadWithinBounds(read()), false)
+    assert.equal(journalReadWithinBounds({ count: limits.journal_rows, bytes: 1 }), true)
+    assert.equal(journalReadWithinBounds({ count: limits.journal_rows + 1, bytes: 1 }), false)
+    assert.equal(journalReadWithinBounds({ count: 1, bytes: -1 }), false)
+    assert.equal(journalReadWithinBounds({ count: 1, bytes: Number.MAX_SAFE_INTEGER + 1 }), false)
+  } finally { db.close() }
+})
+
+test('the original N4 journals above the former bound replay completely without modifying their rows', { skip: !process.env.SWA_JOURNAL_CAPACITY_DB }, t => {
+  const { journalReadWithinBounds, resultObservationLimits: limits, startJournalRowFold, renderJournalState } = createRequire(bundle)(bundle)
+  const db = new DatabaseSync(process.env.SWA_JOURNAL_CAPACITY_DB, { readOnly: true }), measured = []
+  try {
+    db.exec('BEGIN')
+    for (const { session_id: sessionId, epoch } of db.prepare('SELECT session_id,epoch FROM journal_sessions ORDER BY session_id').all()) {
+      const bound = db.prepare('SELECT COUNT(*) count,SUM(LENGTH(CAST(row_json AS BLOB))) bytes,MAX(seq) sequence FROM journal_rows WHERE session_id=? AND epoch=?').get(sessionId, epoch)
+      assert.equal(journalReadWithinBounds(bound), true)
+      const fold = startJournalRowFold({ sessionId, epoch }); let rows = 0
+      for (const row of db.prepare('SELECT seq,ts,row_json FROM journal_rows WHERE session_id=? AND epoch=? ORDER BY seq').iterate(sessionId, epoch)) {
+        assert.equal(fold.add({ seq: row.seq, ts: row.ts, rowJson: row.row_json }), true); rows++
+      }
+      const observed = fold.finish()
+      assert.equal(observed.damage, null); assert.equal(observed.newer, null); assert.equal(rows, bound.count); assert.equal(observed.state.lastSequence, bound.sequence)
+      measured.push({ session_id: sessionId, rows, bytes: bound.bytes, snapshot_bytes: Buffer.byteLength(JSON.stringify(renderJournalState(observed.state))) })
+    }
+    db.exec('COMMIT')
+  } finally { db.close() }
+  assert.ok(measured.filter(row => row.bytes > limits.source_bytes).length >= 2, 'The supplied original failure data must exercise both journals above the former 12 MiB bound')
+  t.diagnostic(JSON.stringify({ scope: 'read-only original rows and mature replay; complete export not tested here', journals: measured }))
+})
 
 test('owned Pi stop retains its stable scope after project permissions change', () => {
   const { assertNativePiStopInvocation } = createRequire(bundle)(bundle)

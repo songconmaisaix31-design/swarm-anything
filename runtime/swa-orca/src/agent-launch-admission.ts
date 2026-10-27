@@ -17,7 +17,7 @@ import { getAppEnvironment } from '../../../third_party/orca-v1.4.230/src/shared
 import { getRuntimeSourceStamp } from '../../../third_party/orca-v1.4.230/src/main/runtime/host-descriptor'
 import { stampRuntimeSourceEnv } from '../../../third_party/orca-v1.4.230/src/shared/runtime-source-env'
 import { assertDeliveryGrantCurrent, createDeliveryAdmission } from './delivery-admission'
-import type { StructuredAgentInputAdmission, StructuredWorkerLaunchAdmission, StructuredWorkerStartAdmission } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition'
+import type { StructuredAgentInputAdmission, StructuredWorkerLaunchAdmission, StructuredWorkerStartAdmission, StructuredWorkerModelLaunchAdmission } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition'
 import { installWorkerInputApproval } from './worker-input'
 import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
 import { materializePrivateOpenCodeAccount, privateOpenCodeEnvironment, readPrivateOpenCodeBinding } from './private-opencode-account'
@@ -72,6 +72,18 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     await admitCurrentApproval(original.invocation)
     if (!isDeepStrictEqual(inspectWorkerLaunch(input), original)) throw new OrchestrationError('request_mismatch', 'The Worker reservation changed before its installed CLI probe', { effectsApplied: false })
     return { agentCmdOverrides: { [original.selection.agent_id]: `"${original.selection.executable}"` } }
+  }
+  async function workerModelLaunchSupport(input: StructuredWorkerModelLaunchAdmission) {
+    const inspect = () => {
+      requireStructuredWorkerMode(input.mode)
+      const current = inspectWorkerLaunch(input), selection = current.selection
+      if (selection.agent_id !== 'opencode' || selection.execution_mode !== input.mode || selection.model !== input.model || input.effort !== undefined || selection.version !== '2.0.31' || !nativeOpenCodeLaunchPolicySchema.safeParse(selection.native_launch).success) throw new OrchestrationError('unsupported_capability', 'The approved OpenCode structured model launch contract differs from this request', { effectsApplied: false })
+      return current
+    }
+    const original = inspect()
+    await admitCurrentApproval(original.invocation)
+    if (!isDeepStrictEqual(inspect(), original)) throw new OrchestrationError('request_mismatch', 'The Worker reservation changed before its structured model admission', { effectsApplied: false })
+    return true
   }
   async function beforeWorkerStart(input: StructuredWorkerStartAdmission) {
     const inspect = () => {
@@ -324,6 +336,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     },
     beforeWorkerStart,
     workerCommandSettings,
+    workerModelLaunchSupport,
     workerPreambleMode: async input => {
       const { original } = await originalSelection(input.sessionId, input.agent)
       const identity = structuredWorkerIdentities.getBySessionId(input.sessionId)

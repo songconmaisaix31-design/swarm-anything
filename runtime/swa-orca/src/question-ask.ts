@@ -24,7 +24,7 @@ import { assertDeliveryGrantCurrent } from './delivery-admission'
 import { readPiQuestionEntries, readPiJournalInputTurn } from './pi-session-result'
 import { isTaskDescendant } from './run-view'
 import { readNativePiFile } from './native-pi-policy'
-import { inspectStructuredTrace } from './task-result'
+import { inspectStructuredTrace, journalReadWithinBounds } from './task-result'
 
 function deny(code: string, message: string): never { throw new OrchestrationError(code, message, { effectsApplied: false }) }
 const rowsSchema = z.array(z.object({ request_id: z.string(), state: z.enum(['pending', 'completed']), receipt: z.string() }))
@@ -210,7 +210,7 @@ function readQuestionJournal(sessionId: string) {
   if (!host) deny('evidence_missing', 'The actual question journal host is unavailable')
   const bound = z.object({ count: z.number(), bytes: z.number().nullable() }).parse(host.deps.journalDatabase.db.prepare(`SELECT COUNT(*) count,SUM(LENGTH(CAST(r.row_json AS BLOB))) bytes
     FROM journal_rows r JOIN journal_sessions s ON s.session_id=r.session_id AND s.epoch=r.epoch WHERE r.session_id=?`).get(sessionId))
-  if (bound.count > 100_000 || (bound.bytes ?? 0) > 12 * 1024 * 1024) deny('evidence_missing', 'The complete question journal exceeds its read bound')
+  if (!journalReadWithinBounds(bound)) deny('evidence_missing', 'The complete question journal exceeds its read bound')
   return replayJournal(host.deps.journalDatabase.db, sessionId)
 }
 
