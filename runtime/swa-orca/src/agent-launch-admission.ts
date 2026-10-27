@@ -17,7 +17,8 @@ import { getAppEnvironment } from '../../../third_party/orca-v1.4.230/src/shared
 import { getRuntimeSourceStamp } from '../../../third_party/orca-v1.4.230/src/main/runtime/host-descriptor'
 import { stampRuntimeSourceEnv } from '../../../third_party/orca-v1.4.230/src/shared/runtime-source-env'
 import { assertDeliveryGrantCurrent, createDeliveryAdmission } from './delivery-admission'
-import type { StructuredAgentInputAdmission, StructuredWorkerLaunchAdmission, StructuredWorkerStartAdmission, StructuredWorkerModelLaunchAdmission } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition'
+import type { StructuredAgentInputAdmission, StructuredWorkerLaunchAdmission, StructuredWorkerStartAdmission, StructuredWorkerModelLaunchAdmission, StructuredWorkerSessionOptionsAdmission } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition'
+import { AGENT_CHAT_PERMISSION_MODE_OPTION_ID } from '../../../third_party/orca-v1.4.230/src/shared/agent-chat-permission-mode'
 import { installWorkerInputApproval } from './worker-input'
 import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
 import { materializePrivateOpenCodeAccount, privateOpenCodeEnvironment, readPrivateOpenCodeBinding } from './private-opencode-account'
@@ -132,6 +133,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     const record = runtime.openedAgentSessionRecordStore()?.getRecord(sessionId)
     if (requireRecord || record) {
       if (!record || record.provider !== agent || record.options?.model !== original.model) throw new Error('The native session Agent, account or model changed before launch')
+      if (agent === 'opencode' && record.permissionMode !== 'ask') throw new Error('The restricted OpenCode session permission mode changed before launch')
       const account = original.native_launch.account
       if (account.kind === 'pi-native-api-key-per-session') {
         if (!('variable' in record.accountHome) || record.accountHome.variable !== 'PI_CODING_AGENT_DIR' || record.accountHome.path !== join(account.private_root, sessionId)) throw new Error('The native Pi account changed before launch')
@@ -148,6 +150,27 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     const current = await selectAgent(runtime, invocation.project.id, original.agent_id, original.model, invocation.project.root, modes.questionMode, modes.delegationMode, modes.developmentMode)
     if (!isDeepStrictEqual(original, current)) throw new Error('The selected native Agent configuration changed before launch')
     return { original, invocation, parentRow, childRow }
+  }
+  async function workerSessionOptions(input: StructuredWorkerSessionOptionsAdmission) {
+    if (input.agent !== 'opencode') return input.options
+    const inspect = async () => {
+      const identity = structuredWorkerIdentities.getBySessionId(input.sessionId)
+      if (!identity || identity.agent !== input.agent || identity.dispatchId !== input.dispatchId || runtime.openedAgentSessionRecordStore()?.getRecord(input.sessionId)) throw new OrchestrationError('scope_denied', 'The new restricted Worker session identity is unavailable', { effectsApplied: false })
+      const selected = await originalSelection(input.sessionId, input.agent, false)
+      const selection = selected.original
+      const { scope, owner: controller } = controllerScope(runtime, selected.invocation.project.id, selected.invocation.scope.controller)
+      if (selected.invocation.command.action !== 'worker.start' || !workerSelectionMatches(selected.invocation) || !isDeepStrictEqual(selected.invocation.scope, scope) || identity.worktreeId !== controller.worktree_id || identity.hostScope.kind !== 'local') throw new OrchestrationError('scope_denied', 'The restricted Worker session left its approved project or worktree', { effectsApplied: false })
+      if (selected.parentRow.state !== 'pending' || selected.childRow.state !== 'pending' || selection.version !== '2.0.31' || selection.execution_mode !== 'structured' || !nativeOpenCodeLaunchPolicySchema.safeParse(selection.native_launch).success || !isDeepStrictEqual(input.options, { model: selection.model })) throw new OrchestrationError('unsupported_capability', 'The restricted OpenCode Worker session options differ from the approved start', { effectsApplied: false })
+      assertCurrentCollaborationAssignment(runtime.getOrchestrationDb(), selected.invocation)
+      assertDelegationParentCurrent(runtime, selected.invocation)
+      assertDeliveryGrantCurrent(selected.invocation)
+      return { selected, identity: structuredClone(identity) }
+    }
+    const original = await inspect()
+    await admitCurrentApproval(original.selected.invocation)
+    if (!isDeepStrictEqual(await inspect(), original)) throw new OrchestrationError('request_mismatch', 'The Worker reservation changed before its session options were admitted', { effectsApplied: false })
+    // 受控 Worker 把权限模式写入原生记录，后续启动继续核验；不继承交互聊天的全权限默认值。
+    return { ...input.options, [AGENT_CHAT_PERMISSION_MODE_OPTION_ID]: 'ask' }
   }
   async function policySnapshot(sessionId: string, agent: string, requireRecord = true) {
     const selected = await originalSelection(sessionId, agent, requireRecord)
@@ -337,6 +360,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     beforeWorkerStart,
     workerCommandSettings,
     workerModelLaunchSupport,
+    workerSessionOptions,
     workerPreambleMode: async input => {
       const { original } = await originalSelection(input.sessionId, input.agent)
       const identity = structuredWorkerIdentities.getBySessionId(input.sessionId)

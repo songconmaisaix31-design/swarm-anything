@@ -40,6 +40,7 @@ export type StructuredWorkerLaunchAdmission = {
 export type StructuredWorkerStartAdmission = StructuredWorkerLaunchAdmission & { mode: AgentLaunchMode }
 export type StructuredWorkerModelLaunchAdmission = StructuredWorkerStartAdmission & { model: string; effort?: string }
 export type StructuredWorkerPreambleAdmission = { sessionId: string; agent: string; dispatchId: string }
+export type StructuredWorkerSessionOptionsAdmission = StructuredWorkerPreambleAdmission & { options?: Readonly<Record<string, string>> }
 
 export type StructuredAgentLaunchAdmission = {
   commandSettings(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings>
@@ -57,6 +58,7 @@ export type StructuredAgentLaunchAdmission = {
   beforeWorkerStart?(input: StructuredWorkerStartAdmission): Promise<void | (() => void)>
   workerCommandSettings?(input: StructuredWorkerLaunchAdmission): Promise<StructuredAgentCommandSettings>
   workerModelLaunchSupport?(input: StructuredWorkerModelLaunchAdmission): Promise<boolean>
+  workerSessionOptions?(input: StructuredWorkerSessionOptionsAdmission): Promise<Readonly<Record<string, string>> | undefined>
   createCommandSettings?(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings>
   workerPreambleMode?(input: StructuredWorkerPreambleAdmission): Promise<'disabled' | 'questions-only' | 'collaboration' | 'project'>
 }
@@ -101,6 +103,10 @@ export function admitStructuredWorkerCommandSettings(input: StructuredWorkerLaun
 
 export function admitStructuredWorkerModelLaunch(input: StructuredWorkerModelLaunchAdmission): Promise<boolean | undefined> {
   return launchAdmission?.workerModelLaunchSupport ? launchAdmission.workerModelLaunchSupport(input) : Promise.resolve(undefined)
+}
+
+export function admitStructuredWorkerSessionOptions(input: StructuredWorkerSessionOptionsAdmission): Promise<Readonly<Record<string, string>> | undefined> {
+  return launchAdmission?.workerSessionOptions ? launchAdmission.workerSessionOptions(input) : Promise.resolve(input.options)
 }
 
 export function admitStructuredAgentCreateCommandSettings(sessionId: string, agent: string): Promise<StructuredAgentCommandSettings | undefined> {

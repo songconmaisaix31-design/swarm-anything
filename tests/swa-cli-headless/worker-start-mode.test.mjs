@@ -21,9 +21,17 @@ try {
   await build({
     stdin: { contents: [
       "export { getDefaultPersistedState } from './third_party/orca-v1.4.230/src/shared/constants';",
+      "export { setAppEnvironment } from './third_party/orca-v1.4.230/src/shared/app-environment';",
       "export { decideWorkerStartMode, downgradeWorkerStartModeForHost } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration-worker-start-mode';",
       "export { requireStructuredWorkerMode, installAgentLaunchAdmission } from './runtime/swa-orca/src/agent-launch-admission';",
-      "export { admitStructuredWorkerModelLaunch, installStructuredAgentLaunchAdmission } from './third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition';",
+      "export { admitStructuredWorkerModelLaunch, admitStructuredWorkerSessionOptions, admitStructuredAgentCreateCommandSettings, installStructuredAgentLaunchAdmission } from './third_party/orca-v1.4.230/src/main/runtime/structured-agent-launch-composition';",
+      "export { structuredWorkerIdentities } from './third_party/orca-v1.4.230/src/main/runtime/structured-worker-identity';",
+      "export { structuredLaunchSeedOptions } from './third_party/orca-v1.4.230/src/shared/native-chat-session-option-defaults';",
+      "export { prepareStructuredAgentSessionCreateForWorktree } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/structured-agent-session-create';",
+      "export { foundAgentSessionRecord } from './third_party/orca-v1.4.230/src/main/runtime/agent-session-record-founding';",
+      "export { structuredAgentSessionLaunchPermission } from './third_party/orca-v1.4.230/src/main/native-chat/agent-session-wire/structured-agent-session-launch-permission';",
+      "export { acpStructuredLaunchPart } from './third_party/orca-v1.4.230/src/main/acp/acp-structured-launch-resolution';",
+      "export { acpLaunchSpecFor } from './third_party/orca-v1.4.230/src/main/acp/acp-launch-specs';",
       "export { startLocalWorker } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/worker/local-worker-start';",
       "export { checkAgentLaunchModelPreferences } from './third_party/orca-v1.4.230/src/shared/agent-launch-model-preferences';",
       "export { OrchestrationDb } from './third_party/orca-v1.4.230/src/main/runtime/orchestration/db';",
@@ -34,11 +42,16 @@ try {
     external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
     banner: { js: 'var __swaModuleUrl = require("node:url").pathToFileURL(__filename).href;' }, define: { 'import.meta.url': '__swaModuleUrl', 'process.env.NODE_ENV': '"production"' }, logOverride: { 'empty-import-meta': 'error' },
     plugins: [{ name: 'original-native-externals', setup(builder) { builder.onResolve({ filter: /\.node$/ }, args => ({ path: args.path, external: true })) } },
-      { name: 'original-jsonc-esm', setup(builder) { builder.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') })) } }],
+      { name: 'original-jsonc-esm', setup(builder) { builder.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') })) } },
+      { name: 'constructed-permission-discovery', setup(builder) {
+        builder.onResolve({ filter: /^\.\/agent-discovery$/ }, args => args.importer === join(root, 'runtime/swa-orca/src/agent-launch-admission.ts') ? { path: 'permission-discovery', namespace: 'constructed-rule' } : undefined)
+        builder.onLoad({ filter: /.*/, namespace: 'constructed-rule' }, () => ({ contents: `export { codexProtectedRoots } from ${JSON.stringify(join(root, 'runtime/swa-orca/src/agent-discovery.ts'))}; export const selectAgent = (...args) => globalThis[Symbol.for('swa.constructed.permission.discovery')](...args);`, resolveDir: root }))
+      } }],
     nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'node_modules')], logLevel: 'error'
   })
 } finally { stop() }
 const rules = createRequire(import.meta.url)(bundle)
+rules.setAppEnvironment({ getPath: () => home, getAppPath: () => directory, getVersion: () => 'constructed-rule', isPackaged: () => false, onWillQuit() {}, exit() { throw new Error('The rule must not exit the process') }, getAppMetrics: () => [] })
 const defaults = rules.getDefaultPersistedState(home).settings
 const params = { agent: 'pi', worktree: 'current', model: 'stepfun/step-3.5-flash' }
 const structuredSettings = { ...defaults, experimentalNativeChat: true, nativeChatProviders: {} }
@@ -115,7 +128,7 @@ function modelAdmissionCase() {
   const mutation = { callerFingerprint: fingerprint, requestId: `${request}/native`, method: 'orchestration.workerStart', payloadHash: rules.hashCanonical({ method: 'orchestration.workerStart', params: rules.replayStableCallerParams(runtime, params, undefined, 'orchestration.workerStart') }) }
   const input = { mutation, controller, runId: run.id, worktreeId: owner.worktree_id, agent: selection.agent_id, mode: 'structured', model: selection.model }
   const launch = () => rules.startLocalWorker({ runtime, db, run, coordinator: null, params, orchestrationMutation: mutation, mode: rules.decideWorkerStartMode({ params, settings: structuredSettings }) })
-  return { db, selection, receipt, invocation, parent, save, runtime, input, launch, stopBeforePlacement, probes: () => probes }
+  return { db, selection, receipt, invocation, parent, save, runtime, input, launch, stopBeforePlacement, rootTask, run, probes: () => probes }
 }
 
 test('OpenCode without the private model admission retains the original terminal probe refusal', async () => {
@@ -182,4 +195,117 @@ test('OpenCode private model admission uses its original reservation and current
   }
 })
 
-process.stdout.write(JSON.stringify({ evidence: directory, coverage: 'original_mode_and_current_sqlite_model_admission_rules', native_host_support: 'NOT_OBSERVED', worker_model: 'NOT_RUN', windows_native: 'NOT_RUN' }) + '\n')
+async function preparedOpenCodeRecord(options) {
+  const sessionId = randomUUID()
+  const prepared = await rules.prepareStructuredAgentSessionCreateForWorktree({
+    runtime: { resolveStructuredAgentSessionCreateIntent: async () => ({ provider: 'opencode', agent: 'opencode', runtimeKind: 'native',
+      location: { executionHostId: 'local', workspaceId: 'rule-workspace', wslDistro: null },
+      accountHome: { kind: 'opencode', locator: { kind: 'private', root: join(directory, 'uncreated-private-account', sessionId) } },
+      options: rules.structuredLaunchSeedOptions(defaults, 'opencode') }) },
+    ensureHost: async () => ({}), envelope: { sessionId, clientOperationId: randomUUID(), expectedRuntimeFence: null, payloadFingerprint: '' },
+    worktree: 'id:rule-workspace', agent: 'opencode', caller: { callerKey: 'constructed-prepare' }, options
+  })
+  return rules.foundAgentSessionRecord({ ...prepared.attachParams, sessionId }, { claimKeyId: 'constructed-never-acquired', now: Date.now() })
+}
+
+async function restrictedOpenCodeLaunch(record) {
+  const part = rules.acpStructuredLaunchPart(rules.acpLaunchSpecFor('opencode'), {
+    readJournal: () => null, dataDirectory: directory, homePath: home, inheritedEnv: {},
+    resolveCommand: () => join(directory, 'unexecuted-opencode'),
+    probeVersion: async (_launch, accept) => accept('2.0.31')
+  })
+  const permissionMode = await rules.structuredAgentSessionLaunchPermission({ agents: { definition: () => ({ agent: 'opencode' }) } }, record)
+  return part({ record, permissionMode, launchDirectory: async () => directory, environment: async () => ({ HOME: home }),
+    baseEnvironment: async () => ({ HOME: home }), launchEnv: () => ({}), commandSettings: () => ({}), visuals: async () => null,
+    disabledOpenCodeTools: async () => ({ nativeContract: 'opencode-cli-2.0.31' }),
+    providerJobLauncher: async () => ({ node: 'unexecuted-node', entry: 'unexecuted-job', eventDirectory: 'uncreated-events' })
+  }, { sessionId: record.sessionId, fence: 1 })
+}
+
+test('Original full-access seed is refused by the actual restricted ACP launch rule', async () => {
+  assert.equal(defaults.nativeChatPermissionMode, 'full-access')
+  const input = { sessionId: randomUUID(), dispatchId: 'constructed-dispatch', agent: 'opencode', options: { model: 'stepfun/step-3.5-flash' } }
+  const options = await rules.admitStructuredWorkerSessionOptions(input)
+  assert.deepEqual(options, input.options)
+  const record = await preparedOpenCodeRecord(options)
+  assert.equal(record.permissionMode, 'full-access')
+  assert.deepEqual(record.options, input.options)
+  await assert.rejects(restrictedOpenCodeLaunch(record), /The restricted OpenCode launch contract changed/)
+})
+
+// 仅 discovery 与 Go HTTP 是明确构造替身；原 SQLite、identity、准入、prepare、record 和 ACP 规则实际执行。
+test('Restricted OpenCode Worker seeds ask only for its current original reservation', async t => {
+  const value = modelAdmissionCase(), priorPort = process.env.ASTROCYTE_PORT
+  const childTask = value.db.createTask({ runId: value.run.id, parentId: value.rootTask.id, spec: 'Constructed permission task' })
+  const dispatch = value.db.createDispatchContext({ taskId: childTask.id, assigneeHandle: 'constructed-worker', creator: { kind: 'system' }, maxDepth: 3 })
+  const childMutation = { ...value.input.mutation }
+  value.db.beginMutationReceipt(childMutation)
+  value.db.checkpointPendingMutationReceipt({ ...childMutation, receipt: JSON.stringify({ accepted: { dispatchId: dispatch.id } }) })
+  const sessionId = randomUUID()
+  const identity = rules.structuredWorkerIdentities.register({ sessionId, dispatchId: dispatch.id, agent: 'opencode', handle: 'constructed-worker',
+    paneKey: 'constructed-worker-pane', processIncarnation: 'constructed-never-spawned', worktreeId: value.input.worktreeId, hostScope: { kind: 'local', hostId: 'local' } })
+  const input = { sessionId, dispatchId: dispatch.id, agent: 'opencode', options: { model: value.selection.model } }
+  let record = null, approve = async () => {}, ownerAlive = true, approvals = 0
+  value.runtime.openedAgentSessionRecordStore = () => ({ getRecord: () => record })
+  const discoveryKey = Symbol.for('swa.constructed.permission.discovery')
+  assert.equal(globalThis[discoveryKey], undefined)
+  globalThis[discoveryKey] = async (_runtime, projectId, agent, model, projectRoot) => {
+    assert.equal(projectId, value.invocation.project.id); assert.equal(agent, 'opencode'); assert.equal(model, value.selection.model); assert.equal(projectRoot, directory)
+    return structuredClone(value.selection)
+  }
+  process.env.ASTROCYTE_PORT = '1'
+  const mocked = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'http://127.0.0.1:1/api/internal/swa/delivery-admission')
+    approvals++
+    const body = JSON.parse(options.body), refused = await approve()
+    return refused ?? new Response(JSON.stringify({ schema: 'swa.delivery-admission.v1', project_id: body.project.id, request_id: body.command.request_id, settings_revision: body.caller.settings_revision }))
+  })
+  const release = rules.installAgentLaunchAdmission(value.runtime, { ownerCapability: Buffer.alloc(32), ownerAlive: () => ownerAlive })
+  let options
+  try {
+    options = await rules.admitStructuredWorkerSessionOptions(input)
+    assert.deepEqual(options, { model: value.selection.model, permissionMode: 'ask' })
+    assert.deepEqual(input.options, { model: value.selection.model })
+    assert.equal(approvals, 1)
+    assert.deepEqual(await rules.admitStructuredWorkerSessionOptions({ ...input, agent: 'pi' }), input.options)
+    for (const change of [{ sessionId: randomUUID() }, { dispatchId: 'other' }, { options: { model: 'stepfun/other' } }, { options: { ...input.options, effort: 'high' } }, { options: { ...input.options, permissionMode: 'full-access' } }]) {
+      await assert.rejects(rules.admitStructuredWorkerSessionOptions({ ...input, ...change }))
+      assert.equal(approvals, 1)
+    }
+    for (const [key, changed] of [['version', '2.0.16'], ['execution_mode', 'terminal']]) {
+      const prior = value.selection[key]; value.selection[key] = changed; value.save()
+      await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), key === 'execution_mode' ? { name: 'ZodError' } : { code: 'unsupported_capability' })
+      value.selection[key] = prior; value.save()
+    }
+    value.invocation.caller.grant_expires_at = '2000-01-01T00:00:00Z'; value.save()
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'approval_revoked' })
+    delete value.invocation.caller.grant_expires_at; value.save()
+    ownerAlive = false
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), /owning product service is unavailable/)
+    ownerAlive = true
+    approve = async () => new Response(JSON.stringify({ error: { code: 'approval_revoked', message: 'Constructed current approval refusal' } }), { status: 403 })
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'approval_revoked' })
+    approve = async () => { value.receipt.annotation = 'changed while approving options'; value.save() }
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'request_mismatch' })
+    approve = async () => { identity.worktreeId = 'changed-during-approval' }
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'scope_denied' })
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'scope_denied' })
+    identity.worktreeId = value.input.worktreeId
+    record = { provider: 'opencode', options: input.options, permissionMode: 'full-access' }
+    await assert.rejects(rules.admitStructuredWorkerSessionOptions(input), { code: 'scope_denied' })
+    await assert.rejects(rules.admitStructuredAgentCreateCommandSettings(sessionId, 'opencode'), /restricted OpenCode session permission mode changed/)
+    assert.equal(record.permissionMode, 'full-access')
+  } finally {
+    release(); mocked.mock.restore(); delete globalThis[discoveryKey]; rules.structuredWorkerIdentities.forget(identity.handle); value.db.close()
+    if (priorPort === undefined) delete process.env.ASTROCYTE_PORT
+    else process.env.ASTROCYTE_PORT = priorPort
+  }
+  const prepared = await preparedOpenCodeRecord(options)
+  assert.equal(prepared.permissionMode, 'ask')
+  assert.deepEqual(prepared.options, input.options)
+  const launched = await restrictedOpenCodeLaunch(prepared)
+  assert.equal(launched.launch.fullAccess, false)
+  assert.equal(JSON.parse(launched.launch.args[1]).args[0], 'acp')
+})
+
+process.stdout.write(JSON.stringify({ evidence: directory, coverage: 'original_mode_current_sqlite_model_and_permission_admission_rules', discovery: 'CONSTRUCTED_PERMISSION_TEST_ONLY', native_host_support: 'NOT_OBSERVED', worker_model: 'NOT_RUN', windows_native: 'NOT_RUN' }) + '\n')

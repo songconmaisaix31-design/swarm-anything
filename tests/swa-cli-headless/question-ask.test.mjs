@@ -25,7 +25,7 @@ try {
     "export { ORCHESTRATION_MUTATION_REQUEST_METHODS } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/runs/mutation-request-show';",
     "export { commandSchema, roleDefinitionSchema, questionToolParamsSchema, questionResumeBody } from './runtime/swa-orca/src/contracts';",
     "export { questionAskMethod, admitQuestionProducer, observeRunQuestions, assertQuestionResume, hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './runtime/swa-orca/src/question-ask';",
-    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition, confirmedWorkerStop } from './runtime/swa-orca/src/run-settlement';",
+    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, validateHandoffInput, handoffParentDisposition, confirmedWorkerStop } from './runtime/swa-orca/src/run-settlement';",
     "export { assertDelegationParentStopOpen, storedDelegationObservation } from './runtime/swa-orca/src/delegation';",
     "export { assertNativePiStopInvocation } from './runtime/swa-orca/src/agent-launch-admission';",
     "export { startJournalRowFold } from './third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-open';",
@@ -296,7 +296,7 @@ test('parent continuation keeps its original authority without copying first-sub
     context: { id: 'original-context', project_id: 'project', settings_revision: 3, files: [] },
     submission: { operation: 'first-start-only' }, question_ask: { operation: 'original-question-only' }, handoff: { operation: 'previous-handoff-only' } }
   const scope = { project_id: 'project', controller: 'controller', run_id: 'run', root_task_id: 'root', authority_domain: 'original-authority', context: original.context }
-  const mail = { id: 'child/completed', body: '子任务的已记录结果', handoff: { schema: 'swa.handoff-completion.v1', source_task_id: 'child', source_dispatch_id: 'child-dispatch', parent_task_id: 'lead', parent_dispatch_id: 'lead-dispatch', reply: 'resume', outcome: 'success', resume_request_id: randomUUID() } }
+  const mail = { id: 'child/completed', body: '子任务的已记录结果', handoff: { schema: 'swa.handoff-completion.v1', source_task_id: 'child', source_dispatch_id: 'child-dispatch', parent_task_id: 'lead', parent_dispatch_id: 'lead-dispatch', reply: 'resume', outcome: 'success', acceptance: 'unreviewed', resume_request_id: randomUUID() } }
   const value = handoffResumeInvocation(original, scope, mail)
   assert.equal(Object.hasOwn(value, 'submission'), false)
   assert.equal(Object.hasOwn(value, 'question_ask'), false)
@@ -307,8 +307,75 @@ test('parent continuation keeps its original authority without copying first-sub
   assert.equal(value.command.action, 'worker.send')
   assert.equal(value.command.dispatch_id, 'lead-dispatch')
   assert.equal(value.command.request_id, mail.handoff.resume_request_id)
-  assert.deepEqual(value.input, { path: 'native-handoff:child/completed', version: mail.id, text: mail.body })
+  assert.equal(value.input.path, 'native-handoff:child/completed'); assert.equal(value.input.version, mail.id)
+  assert.deepEqual(JSON.parse(value.input.text.split('\n')[1]), { source_task_id: 'child', source_dispatch_id: 'child-dispatch', outcome: 'success', acceptance: 'unreviewed' })
+  assert.ok(value.input.text.endsWith('\n' + mail.body))
   assert.equal(value.handoff.source_dispatch_id, 'child-dispatch')
+})
+
+test('handoff delivers the recorded outcome with empty or partial child output and rejects changed execution metadata', () => {
+  const { handoffResumeInvocation, validateHandoffInput, hashCanonical } = createRequire(bundle)(bundle)
+  for (const [name, outcome, body, continuation] of [
+    ['empty-cancellation', 'cancellation', ''],
+    ['partial-cancellation', 'cancellation', '已读取模块\n尚未完成检查。'],
+    ['failed-child', 'error', '真实错误的部分说明'],
+    ['successful-child', 'success', '完成实现与检查。'],
+    ['interrupted-parent', 'success', '', 'parent_interrupted']
+  ]) {
+    // 构造真实 SQLite 规则输入；不冒充模型、原生工具、实际取消或会话恢复证据。
+    const value = storage(`handoff-${name}`), { db, runtime, scope } = value
+    try {
+      const parent = db.createTask({ runId: scope.run_id, parentId: scope.root_task_id, spec: 'Rule parent' })
+      const child = db.createTask({ runId: scope.run_id, parentId: parent.id, spec: 'Rule child' })
+      const dispatch = (task, handle) => db.createDispatchContext({ taskId: task.id, assigneeHandle: handle, creator: { kind: 'system' }, maxDepth: 4 })
+      const a = dispatch(parent, 'rule-parent'), b = dispatch(child, 'rule-child'), session = randomUUID(), start = randomUUID()
+      const original = { caller: { id: 'rule-human', kind: 'human', project_id: value.project, settings_revision: 1 }, project: { id: value.project, root: directory }, scope,
+        command: { action: 'worker.start', controller: scope.controller, request_id: start } }
+      const terminal = outcome === 'success' && !continuation ? 'completed' : 'failed'
+      db.db.prepare('UPDATE tasks SET status=?,result=? WHERE id=?').run(terminal, body, child.id)
+      db.db.prepare('UPDATE dispatch_contexts SET status=?,assignee_orca_session_id=? WHERE id=?').run(terminal, session, b.id)
+      const binding = { parent_request: start, child_request: `${start}/native`, dispatch_id: b.id, agent: 'pi', execution_mode: 'structured', session_id: session, operation_id: 'rule-input', runtime_fence: 2, consumer_generation: db.getRun(scope.run_id).consumer_generation, body: {} }
+      const save = (requestId, method, receipt) => {
+        const identity = { callerFingerprint: scope.authority_domain, requestId, method, payloadHash: hashCanonical(receipt) }
+        db.beginMutationReceipt(identity); db.completeMutationReceipt({ ...identity, receipt: JSON.stringify(receipt) })
+      }
+      save(start, 'swa.controllerDeliver', { action: 'worker.start', run_id: scope.run_id, native: { dispatchId: b.id }, invocation: original, child_request: binding.child_request, swa_input_binding: binding })
+      const handoff = { schema: 'swa.handoff-completion.v1', source_task_id: child.id, source_dispatch_id: b.id, parent_task_id: parent.id, parent_dispatch_id: a.id, reply: 'resume', outcome: continuation ?? outcome, acceptance: 'unreviewed', resume_request_id: randomUUID() }
+      const message = db.insertMessage({ id: `${child.id}/completed`, runId: scope.run_id, from: `dispatch:${b.id}`, to: `dispatch:${a.id}`, type: 'handoff', deliveryContract: 'audit_only', subject: 'Rule completion', body, payload: JSON.stringify(handoff) })
+      const executionID = `${scope.root_task_id}/native-lifecycle/${child.id}/execution`
+      save(executionID, 'swa.runSettle', { phase: 'execution_completed', acceptance: 'unreviewed', project_id: value.project, run_id: scope.run_id, root_task_id: scope.root_task_id, task_id: child.id, mail_id: message.id, result: body,
+        turn: { task_id: child.id, dispatch_id: b.id, outcome }, ...(continuation ? { continuation } : {}) })
+      const call = () => handoffResumeInvocation(original, scope, { id: message.id, body: db.getMessageById(message.id).body, handoff: JSON.parse(db.getMessageById(message.id).payload) })
+      const observed = call()
+      assert.doesNotThrow(() => validateHandoffInput(runtime, observed))
+      assert.deepEqual(JSON.parse(observed.input.text.split('\n')[1]), { source_task_id: child.id, source_dispatch_id: b.id, outcome: continuation ?? outcome, acceptance: 'unreviewed' })
+      assert.ok(observed.input.text.endsWith('Child result (verbatim; may be empty):\n' + body))
+      assert.equal(db.getTask(child.id).result, body); assert.equal(db.getMessageById(message.id).body, body)
+      assert.equal(JSON.parse(db.getMutationReceipt(scope.authority_domain, executionID).receipt).result, body)
+      const originalReceipt = db.getMutationReceipt(scope.authority_domain, executionID)
+      for (const [sql, id] of [
+        ["UPDATE messages SET payload=json_set(payload,'$.outcome','made-up-success') WHERE id=?", message.id],
+        ["UPDATE messages SET payload=json_set(payload,'$.acceptance','accepted') WHERE id=?", message.id],
+        ["UPDATE mutation_receipts SET receipt=json_set(receipt,'$.acceptance','accepted') WHERE request_id=?", executionID],
+        ["UPDATE mutation_receipts SET receipt=json_set(receipt,'$.turn.task_id','another-task') WHERE request_id=?", executionID],
+        ["UPDATE mutation_receipts SET receipt=json_set(receipt,'$.turn.dispatch_id','another-dispatch') WHERE request_id=?", executionID],
+        ["UPDATE mutation_receipts SET receipt=json_set(receipt,'$.continuation','made-up-continuation') WHERE request_id=?", executionID]
+      ]) {
+        db.db.exec('BEGIN')
+        try { db.db.prepare(sql).run(id); assert.throws(() => validateHandoffInput(runtime, call())) }
+        finally { db.db.exec('ROLLBACK') }
+      }
+      if (!continuation) {
+        db.db.exec('BEGIN')
+        try { db.db.prepare("UPDATE mutation_receipts SET receipt=json_set(receipt,'$.turn.outcome','different-outcome') WHERE request_id=?").run(executionID); assert.throws(() => validateHandoffInput(runtime, observed), /outcome differs/) }
+        finally { db.db.exec('ROLLBACK') }
+      }
+      const changed = structuredClone(observed); changed.input.text += '\nforged outcome'
+      assert.throws(() => validateHandoffInput(runtime, changed), /differs from its original child result/)
+      assert.deepEqual(db.getMutationReceipt(scope.authority_domain, executionID), originalReceipt)
+      assert.equal(db.getMutationReceipt(scope.authority_domain, handoff.resume_request_id), undefined, 'Rule validation must not deliver or create a resume receipt')
+    } finally { db.close() }
+  }
 })
 
 test('native ask without a real Worker is rejected before creation and the original executor query stays absent', async () => {

@@ -94,3 +94,11 @@ OpenCode 模型准入与独立 journal 容量修复以 `6b9acc891472cb2757788809
 源码显示 stdin EOF 和准入 IPC 为独立通道；250ms 不能证明子进程已处理 EOF，准入前也没有可等待的产品 EOF 回执。原失败未保存事件顺序，不能回填其根因时序。最小真实观察在同 I6b 使用只监听事件的 Node preload：明确观察 EOF 回调完成后再准入，实际得到 not-created/stopped-before-spawn；先等待真实 native 就绪及准确 ROOT 输出，再关闭 stdin，得到 created。两场景均有原完整退出证明、ACK、root exit/absent，forced=false。原件为 `.verification/role-delegation-20261027/d12-stdin-order/case-51b41A/`，实际退出 0；原失败目录当前前后均无匹配进程，不能据此补记历史退出证明。
 
 正式修复只修改 D12 测试、专用事件观察器和既有同源检查 helper：以真实 EOF 事件替代固定等待，保留原退出判定及失败 finally 收尾。helper 仅新增两个明确测试路径的非产品排除，继续核 clean checkout、所有产品/身份观察器依赖及锁配置一致，并检查测试不属于安装输入。语法检查和独立源审通过。产品代码未变，提交测试后继后复用同 I6b 重新运行完整 D12；原 11/12 失败文件保持。
+
+测试后继 `1b017749dedad981e0c85d57833a33b8751953f5` 已推送，I6b 的 D12 复验实际 12/12、无跳过、退出 0；证据 `d12-r2.log` 和 `.verification/linux-provider-tree/run-0DGWAt/installed-product-source.json` 分别记录安装来源与测试来源，产品及身份观察器源码无差异。随后同安装 HTTP/Web、实际服务进程树及正常退出均通过，service 退出 0、model_calls=0；数据根 `/workspace/swa-cli-smoke-6b9acc89-combined-1793082242140`，runtime `321e6d65-569d-4b5a-91de-2be8a27b07b5`。原首次 D12 失败保持。
+
+真实角色 `/workspace/swa-role-acceptance-6b9a-01`，runtime `d93f9912-fbe7-4859-9c5c-0520f6fc38ac`，再次确认 Pi 默认模型与相同请求复用。OpenCode 原请求 `ec7fae4c-6cdc-4338-b4f4-bf64918047cc` 已越过旧 TUI 校验，随后在 terminal_create 返回 provider_unavailable/4；实际错误为新会话继承 full-access，被受限 ACP 在 spawn 前拒绝，未产生 ACP Worker 或模型调用。因果来源、最小复现及受控 ask 初始值修复见[权限任务](swa-opencode-worker-permissions-20261027.md)。原请求完成失败、driver 的未确认启动观察和 service 6 保留，不重放。
+
+该次两个 Grant 已实际撤销，Pi 的完整 custody_closed 与原生进程退出确认。宿主再次核实际身份及子树后，仅终止本次遗留 Controller 1017394，daemon 1017304 随后自行退出；独立人工记录为该输出根 `manual-process-cleanup.json`。原自动清理失败不改为通过。
+
+后继 OpenCode ask 初始值与[交接结果状态](swa-handoff-outcomes-20261027.md)一并修复。局部原生准备/SQLite 8 项、完整问答/交接/日志规则 15 项、239 包架构检查、统一 runtime 类型检查及独审通过；N2 成功/取消和 N6 消费者已同步。全部真实闭环等待统一新安装，I6b 的 N4 未启动。18批两个新中间副本仅完成完整归档核对及 check-only，新增用户授权待答，未删除；该预测只覆盖阶段模型空间，下一完整构建还需新的实际空间核验。

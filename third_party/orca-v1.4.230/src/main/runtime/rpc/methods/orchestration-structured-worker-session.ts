@@ -40,7 +40,7 @@ import {
 } from '../../structured-worker-identity'
 import { createKeyedTrailingEdgeCoalescer } from '../../keyed-trailing-edge-coalescer'
 import { createStructuredAgentSessionForWorktree } from './structured-agent-session-create'
-import { reserveStructuredAgentInput } from '../../structured-agent-launch-composition'
+import { admitStructuredWorkerSessionOptions, reserveStructuredAgentInput } from '../../structured-agent-launch-composition'
 
 type StructuredWorkerBinding = {
   sessionId: string
@@ -115,6 +115,7 @@ export async function createStructuredWorkerSession(args: {
   })
   let created: Awaited<ReturnType<typeof createStructuredAgentSessionForWorktree>> | undefined
   try {
+    const options = await admitStructuredWorkerSessionOptions({ sessionId, agent: args.agent, dispatchId: args.dispatchId, options: args.options })
     created = await createStructuredAgentSessionForWorktree({
       runtime: args.runtime,
       ensureHost: async () => {
@@ -134,7 +135,7 @@ export async function createStructuredWorkerSession(args: {
       worktree: `id:${args.worktreeId}`,
       agent: args.agent,
       // Absent, the host seeds the user's saved selection — the same fallback a chat gets.
-      ...(args.options ? { options: args.options } : {}),
+      ...(options ? { options } : {}),
       // Dispatching a worker is background work; it must not pull the surface away from the user.
       activate: false
     })

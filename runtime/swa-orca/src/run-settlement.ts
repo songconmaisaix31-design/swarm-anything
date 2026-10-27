@@ -22,7 +22,8 @@ type Collector = (scope: Scope, workspaceId: string, dispatchId?: string) => Pro
 type HandoffDeliver = (invocation: Invocation) => Promise<unknown>
 const triggers = new WeakMap<OrcaRuntimeService, (scope: Scope) => void>()
 const cleanupGuards = new WeakMap<OrcaRuntimeService, Map<string, () => void>>()
-const completionMailSchema = z.object({ schema: z.literal('swa.handoff-completion.v1'), source_task_id: z.string(), source_dispatch_id: z.string(), parent_task_id: z.string(), parent_dispatch_id: z.string(), reply: z.enum(['poll', 'resume']), outcome: z.string(), resume_request_id: z.uuid().nullable() })
+const completionMailSchema = z.object({ schema: z.literal('swa.handoff-completion.v1'), source_task_id: z.string(), source_dispatch_id: z.string(), parent_task_id: z.string(), parent_dispatch_id: z.string(), reply: z.enum(['poll', 'resume']), outcome: z.string().min(1), acceptance: z.literal('unreviewed'), resume_request_id: z.uuid().nullable() })
+type CompletionMail = { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }
 function fail(message: string): never { throw new OrchestrationError('operation_unknown', message) }
 // 完整回滚的只读前置等待可重新观察；已经可能产生效果的未知状态仍保留原回执。
 export class RunSettlementWaiting extends Error {}
@@ -33,12 +34,18 @@ export function handoffParentDisposition(turn: { outcome: string } | null, worke
   return workerState === 'ready' ? 'resume' : 'waiting'
 }
 
-export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }, sourceSelection?: Invocation['selection']): Invocation {
+function handoffResumeBody(mail: CompletionMail) {
+  const { source_task_id, source_dispatch_id, outcome, acceptance } = mail.handoff
+  // 系统状态与子 Agent 原文分别呈现；没有文本也不能丢失真实失败或取消状态。
+  return `SWA task handoff (runtime record)\n${JSON.stringify({ source_task_id, source_dispatch_id, outcome, acceptance })}\nChild result (verbatim; may be empty):\n${mail.body}`
+}
+
+export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: CompletionMail, sourceSelection?: Invocation['selection']): Invocation {
   const h = mail.handoff, marker = `native-handoff:${mail.id}`
   // 新输入沿用原调用者和账号；首次提交、问题工具等字段只属于原操作。
   return invocationSchema.parse({ caller: original.caller, project: original.project, selection: original.selection, context: original.context,
     command: { action: 'worker.send', controller: scope.controller, task_id: scope.root_task_id, dispatch_id: h.parent_dispatch_id, request_id: h.resume_request_id, input_file: marker }, scope,
-    input: { path: marker, version: mail.id, text: mail.body }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id, ...(sourceSelection?.native_launch.tools.mode === 'project' ? { source_selection: sourceSelection } : {}) } })
+    input: { path: marker, version: mail.id, text: handoffResumeBody(mail) }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id, ...(sourceSelection?.native_launch.tools.mode === 'project' ? { source_selection: sourceSelection } : {}) } })
 }
 
 function handoffSourceSelection(runtime: OrcaRuntimeService, scope: Scope, dispatchId: string) {
@@ -111,10 +118,12 @@ export function validateHandoffInput(runtime: OrcaRuntimeService, invocation: In
   const payload = completionMailSchema.parse(JSON.parse(message.payload))
   const execution = db.getMutationReceipt(authority(runtime), `${scope.root_task_id}/native-lifecycle/${source.id}/execution`)
   const evidence = execution?.receipt ? nativeObject(JSON.parse(execution.receipt)) : null
+  const completion = z.object({ acceptance: z.literal('unreviewed'), continuation: z.literal('parent_interrupted').optional(), turn: z.object({ task_id: z.string(), dispatch_id: z.string(), outcome: z.string().min(1) }) }).safeParse(evidence)
+  if (!completion.success || completion.data.turn.task_id !== source.id || completion.data.turn.dispatch_id !== sourceDispatch.id || payload.acceptance !== completion.data.acceptance || payload.outcome !== (completion.data.continuation ?? completion.data.turn.outcome)) fail('The handoff outcome differs from its original execution receipt')
   const selection = handoffSourceSelection(runtime, scope, h.source_dispatch_id)
   if (!isDeepStrictEqual(h.source_selection, selection?.native_launch.tools.mode === 'project' ? selection : undefined)) fail('The handoff development permission differs from its actual child Worker')
-  if (c.action !== 'worker.send' || c.dispatch_id !== h.parent_dispatch_id || c.input_file !== `native-handoff:${h.mail_id}` || invocation.input?.path !== c.input_file || invocation.input.version !== h.mail_id || invocation.input.text !== message.body
-    || !message.body || message.run_id !== scope.run_id || message.type !== 'handoff' || message.delivery_contract !== 'audit_only' || message.from_handle !== `dispatch:${h.source_dispatch_id}` || message.to_handle !== `dispatch:${h.parent_dispatch_id}`
+  if (c.action !== 'worker.send' || c.dispatch_id !== h.parent_dispatch_id || c.input_file !== `native-handoff:${h.mail_id}` || invocation.input?.path !== c.input_file || invocation.input.version !== h.mail_id || invocation.input.text !== handoffResumeBody({ id: message.id, body: message.body, handoff: payload })
+    || message.run_id !== scope.run_id || message.type !== 'handoff' || message.delivery_contract !== 'audit_only' || message.from_handle !== `dispatch:${h.source_dispatch_id}` || message.to_handle !== `dispatch:${h.parent_dispatch_id}`
     || source.run_id !== scope.run_id || parent.run_id !== scope.run_id || source.parent_id !== parent.id || source.result !== message.body || !['completed', 'failed'].includes(source.status)
     || sourceDispatch.run_id !== scope.run_id || sourceDispatch.task_id !== source.id || !['completed', 'failed', 'circuit_broken'].includes(sourceDispatch.status) || parentDispatch.run_id !== scope.run_id || parentDispatch.task_id !== parent.id
     || execution?.state !== 'completed' || execution.method !== 'swa.runSettle' || evidence?.phase !== 'execution_completed' || evidence.project_id !== scope.project_id || evidence.run_id !== scope.run_id || evidence.root_task_id !== scope.root_task_id || evidence.task_id !== source.id || evidence.mail_id !== message.id || evidence.result !== message.body
