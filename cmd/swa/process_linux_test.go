@@ -20,6 +20,45 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestLinuxServiceRejectsOuterProcBeforeCreatingLock(t *testing.T) {
+	fs, err := procfs.NewFS("/proc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	self, err := fs.Self()
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := self.NewStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if self.PID == os.Getpid() && len(status.NSpids) <= 1 {
+		t.Skip("当前 /proc 与进程使用同一 PID namespace")
+	}
+	root := t.TempDir()
+	install, data := filepath.Join(root, "install"), filepath.Join(root, "data")
+	for _, path := range []string{install, data} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(install, "VERSION"), []byte(strings.Repeat("0", 40)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	job, err := ownServiceTree(data, install)
+	if job != nil {
+		_ = job.close()
+		t.Fatal("外层 proc 被用于服务进程管理")
+	}
+	if err == nil || !strings.Contains(err.Error(), "/proc 不属于当前 PID namespace") {
+		t.Fatalf("未提示 proc 挂载问题: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(data, "service.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("错误环境仍然创建了服务锁: %v", err)
+	}
+}
+
 func TestLinuxServiceRealProcessTree(t *testing.T) {
 	if os.Getenv("SWA_LINUX_TREE_TEST_HELPER") != "1" {
 		foreign := exec.Command("sleep", "10")

@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SwaEnvelope } from '../../api/swa';
 import type { components } from '../../api/schema';
-import { readSwaFleet, readSwaAgents, readSwaExecution, recoverSwaRequest, canRequestSwaStart, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
+import { readSwaFleet, readSwaAgents, readSwaExecution, readPendingSwaRequest, recoverSwaRequest, canRequestSwaStart, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
 
 // 以下为解析器的明确参数输入，不表示存在原生执行、模型返回或安装验收结果。
@@ -19,6 +19,23 @@ function commandReceipt(action: string, native: unknown, state = 'completed', ch
 }
 
 describe('SWA 原生 DTO 解析边界，实际模型链未验', () => {
+  it('损坏或不可读取的 pending 保留原记录并返回局部错误，恢复后读取原身份', () => {
+    const key = 'swa-pending:rule-project:worker.start:rule-task';
+    const original: PendingSwaRequest = { requestID, action: 'worker.start', controller, taskID };
+    let stored = JSON.stringify(original), unavailable = false;
+    const storage = { getItem(actual: string) { expect(actual).toBe(key); if (unavailable) throw new Error('storage denied'); return stored; } };
+    expect(readPendingSwaRequest(key, storage)).toEqual({ pending: original, error: null });
+    for (const malformed of ['{invalid', '{}', 'null', '[]', JSON.stringify({ ...original, taskID: 42 }), JSON.stringify({ ...original, requestID: '' })]) {
+      stored = malformed;
+      expect(readPendingSwaRequest(key, storage)).toMatchObject({ pending: null, error: expect.stringContaining('已暂停') });
+      expect(stored).toBe(malformed);
+    }
+    stored = JSON.stringify(original); unavailable = true;
+    expect(readPendingSwaRequest(key, storage)).toMatchObject({ pending: null, error: expect.stringContaining('无法读取') });
+    expect(stored).toBe(JSON.stringify(original));
+    unavailable = false;
+    expect(readPendingSwaRequest(key, storage)).toEqual({ pending: original, error: null });
+  });
   it('资源状态为合法 null 时保留 Worker 和未观察值', () => {
     const input: SwaEnvelope = { ok: true, result: { scope: { project_id: projectID, controller, root_task_id: taskID, run_id: 'parser-run-input' }, native: { workers: [{ dispatchId: 'parser-dispatch-input', taskId: 'parser-child-task-input', runId: 'parser-run-input', workerState: 'starting', dispatchStatus: 'running', terminalState: null }], page: { hasMore: true, total: 3 } } } };
     const fleet = readSwaFleet(input, projectID, controller, taskID);
@@ -167,19 +184,19 @@ describe('实际执行 DTO 与 React 静态呈现，不表示真实 HTTP 或模�
     }
     const missing = { ...parameter, result: { ...parameter.result, native: { ...parameter.result.native, execution: undefined } } };
     expect(readExecution(missing)).toBeNull();
-    expect(renderExecution(missing)).toContain('状态保持未知');
+    expect(renderExecution(missing)).toContain('状态未知');
   });
 
   it('原生选择、会话和送达依据缺失时不会显示成功', () => {
     const different = executionParameter();
     different.result.native.source.selection.model = 'other-model';
     expect(() => readExecution(different)).toThrow('实际选择');
-    expect(renderExecution(different)).toContain('实际执行状态保持未知');
+    expect(renderExecution(different)).toContain('状态未知');
     for (const execution_mode of ['terminal', undefined]) {
       const parameter = executionParameter(), native = parameter.result.native;
       const changed = { ...parameter, result: { ...parameter.result, native: { ...native, source: { ...native.source, selection: { ...native.source.selection, execution_mode } } } } };
       expect(() => readExecution(changed)).toThrow('实际选择');
-      expect(renderExecution(changed)).toContain('实际执行状态保持未知');
+      expect(renderExecution(changed)).toContain('状态未知');
     }
     const session = executionParameter();
     session.result.native.execution.resume.session_id = 'other-session';
@@ -198,16 +215,16 @@ describe('实际执行 DTO 与 React 静态呈现，不表示真实 HTTP 或模�
     expect(observed?.result.status).toBe('unknown');
     expect(observed?.catalog.availability).toBe('unverified');
     const html = renderExecution(parameter);
-    for (const expected of ['实际执行选择', 'gpt-5.5', 'codex-native-api-key', '登录与模型访问证据', '尚未验证', '送达情况未知；不能自动重发', '目录尚未验证', requestID]) expect(html).toContain(expected);
+    for (const expected of ['执行配置', 'gpt-5.5', 'codex-native-api-key', '账号与模型访问', '未知', '送达情况未知；不能自动重发', '目录未核实', requestID]) expect(html).toContain(expected);
     const main = html.slice(0, html.indexOf('<details'));
-    expect(main).toContain('Codex 独立 API 密钥来源');
+    expect(main).toContain('Codex 独立 API 密钥');
     for (const internal of ['codex-native-api-key', 'CodexStructuredSessionAdapter', 'native_input_request_pending', requestID]) expect(main).not.toContain(internal);
-    expect(html).not.toContain('已送达原生 Agent');
+    expect(html).not.toContain('已送达 Agent');
     expect(html).not.toContain('<button');
   });
 
   it('五种恢复语义分别显示，并保留原生来源标签', () => {
-    for (const [state, label] of Object.entries({ not_requested: '未观察到恢复', resumed: '恢复原会话', rebuilt: '上下文发生替换', failed: '恢复已明确失败', unknown: '恢复结果未知' })) {
+    for (const [state, label] of Object.entries({ not_requested: '未请求恢复', resumed: '恢复原会话', rebuilt: '上下文已替换', failed: '恢复失败', unknown: '恢复结果未知' })) {
       const parameter = executionParameter();
       parameter.result.native.execution.resume.state = state;
       const html = renderExecution(parameter);

@@ -56,7 +56,7 @@ const asset = NODE_RUNTIME_ASSETS[target], archive = await pinned(asset.archive,
 const extracted = join(work, 'node-extract')
 await mkdir(extracted)
 const nodeRoot = `node-v${NODE_RUNTIME_PIN.version}-linux-x64`
-run('tar', ['-xzf', archive, '-C', extracted, `${nodeRoot}/bin/node`, `${nodeRoot}/LICENSE`])
+run('tar', ['--no-same-owner', '-xzf', archive, '-C', extracted, `${nodeRoot}/bin/node`, `${nodeRoot}/LICENSE`])
 const extractedNode = join(extracted, nodeRoot, 'bin', 'node'), body = await readFile(extractedNode)
 if (body.length !== asset.executableSize || createHash('sha256').update(body).digest('hex') !== asset.executableSha256) throw new Error('The extracted Node differs from its original pin')
 const nodeDir = join(output, 'node'), node = join(nodeDir, 'node')
@@ -70,7 +70,7 @@ if (identity.platform !== 'linux' || identity.arch !== 'x64' || !identity.glibc 
 environment.PATH = nodeDir + delimiter + environment.PATH
 const headerArchive = await pinned(NODE_RUNTIME_PIN.headers.file, NODE_RUNTIME_PIN.headers.sha256), headers = join(work, 'headers')
 await mkdir(headers)
-run('tar', ['-xzf', headerArchive, '-C', headers])
+run('tar', ['--no-same-owner', '-xzf', headerArchive, '-C', headers])
 const installed = createRequire(join(runtime, 'package.json')), development = createRequire(join(root, 'runtime', 'swa-orca', 'package.json'))
 const packageDir = await realpath(dirname(installed.resolve('node-pty/package.json'))), source = join(work, 'pty-source')
 const contained = relative(await realpath(runtime), packageDir)

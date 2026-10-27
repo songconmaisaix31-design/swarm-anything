@@ -1,9 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { SwaCommandError, SwaCommandNotSubmittedError, type SwaEnvelope } from '../../api/swa';
 import { ApiError } from '../../api/transport';
-import { commandDeliveryUnknown } from '../../hooks/usePersistentCommand';
+import { commandDeliveryUnknown, readPersistentRequestID, usePersistentCommand } from '../../hooks/usePersistentCommand';
 import type { components } from '../../api/schema';
 import { collaborationFailure, collaborationOutcome, collaborationPermission, explicitReferences, readSwaConversation, readSwaRoles, recoverCollaborationReply } from './swaRoles';
+
+vi.mock('react', async importOriginal => {
+  const actual = await importOriginal<typeof import('react')>();
+  return { ...actual, useEffect: vi.fn(actual.useEffect) };
+});
 
 // 纯记录解码与权限规则的明确参数；不代表服务、浏览器或模型实测结果。
 const projectID = 'record-rule-project', requestID = '0ff0ec12-d039-4c27-b41a-f61b46cf7be7';
@@ -15,6 +23,76 @@ const receipt = (action: string, native: unknown): SwaEnvelope => ({ ok: true, r
 const settings: components['schemas']['LocalProjectSettingsV1'] = { revision: 4, allow_directory: true, allowed_subdirs: [], expand_references: false, allowed_actions: ['observe', 'start', 'send'], allowed_tools: [], external_model_cli: 'pi', allow_agent_control: true, history_roots: {} };
 
 describe('角色与讨论的原记录边界', () => {
+  it('命令 hook 在存储读取失败时仍可渲染错误并锁住提交，重读保留原 ID', () => {
+    let unavailable = true;
+    const storage = { getItem() { if (unavailable) throw new Error('storage denied'); return requestID; } };
+    function PendingCommand() {
+      const command = usePersistentCommand('storage-rule', () => { throw new Error('渲染不提交命令'); });
+      return createElement('button', { disabled: command.uncertain }, command.error ?? command.operationID);
+    }
+    vi.stubGlobal('window', { sessionStorage: storage });
+    try {
+      const html = renderToStaticMarkup(createElement(PendingCommand));
+      expect(html).toContain('disabled=""');
+      expect(html).toContain('无法读取');
+      expect(html).not.toContain(requestID);
+      unavailable = false;
+      expect(readPersistentRequestID('storage-rule')).toEqual({ operationID: requestID, error: null });
+      const restored = renderToStaticMarkup(createElement(PendingCommand));
+      expect(restored).toContain(requestID);
+      expect(restored).toContain('disabled=""');
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('读取可用但保存请求失败时，hook 不发送命令、不删除原存储且不抛出未处理异常', async () => {
+    let writeAttempts = 0, actionCalled = false;
+    let run: ((action: (id: string) => Promise<{ ok: true }>) => Promise<void>) | undefined;
+    const original = new Map([['other-operation', requestID]]);
+    const storage = { getItem: (key: string) => original.get(key) ?? null, setItem() { writeAttempts++; throw new Error('QuotaExceeded'); }, removeItem() { throw new Error('不能删除原记录'); } };
+    function PendingCommand() {
+      run = usePersistentCommand<{ ok: true }>('storage-write-rule', () => ({ status: 'succeeded' })).run;
+      return null;
+    }
+    vi.stubGlobal('window', { sessionStorage: storage });
+    try {
+      renderToStaticMarkup(createElement(PendingCommand));
+      await expect(run!(async () => { actionCalled = true; return { ok: true }; })).resolves.toBeUndefined();
+      expect(writeAttempts).toBe(1);
+      expect(actionCalled).toBe(false);
+      expect([...original]).toEqual([['other-operation', requestID]]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('清理请求记录失败保留已知业务结果与原 ID，后续调用不会重发', async () => {
+    // SSR 不运行 effect；这里只建立挂载标志，直接调用生产 hook 的命令路径。
+    const effect = vi.mocked(React.useEffect).mockImplementation(setup => { setup(); });
+    try {
+      for (const state of ['succeeded', 'rejected', 'not_submitted', 'unknown'] as const) {
+        const values = new Map<string, string>();
+        let calls = 0, removals = 0;
+        type Result = { status: 'succeeded' | 'rejected' };
+        let run: ReturnType<typeof usePersistentCommand<Result>>['run'] | undefined;
+        const received: string[] = [];
+        const storage = { getItem: (key: string) => values.get(key) ?? null, setItem(key: string, value: string) { values.set(key, value); }, removeItem() { removals++; throw new Error('storage cleanup denied'); } };
+        function PendingCommand() {
+          run = usePersistentCommand<Result>(`cleanup-${state}`, response => ({ status: response.status })).run;
+          return null;
+        }
+        vi.stubGlobal('window', { sessionStorage: storage });
+        renderToStaticMarkup(createElement(PendingCommand));
+        const action = async () => {
+          calls++;
+          if (state === 'not_submitted') throw new SwaCommandNotSubmittedError(new Error('authentication unavailable'));
+          if (state === 'unknown') throw new Error('connection lost after POST');
+          return { status: state };
+        };
+        await expect(run!(action, (_response, outcome) => { received.push(outcome.status); }, requestID)).resolves.toBeUndefined();
+        expect([...values.values()]).toEqual([requestID]);
+        expect(received).toEqual(state === 'succeeded' || state === 'rejected' ? [state] : []);
+        expect(removals).toBe(state === 'unknown' ? 0 : 1);
+        await expect(run!(action)).resolves.toBeUndefined();
+        expect(calls).toBe(1);
+      }
+    } finally { effect.mockRestore(); vi.unstubAllGlobals(); }
+  });
   it('认证前置未提交不会锁住角色命令，POST 后拒绝或断线继续核查原请求', () => {
     const notSubmitted = new SwaCommandNotSubmittedError(new Error('authentication failed'));
     expect(() => collaborationFailure(notSubmitted, requestID)).toThrow(notSubmitted);
