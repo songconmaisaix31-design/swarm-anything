@@ -14182,6 +14182,14 @@ components:
             type: string
         external_model_cli:
           type: string
+          description: Default model CLI; an empty value revokes project model processing permission.
+        external_model_clis:
+          type: array
+          description: Explicit permitted model CLIs, including the default. Omitted or empty keeps the legacy single-default permission.
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
         allow_agent_control:
           type: boolean
         history_roots:

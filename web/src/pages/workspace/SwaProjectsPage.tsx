@@ -9,6 +9,7 @@ import { QueryState } from '../../components/QueryState';
 import { CommandState } from '../../components/CommandState';
 import { SelectField, TextField } from '../../components/FormControls';
 import { ProjectSettingsForm } from './ProjectSettingsForm';
+import { allowedModelCLIs } from './modelCLIPermission';
 import { ProjectAgentAccess } from './ProjectAgentAccess';
 import { readSwaAgents } from '../swarm/swaObservation';
 import styles from '../../components/FormControls.module.css';
@@ -28,7 +29,7 @@ export function SwaProjectsPage() {
     <div className={styles.form}>
       <p className={styles.note}>登记明确的项目目录，批准本项目的 Agent、文件与动作。任务入口和 CLI 每次提交都会重新核查这些权限。</p>
       <button className="ac-button secondary compact" type="button" disabled={projects.loading} onClick={projects.retry}>刷新登记项目</button>
-      <QueryState state={projects} empty={data => !data.items.length} emptyTitle="尚无已登记项目">{data => <ul className={styles.list}>{data.items.map(project => <li key={project.id} className={styles.record}><button className="ac-button secondary compact" type="button" disabled={stale} aria-pressed={project.id === selectedID} onClick={() => setSelectedID(project.id)}>{project.name} · 查看项目与权限</button><code>{project.root}</code><p className={styles.note}>许可 Agent · {project.settings.external_model_cli || '尚未许可'} · 权限版本 {project.settings.revision}</p></li>)}</ul>}</QueryState>
+      <QueryState state={projects} empty={data => !data.items.length} emptyTitle="尚无已登记项目">{data => <ul className={styles.list}>{data.items.map(project => <li key={project.id} className={styles.record}><button className="ac-button secondary compact" type="button" disabled={stale} aria-pressed={project.id === selectedID} onClick={() => setSelectedID(project.id)}>{project.name} · 查看项目与权限</button><code>{project.root}</code><p className={styles.note}>许可 Agent · {allowedModelCLIs(project.settings).join('、') || '尚未许可'} · 默认 {project.settings.external_model_cli || '无'} · 权限版本 {project.settings.revision}</p></li>)}</ul>}</QueryState>
       <details><summary>登记项目 / 发现子项目</summary>
         <form className={styles.form} onSubmit={event => {
           event.preventDefault(); if (stale || !spaceID || spaces.loading || spaces.stale) return;

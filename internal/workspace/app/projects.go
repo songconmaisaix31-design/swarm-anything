@@ -171,13 +171,25 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 			return p, err
 		}
 	}
-	if cmd.Settings.ExternalModelCLI != "" {
+	modelCLIs := cmd.Settings.ExternalModelCLIs
+	if len(modelCLIs) == 0 && cmd.Settings.ExternalModelCLI != "" {
+		modelCLIs = []string{cmd.Settings.ExternalModelCLI}
+	}
+	if len(modelCLIs) > 0 && (cmd.Settings.ExternalModelCLI == "" || !has(modelCLIs, cmd.Settings.ExternalModelCLI)) {
+		return p, projectError(apierrors.ValidationFailed, "the default model CLI must belong to the explicit permitted list")
+	}
+	seenCLIs := map[string]bool{}
+	for _, cli := range modelCLIs {
+		if cli == "" || strings.TrimSpace(cli) != cli || seenCLIs[cli] {
+			return p, projectError(apierrors.ValidationFailed, "permitted model CLIs must be nonempty unique identifiers")
+		}
+		seenCLIs[cli] = true
 		if s.externalCLI != nil {
-			if err := s.externalCLI.ValidateExternalCLI(ctx, cmd.Settings.ExternalModelCLI); err != nil {
+			if err := s.externalCLI.ValidateExternalCLI(ctx, cli); err != nil {
 				return p, err
 			}
 		} else {
-			if _, err := s.nativeAdapter(cmd.Settings.ExternalModelCLI); err != nil {
+			if _, err := s.nativeAdapter(cli); err != nil {
 				return p, err
 			}
 		}
@@ -417,7 +429,7 @@ func (s *localProjectService) nativePermission(ctx context.Context, c domain.Cal
 	if !has(p.Settings.AllowedActions, action) {
 		return projectError(apierrors.ApprovalRequired, "native action has not been approved in project settings")
 	}
-	if p.Settings.ExternalModelCLI == "" || p.Settings.ExternalModelCLI != cli {
+	if !p.Settings.AllowsExternalModelCLI(cli) {
 		return projectError(apierrors.ApprovalRequired, "project external model consent does not cover this CLI")
 	}
 	_, err := s.authorize(ctx, c, p.ID, action)
@@ -699,7 +711,7 @@ func (s *localProjectService) CheckProjectModel(ctx context.Context, c domain.Ca
 	if err != nil {
 		return p, err
 	}
-	if p.Settings.ExternalModelCLI == "" || p.Settings.ExternalModelCLI != cli {
+	if !p.Settings.AllowsExternalModelCLI(cli) {
 		return p, projectError(apierrors.ApprovalRequired, "project external model consent does not cover the selected CLI")
 	}
 	if _, err := s.nativeAdapter(cli); err != nil {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SwaCommandError, type SwaEnvelope } from '../../api/swa';
+import { SwaCommandError, SwaCommandNotSubmittedError, type SwaEnvelope } from '../../api/swa';
 import { ApiError } from '../../api/transport';
 import { commandDeliveryUnknown } from '../../hooks/usePersistentCommand';
 import type { components } from '../../api/schema';
@@ -15,6 +15,13 @@ const receipt = (action: string, native: unknown): SwaEnvelope => ({ ok: true, r
 const settings: components['schemas']['LocalProjectSettingsV1'] = { revision: 4, allow_directory: true, allowed_subdirs: [], expand_references: false, allowed_actions: ['observe', 'start', 'send'], allowed_tools: [], external_model_cli: 'pi', allow_agent_control: true, history_roots: {} };
 
 describe('角色与讨论的原记录边界', () => {
+  it('认证前置未提交不会锁住角色命令，POST 后拒绝或断线继续核查原请求', () => {
+    const notSubmitted = new SwaCommandNotSubmittedError(new Error('authentication failed'));
+    expect(() => collaborationFailure(notSubmitted, requestID)).toThrow(notSubmitted);
+    expect(commandDeliveryUnknown(notSubmitted)).toBe(false);
+    expect(commandDeliveryUnknown(new SwaCommandError(403, { ok: false, error: { code: 'scope_denied', message: 'POST rejected', retryable: false, required_action: 'inspect_original_request' } }))).toBe(true);
+    expect(commandDeliveryUnknown(new Error('POST disconnected'))).toBe(true);
+  });
   it('只接受当前项目、唯一身份与明确角色版本，归档仍保留历史记录', () => {
     expect(readSwaRoles(envelope({ roles: [role, { ...role, id: 'archived-rule-role', revision: 2, archived: true }] }), projectID)).toHaveLength(2);
     expect(readSwaRoles(envelope({ roles: [{ ...role, skills: null, knowledge: null }] }), projectID)[0]).toMatchObject({ skills: [], knowledge: [] });

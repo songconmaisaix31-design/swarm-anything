@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/transport';
+import { SwaCommandNotSubmittedError } from '../api/swa';
 import { formatError } from './useReadState';
 
 export interface CommandOutcome {
@@ -9,6 +10,7 @@ export interface CommandOutcome {
 }
 
 export function commandDeliveryUnknown(cause: unknown) {
+  if (cause instanceof SwaCommandNotSubmittedError) return false;
   return !(cause instanceof ApiError) || cause.status >= 500 && cause.status !== 501 || ['delivery_unknown', 'internal_error'].includes(cause.code);
 }
 

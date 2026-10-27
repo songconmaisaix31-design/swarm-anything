@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/api/swa.test.ts', 'src/api/transport.test.ts', 'src/pages/swarm/swaObservation.test.ts', 'src/pages/swarm/swaRoles.test.ts', 'src/pages/swarm/swaQuestionAnswer.test.ts', 'src/utils/__tests__/commandError.test.ts'],
+    include: ['src/api/swa.test.ts', 'src/api/swaSubmission.test.ts', 'src/api/transport.test.ts', 'src/pages/swarm/swaObservation.test.ts', 'src/pages/swarm/swaRoles.test.ts', 'src/pages/swarm/swaQuestionAnswer.test.ts', 'src/pages/swarm/swaRunConnection.test.ts', 'src/pages/workspace/modelCLIPermission.test.ts', 'src/pages/workspace/nativePermission.test.ts', 'src/utils/__tests__/commandError.test.ts'],
     clearMocks: true,
     restoreMocks: true,
   },

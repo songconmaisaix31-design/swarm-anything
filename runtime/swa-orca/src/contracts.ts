@@ -65,7 +65,7 @@ export const scopeSchema = z.object({
 export const capabilityRequirementsSchema = z.strictObject({
   settings_revision: z.number().int().positive(), allowed_actions: z.array(z.string()).nullable(),
   allow_directory: z.boolean(), allowed_subdirs: z.array(z.string()).nullable(), grant_actions: z.array(z.string()).nullable(),
-  allowed_tools: z.array(z.string()).nullable(), external_model_cli: z.string(), allow_agent_control: z.boolean()
+  allowed_tools: z.array(z.string()).nullable(), external_model_cli: z.string(), external_model_clis: z.array(z.string().trim().min(1)).optional(), allow_agent_control: z.boolean()
 })
 export const settingsSourceSchema = z.strictObject({
   kind: z.enum(['native', 'orca-profile']), path: z.string().min(1).optional(), revision: z.number().int().nonnegative().optional()

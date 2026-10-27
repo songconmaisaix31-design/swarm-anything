@@ -277,7 +277,7 @@ export async function readNativeClaudeSessionSource(input: NativeClaudeSessionSo
   const value = {
     format: 'claude-session-jsonl' as const, availability: complete ? 'complete' : 'incomplete', reason: complete ? null : input.inputUuid === null || input.expectedLeafUuid === null ? 'native_selectors_unavailable' : 'no_complete_final_assistant_record', persistence: 'observed',
     path: input.path, native_id: input.nativeId, source_version: input.source.version, content, record_count: rows.length, branch,
-    final: complete ? { uuid: input.expectedLeafUuid, message_id: finalMessage!.id, content: finalMessage!.content, stop_reason: finalMessage!.stop_reason, same_message_records: usage.filter(row => row.message_id === finalMessage!.id).map(row => row.record) } : null,
+    final: complete ? { uuid: input.expectedLeafUuid, message_id: finalMessage!.id, text: finalMessage!.content.filter(part => part.type === 'text').map(part => part.text).join(''), content: finalMessage!.content, stop_reason: finalMessage!.stop_reason, same_message_records: usage.filter(row => row.message_id === finalMessage!.id).map(row => row.record) } : null,
     usage: { known: usage.some(row => row.value !== null && ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].some(key => row.value![key] !== undefined)), value: usage, source: 'actual_native_assistant_message_usage', token_count_semantics: 'partial_repeated_message_records_not_summed', billed_cost: { known: false, value: null, reason: 'native_token_usage_does_not_prove_billed_amount' } }
   }
   const validateExport = (serialized: string) => { if (input.validateExport(serialized) !== undefined) fail('export_validator_invalid') }

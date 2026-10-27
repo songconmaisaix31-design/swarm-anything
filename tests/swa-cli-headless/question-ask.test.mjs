@@ -24,7 +24,7 @@ try {
     "export { ORCHESTRATION_MUTATION_REQUEST_METHODS } from './third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/runs/mutation-request-show';",
     "export { commandSchema, roleDefinitionSchema, questionToolParamsSchema, questionResumeBody } from './runtime/swa-orca/src/contracts';",
     "export { questionAskMethod, admitQuestionProducer, observeRunQuestions, assertQuestionResume, hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './runtime/swa-orca/src/question-ask';",
-    "export { assertTaskQuestionSettlementReady } from './runtime/swa-orca/src/run-settlement';",
+    "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation } from './runtime/swa-orca/src/run-settlement';",
     "export { inspectStructuredTrace } from './runtime/swa-orca/src/task-result';",
     "export { readRunView } from './runtime/swa-orca/src/run-view';"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
@@ -45,6 +45,57 @@ function storage(name) {
   const scope = { project_id: project, controller: 'question-storage-only', run_id: run.id, root_task_id: task.id, authority_domain: db.getOrCreateLocalMutationCallerFingerprint(), context: {} }
   return { db, runtime, project, run, task, dispatch, scope }
 }
+
+test('rolled-back settlement can observe a new turn under the same request while unknown effects stay reserved', async () => {
+  const { RunSettlementWaiting } = createRequire(bundle)(bundle)
+  const value = storage('settlement-reobserve'), executor = getOrchestrationMutationExecutor(value.runtime)
+  const requestID = `${value.task.id}/native-lifecycle/execution`
+  const request = { id: requestID, authToken: '', method: 'swa.runSettle', orchestrationRequestId: requestID }
+  try {
+    // 实际 SQLite 事务与原 executor；输入只表示观察已变化，不构造模型完成事件。
+    await assert.rejects(executor.run(request, { turn: 'previous-observation' }, () => {
+      value.db.db.exec('BEGIN IMMEDIATE')
+      try { throw new RunSettlementWaiting('The Run changed before its execution settlement') }
+      catch (error) { value.db.db.exec('ROLLBACK'); throw error }
+    }, value.scope.authority_domain), RunSettlementWaiting)
+    assert.equal(value.db.getMutationReceipt(value.scope.authority_domain, requestID), undefined)
+    await executor.run(request, { turn: 'current-observation' }, mutation => {
+      value.db.db.exec('BEGIN IMMEDIATE')
+      const result = { phase: 'storage-check-completed' }
+      mutation.recordReceipt(result)
+      value.db.db.exec('COMMIT')
+      return result
+    }, value.scope.authority_domain)
+    assert.equal(value.db.getMutationReceipt(value.scope.authority_domain, requestID).state, 'completed')
+    await executor.run(request, { turn: 'current-observation' }, () => assert.fail('Completed settlement must not run twice'), value.scope.authority_domain)
+    const unknownID = randomUUID(), unknownRequest = { ...request, id: unknownID, orchestrationRequestId: unknownID }
+    await assert.rejects(executor.run(unknownRequest, {}, () => { throw new OrchestrationError('operation_unknown', 'An actual effect is not confirmed') }, value.scope.authority_domain), { code: 'operation_unknown' })
+    assert.equal(value.db.getMutationReceipt(value.scope.authority_domain, unknownID).state, 'pending')
+    await assert.rejects(executor.run(unknownRequest, {}, () => assert.fail('Unknown effects must not run twice'), value.scope.authority_domain), { code: 'operation_unknown' })
+  } finally { value.db.close() }
+})
+
+test('parent continuation keeps its original authority without copying first-submission or question fields', () => {
+  const { handoffResumeInvocation } = createRequire(bundle)(bundle)
+  // 仅构造跨入口的字段投影；Go 的真实 SQLite 准入另行检查来源、撤销与原 Run 关联。
+  const original = { caller: { id: 'original-human', kind: 'human', project_id: 'project', settings_revision: 3 }, project: { id: 'project', root: directory },
+    context: { id: 'original-context', project_id: 'project', settings_revision: 3, files: [] },
+    submission: { operation: 'first-start-only' }, question_ask: { operation: 'original-question-only' }, handoff: { operation: 'previous-handoff-only' } }
+  const scope = { project_id: 'project', controller: 'controller', run_id: 'run', root_task_id: 'root', authority_domain: 'original-authority', context: original.context }
+  const mail = { id: 'child/completed', body: '子任务的已记录结果', handoff: { schema: 'swa.handoff-completion.v1', source_task_id: 'child', source_dispatch_id: 'child-dispatch', parent_task_id: 'lead', parent_dispatch_id: 'lead-dispatch', reply: 'resume', outcome: 'success', resume_request_id: randomUUID() } }
+  const value = handoffResumeInvocation(original, scope, mail)
+  assert.equal(Object.hasOwn(value, 'submission'), false)
+  assert.equal(Object.hasOwn(value, 'question_ask'), false)
+  assert.deepEqual(value.caller, original.caller)
+  assert.deepEqual(value.project, original.project)
+  assert.deepEqual(value.context, original.context)
+  assert.deepEqual(value.scope, scope)
+  assert.equal(value.command.action, 'worker.send')
+  assert.equal(value.command.dispatch_id, 'lead-dispatch')
+  assert.equal(value.command.request_id, mail.handoff.resume_request_id)
+  assert.deepEqual(value.input, { path: 'native-handoff:child/completed', version: mail.id, text: mail.body })
+  assert.equal(value.handoff.source_dispatch_id, 'child-dispatch')
+})
 
 test('native ask without a real Worker is rejected before creation and the original executor query stays absent', async () => {
   const value = storage('no-worker'), executor = getOrchestrationMutationExecutor(value.runtime), requestID = randomUUID()

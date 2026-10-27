@@ -5,6 +5,7 @@ import { useCommand } from '../../hooks/useCommand';
 import type { ReadApiState } from '../../hooks/useReadState';
 import { CommandState } from '../../components/CommandState';
 import { SelectField, TextField } from '../../components/FormControls';
+import { allowedModelCLIs, selectDefaultModelCLI } from './modelCLIPermission';
 import styles from '../../components/FormControls.module.css';
 
 const lines = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean);
@@ -15,9 +16,11 @@ export function ProjectSettingsForm({ project, agents, disabled, onChanged, swaO
   const [subdirs, setSubdirs] = useState(project.settings.allowed_subdirs.join('\n'));
   const [historyCLI, setHistoryCLI] = useState('');
   const [historyRoot, setHistoryRoot] = useState('');
+  const [newCLI, setNewCLI] = useState('');
   const command = useCommand(disabled || settings.revision !== project.settings.revision);
   const changed = settings.revision !== project.settings.revision;
-  const cliOptions = [...new Map([...(agents?.data?.items ?? []).map(agent => [agent.id, { value: agent.id, label: agent.display_name }] as const), ...(settings.external_model_cli ? [[settings.external_model_cli, { value: settings.external_model_cli, label: settings.external_model_cli }] as const] : [])]).values()];
+  const permitted = allowedModelCLIs(settings);
+  const cliOptions = [...new Map([...(agents?.data?.items ?? []).map(agent => [agent.id, { value: agent.id, label: agent.display_name }] as const), ...[...knownAgents, ...permitted].map(id => [id, { value: id, label: id }] as const)]).values()];
   return <details><summary>项目小权限与模型处理许可</summary><form className={styles.form} onSubmit={event => {
     event.preventDefault(); const request = command.prepare({ expected_version: project.settings.revision, expected_revision: settings.revision, settings: { ...settings, allowed_subdirs: lines(subdirs) } });
     void command.run(() => localProjectsApi.setSettings(project.id, request.body, request.key), result => { setSettings(result.project.settings); setSubdirs(result.project.settings.allowed_subdirs.join('\n')); onChanged(); }, '已保存项目许可；既有会话继续输入前将重新核对权限');
@@ -29,7 +32,14 @@ export function ProjectSettingsForm({ project, agents, disabled, onChanged, swaO
       <label><input type="checkbox" style={{ width: 'auto' }} checked={settings.allow_directory} onChange={event => setSettings({ ...settings, allow_directory: event.target.checked })} /> B：允许读取明确目录 / 文件</label>
       {settings.allow_directory && <TextField label="允许的项目子目录 / 文件（每行一项）" value={subdirs} onChange={setSubdirs} multiline hint="填写项目内相对路径；目录许可不会自动读取全部文件。" />}
       {!swaOnly && <label><input type="checkbox" style={{ width: 'auto' }} checked={settings.expand_references} onChange={event => setSettings({ ...settings, expand_references: event.target.checked })} /> C：允许展开获准资料的引用</label>}
-      {swaOnly ? <><TextField label="此项目允许模型处理的 CLI" value={settings.external_model_cli} onChange={value => setSettings({ ...settings, external_model_cli: value.trim() })} hint="填写明确 Agent CLI 标识；留空撤销本项目模型处理许可。填写名称不代表已安装或能运行。" /><p className={styles.note}>{knownAgents.length ? `本项目能力查询实际返回：${knownAgents.join('、')}` : '当前未取得本项目的 Agent 能力清单。'}</p></> : <SelectField label="此项目允许模型处理的 CLI" value={settings.external_model_cli} onChange={value => setSettings({ ...settings, external_model_cli: value })} options={[{ value: '', label: '未许可模型处理' }, ...cliOptions]} />}
+      <SelectField label="默认模型 CLI" value={settings.external_model_cli} onChange={value => setSettings(selectDefaultModelCLI(settings, value))} options={[{ value: '', label: '撤销全部模型处理许可' }, ...permitted.map(id => ({ value: id, label: id }))]} />
+      <fieldset><legend>允许此项目使用的模型 CLI</legend>
+        {cliOptions.map(option => <label key={option.value}><input type="checkbox" style={{ width: 'auto' }} checked={permitted.includes(option.value)} disabled={option.value === settings.external_model_cli} onChange={event => setSettings(event.target.checked ? settings.external_model_cli ? { ...settings, external_model_clis: [...permitted, option.value] } : selectDefaultModelCLI(settings, option.value) : { ...settings, external_model_clis: permitted.filter(id => id !== option.value) })} /> {option.label}{option.value === settings.external_model_cli && '（默认）'}</label>)}
+        <TextField label="添加明确的 CLI 标识" value={newCLI} onChange={setNewCLI} hint="例如 codex、claude、pi 或 opencode。添加只表达许可；保存时服务仍核对注册与权限，运行时核查实际能力。" />
+        <button type="button" className="ac-button secondary compact" disabled={!newCLI.trim() || permitted.includes(newCLI.trim())} onClick={() => { const cli = newCLI.trim(); setSettings(settings.external_model_cli ? { ...settings, external_model_clis: [...permitted, cli] } : selectDefaultModelCLI(settings, cli)); setNewCLI(''); }}>加入许可列表</button>
+        <p className={styles.note}>首次添加的 CLI 作为默认。默认只能从已许可列表选择；要移除默认，请先选择另一个默认，或撤销全部许可。</p>
+        {swaOnly && <p className={styles.note}>{knownAgents.length ? `本项目能力查询实际返回：${knownAgents.join('、')}` : '当前未取得能力清单；已保存的许可保留，也可填写明确 CLI。'}</p>}
+      </fieldset>
       {!swaOnly && <fieldset><legend>明确允许读取的客户端历史</legend><SelectField label="历史客户端" value={historyCLI} onChange={setHistoryCLI} options={[{ value: '', label: '选择客户端…' }, ...cliOptions]} /><TextField label="允许读取的历史绝对目录" value={historyRoot} onChange={setHistoryRoot} hint="仅用于查找属于此项目的会话；不推导全局历史目录，不扫描磁盘。" /><button className="ac-button secondary compact" type="button" disabled={!historyCLI || !historyRoot.trim()} onClick={() => { setSettings({ ...settings, history_roots: { ...settings.history_roots, [historyCLI]: historyRoot.trim() } }); setHistoryRoot(''); }}>加入此项目的历史读取范围</button>{!settings.history_roots && <p>服务未提供历史读取范围，当前不允许发现历史。</p>}{Object.entries(settings.history_roots ?? {}).map(([historyClient, path]) => <p key={historyClient}>{historyClient} · {path}<button className="ac-button secondary compact" type="button" onClick={() => { const next = { ...settings.history_roots }; delete next[historyClient]; setSettings({ ...settings, history_roots: next }); }}>移除此历史范围</button></p>)}</fieldset>}
       <p className={styles.note}>保存此选择允许所选 CLI 按既有配置处理你选择的项目上下文，可能发送至其外部模型。安装、配置、可启动和原生能力仍须独立核实。</p>
       <fieldset><legend>允许的原生操作</legend>{Object.entries(actions).filter(([action]) => !swaOnly || ['start', 'send', 'stop', 'observe'].includes(action)).map(([action, label]) => <label key={action}><input type="checkbox" style={{ width: 'auto' }} checked={settings.allowed_actions.includes(action)} onChange={event => setSettings({ ...settings, allowed_actions: event.target.checked ? [...settings.allowed_actions, action] : settings.allowed_actions.filter(value => value !== action) })} /> {label}</label>)}</fieldset>

@@ -1,5 +1,6 @@
 import type { SwaEnvelope } from '../../api/swa';
 import type { components } from '../../api/schema';
+import { modelCLIAllowed } from '../workspace/modelCLIPermission';
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('执行服务未返回可核对的原生对象');
@@ -137,7 +138,7 @@ type SwaAgent = ReturnType<typeof readSwaAgents>[number];
 
 /** 只判定是否可向原启动门提交请求，不改变任何原生能力观察。 */
 export function swaStartRequestBlock(agent: SwaAgent, settings: ProjectSettings): string | null {
-  if (agent.id !== settings.external_model_cli) return '当前项目未选择此 Agent';
+  if (!modelCLIAllowed(settings, agent.id)) return '当前项目未许可此 Agent';
   if (agent.settingsRevision !== settings.revision) return '能力清单的权限版本已过期，请刷新项目';
   if (!settings.allow_agent_control || !settings.allowed_actions.includes('start')) return '当前项目未允许启动';
   for (const [label, observation] of [['注册', agent.registered], ['启用', agent.enabled], ['安装', agent.installed], ['配置', agent.configured], ['启动支持', agent.start]] as const) {

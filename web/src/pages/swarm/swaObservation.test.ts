@@ -78,6 +78,14 @@ function formAgentInput(): FormAgent {
 const startInput = (agent: FormAgent | undefined = formAgentInput()) => ({ agent, settings: formSettings, disabled: false, pending: false, unresolved: false, name: 'explicit-worker-name-input', inputFile: '/explicit/server-input-path' });
 
 describe('SWA 启动表单的明确参数规则，不表示原生发现或启动通过', () => {
+  it('同项目的非默认 Agent 必须在显式许可列表，原能力与版本门继续生效', () => {
+    const agent = { ...formAgentInput(), id: 'pi' };
+    const settings = { ...formSettings, external_model_clis: [formSettings.external_model_cli, 'pi'] };
+    expect(canRequestSwaStart({ ...startInput(agent), settings })).toBe(true);
+    expect(canRequestSwaStart(startInput(agent))).toBe(false);
+    expect(canRequestSwaStart({ ...startInput(agent), settings: { ...settings, revision: settings.revision + 1 } })).toBe(false);
+    expect(canRequestSwaStart({ ...startInput({ ...agent, configured: observationInput('unknown') }), settings })).toBe(false);
+  });
   it('静态条件允许提交时，未握手观察仍是 unknown', () => {
     const agent = formAgentInput();
     expect(canRequestSwaStart(startInput(agent))).toBe(true);

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -22,7 +23,19 @@ type ProjectSettings struct {
 	AllowedActions    []string          `json:"allowed_actions"`
 	AllowedTools      []string          `json:"allowed_tools"`
 	ExternalModelCLI  string            `json:"external_model_cli"`
+	ExternalModelCLIs []string          `json:"external_model_clis,omitempty"`
 	AllowAgentControl bool              `json:"allow_agent_control"`
+}
+
+// 未设置列表的旧项目沿用单一默认客户端；空默认值表示撤销模型处理许可。
+func (s ProjectSettings) AllowsExternalModelCLI(cli string) bool {
+	if cli == "" || s.ExternalModelCLI == "" {
+		return false
+	}
+	if len(s.ExternalModelCLIs) == 0 {
+		return cli == s.ExternalModelCLI
+	}
+	return slices.Contains(s.ExternalModelCLIs, cli)
 }
 
 type LocalProject struct {

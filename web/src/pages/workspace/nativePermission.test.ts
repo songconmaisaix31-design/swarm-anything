@@ -7,6 +7,15 @@ const unknown = { status: 'unknown' as const, reason: 'not_observed', checked_at
 const agent: components['schemas']['LocalAgentV1'] = { id: 'codex', display_name: 'Codex', version: null, installed: { status: 'unknown', reason: 'not_observed', checked_at: null }, configured: { status: 'unknown', reason: 'not_observed', checked_at: null }, startable: { status: 'unknown', reason: 'not_observed', checked_at: null }, native_adapter_registered: true, capabilities: { discover: unknown, read_context: unknown, start: unknown, resume: unknown, send: unknown, stop: unknown, observe: unknown, reconcile: unknown } };
 
 describe('human native permissions', () => {
+  it('显式许可的非默认客户端可以按原能力操作，撤销后立即阻止', () => {
+    const mixed = { ...settings, external_model_clis: ['codex', 'pi'] };
+    const pi = { ...agent, id: 'pi' };
+    for (const action of ['start', 'resume', 'send', 'observe'] as const) {
+      expect(nativeActionAllowed(mixed, pi, 'pi', action, false)).toBe(true);
+      expect(nativeActionAllowed(settings, pi, 'pi', action, false)).toBe(false);
+      expect(nativeActionAllowed(mixed, pi, 'pi', action, true)).toBe(false);
+    }
+  });
   it('permits explicit unknown-operation verification only for the approved registered CLI', () => {
     for (const action of ['start', 'resume', 'send', 'stop', 'observe'] as const) expect(nativeActionAllowed(settings, agent, 'codex', action, false)).toBe(true);
     expect(agent.capabilities.resume.status).toBe('unknown');

@@ -203,7 +203,9 @@ $env:SWA_PROJECT_TOKEN = $projectToken
 & $swa capabilities --json
 ```
 
-批准范围须覆盖当前固定公开项目、允许读取的文件/子目录，以及`read_context/observe/start/send/stop`中实际需要的动作。`allow_agent_control`、`allow_directory`、`allowed_subdirs`、`allowed_actions`和`allowed_tools`由当前批准确定，`external_model_cli`继续只批准一个实际CLI标识。`capabilities`分别显示注册、启用、安装、配置和各项控制能力及来源；声明能力和实际启动结果分别记录。更改设置会改变revision，旧上下文须按当前批准重新取得。缺少人工批准时保留退出码3及required_action。
+批准范围须覆盖当前固定公开项目、允许读取的文件/子目录，以及`read_context/observe/start/send/stop`中实际需要的动作。`allow_agent_control`、`allow_directory`、`allowed_subdirs`、`allowed_actions`和`allowed_tools`由当前批准确定。`external_model_cli`指定默认客户端；可选`external_model_clis`明确列出本项目获准使用的多个CLI，例如`["pi","codex","claude","opencode"]`，必须包含默认且每项已注册。旧设置省略列表或列表为空时，只允许原默认客户端；撤销全部模型处理许可时同时清空默认与列表。
+
+同一Run的Worker可分别选择许可集合中的CLI及其已配置模型；模型能力、账号和工具范围仍逐次核查。`capabilities`分别显示注册、启用、安装、配置和各项控制能力及来源。更改设置会改变revision，已有Run不会自动继承新的权限；按当前批准重新取得上下文和新Run。缺少人工批准时保留退出码3及required_action。
 
 前述token仅允许`status/capabilities`。只有已选Agent的工具和账号隔离满足当前任务并完成真实验证后，用户才可批准执行。先从实际capabilities选择`$agent/$model`，逐项审阅以下权限正文；`$allowedSubdirs`必须是该公开项目内已审阅的相对目录列表。当前设置接口对非空`allowed_tools`返回501，不能把这一拒绝解释为原生Agent已经关闭工具。单CLI批准通过同一私有Native实际注册端口校验；注册批准不代表账号、工具或实际可启动已通过，缺少实际绑定的执行模式明确拒绝。
 

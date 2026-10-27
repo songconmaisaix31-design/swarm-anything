@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, mkdtemp, rename, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, mkdtemp, rename, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,7 +16,7 @@ buildSync({ entryPoints: [join(root, 'runtime/swa-orca/src/task-result.ts')], ou
 const { findNativeClaudeSessionPath } = createRequire(output)(output)
 const readerOutput = join(directory, 'claude-session-result.cjs')
 buildSync({ entryPoints: [join(root, 'runtime/swa-orca/src/claude-session-result.ts')], outfile: readerOutput, tsconfig: join(root, 'runtime/swa-orca/tsconfig.json'), bundle: true, platform: 'node', format: 'cjs', target: 'node24', nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'node_modules')], external: ['*.node'], alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib', 'esm', 'main.js') }, logLevel: 'silent' })
-const { findPrivateClaudeTranscript } = createRequire(readerOutput)(readerOutput)
+const { findPrivateClaudeTranscript, readNativeClaudeSessionSource } = createRequire(readerOutput)(readerOutput)
 const linux = process.platform === 'linux'
 
 async function privateRoot() {
@@ -24,6 +24,24 @@ async function privateRoot() {
   await mkdir(join(path, 'projects'), { mode: 0o700 })
   return path
 }
+
+test('Claude final text reaches the common Run result contract without including thinking blocks', { skip: !linux }, async () => {
+  const path = await privateRoot(), nativeId = randomUUID(), inputUuid = randomUUID(), leaf = randomUUID()
+  const project = join(path, 'projects', 'public-project')
+  await mkdir(project, { mode: 0o700 })
+  const file = join(project, `${nativeId}.jsonl`), content = [{ type: 'text', text: '已经完成第一部分。\n' }, { type: 'thinking', thinking: '构造的非交付推理块' }, { type: 'text', text: '第二部分也已完成。' }]
+  const common = { sessionId: nativeId, cwd: directory, version: '2.1.284', timestamp: '2026-10-25T00:00:00.000Z', isSidechain: false }
+  // 公开构造的协议输入只验证生产文件读取和成果投影，不冒充模型调用。
+  const rows = [{ ...common, type: 'user', uuid: inputUuid, parentUuid: null, message: { role: 'user', content: '核对公开要求。' } },
+    { ...common, type: 'assistant', uuid: leaf, parentUuid: inputUuid, message: { role: 'assistant', id: 'constructed-message', model: 'claude-opus-5', content, stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 2 } } }]
+  await writeFile(file, rows.map(row => JSON.stringify(row)).join('\n') + '\n', { mode: 0o600 })
+  const info = await lstat(file, { bigint: true })
+  const result = await readNativeClaudeSessionSource({ path: file, privateRoot: path, nativeId, cwd: directory, model: 'claude-opus-5', provider: 'anthropic', stopped: false, nativeVersion: '2.1.284', sdkVersion: '0.3.284', source: { path: file, version: `${info.dev}:${info.ino}:${info.birthtimeNs}:${info.mtimeNs}:${info.size}` }, expectedLeafUuid: leaf, inputUuid, validateExport: () => {} })
+  assert.equal(result.value.availability, 'complete')
+  assert.equal(result.value.final.text, '已经完成第一部分。\n第二部分也已完成。')
+  assert.deepEqual(result.value.final.content, content)
+  await result.verify()
+})
 
 // 只验证普通文件名库存和真实目录边界；文件正文不是原生JSONL，不用于账号或成功会话证明。
 test('the actual empty private Claude inventory has no native session source', { skip: !linux }, async () => {

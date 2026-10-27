@@ -1222,7 +1222,11 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 
 questions-only 只允许以原文 question 创建问题或以 resume 读取所属原问题的答案，不接受路径、命令、模型、账号或任意收件人；原生文件和命令工具保持关闭。disabled 的原工具集合与启动参数不变。Worker preamble 从实际原启动选择取得模式：disabled 要求直接交付最终助手正文，由运行系统收集；questions-only 只说明可用的 `swa_ask` 和最终成果。原任务规格与验收条件保留，不能要求模型使用实际不可用的协作命令。consult 继续要求 disabled，不能隐式升级工具范围；既定 ToolsOff N4/N6 验收与本问答模式分别记录。
 
-CLI `run` 默认等待整个递归 Run；`wait` 用精确 controller/run_id/root task_id 重连，只观察现有工作。`--strict` 将任一递归子任务失败计为失败，非严格模式仍展示完整失败列表。退出码沿既有 2—7，新增 8 超时、9 需要回答或继续原问题、130 取消等待；取消等待不自动停止 Worker。`export` 读取同 Run 的完整记录、原生成果和产物索引，CLI 写入明确的新输出目录，GUI 下载实际数据。GUI 与 CLI 共用 `swa.run-view.v1`，显示后代、依赖、Dispatch、问题、阻塞、失败和成果。
+CLI `run` 默认等待整个递归 Run；`wait` 用精确 controller/run_id/root task_id 重连，只观察现有工作。`--strict` 将任一递归子任务失败计为失败，非严格模式仍展示完整失败列表。退出码沿既有 2—7，新增 8 超时、9 需要回答或继续原问题、130 取消等待；取消等待不自动停止 Worker。`export` 默认读取已记录成果快照，`--audit` 收集完整原生记录，CLI 写入明确的新输出目录，GUI 下载实际数据。GUI 与 CLI 共用 `swa.run-view.v1`，显示后代、依赖、Dispatch、问题、阻塞、失败和成果。浏览器按项目保存三项 Run 身份，刷新仅恢复只读观察；忘记连接只清除浏览器记录。认证检查失败且命令未提交时清理本地待定请求，发出后的未知请求保持原 ID。
+
+项目 `external_model_cli` 是默认客户端，可选 `external_model_clis` 是人工明确许可的集合。缺失或空列表保持原单客户端语义；非空列表必须包含非空默认，每项标识唯一、无空白并经既有注册端口验证。清空默认同时清空列表。所有执行前和输入前权限检查使用当前集合，保留 revision、Grant、目录和工具限制；不自动迁移或扩大已有许可。同一 Run 可以组合多个获准 CLI，默认选择只用于需要单一默认值的操作。
+
+所有已接入 Provider 的完整最终成果提供 `final.text`；Claude 从已验证的文本块依序拼接，原 `content` 保留。父任务继续沿原调用者和账号构造新的 `worker.send`，不携带首次 submission 或问题操作字段。结算事务写入前的快照变化、在途操作和未释放后代属于可重新观察的等待；完整回滚后不保留未知回执，真正效果未知保持原语义。
 
 原生问题生产沿固定 Pi 扩展、原本地 RuntimeClient 和经 Worker 来源准入的 `orchestration.ask`，复用原 question_threads 与等待机制。准入核当前实际 Worker/session/fence/Dispatch、原启动选择、当前 controller consumer、项目 send/固定上下文/外发批准，以及真实原生 assistant entry/toolCallId/参数；不从模型自报字段确定 Run。实际 lease 的私有进程来源证明只走本地运输，不进入模型参数、请求正文、回执或导出；它不构成同一 OS 用户之间的安全隔离。创建与等待请求由真实会话/entry/toolCallId 派生稳定 UUID，完成回放前同样核原来源，未知创建只查询原请求，不能用新请求绕过。一个 Dispatch 的待答问题或未确认创建阻止第二次创建；不同 Worker 的问题独立记录。首次工具调用早于启动结算时仅有界等待原启动完成，未完成前不创建问题。
 

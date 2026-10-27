@@ -1,5 +1,5 @@
 import type { components } from '../../api/schema';
-import { SwaCommandError, type SwaEnvelope } from '../../api/swa';
+import { SwaCommandError, SwaCommandNotSubmittedError, type SwaEnvelope } from '../../api/swa';
 import type { CommandOutcome } from '../../hooks/usePersistentCommand';
 import { formatError } from '../../hooks/useReadState';
 
@@ -72,6 +72,7 @@ export function collaborationPermission(settings: components['schemas']['LocalPr
 
 /** 没有原 UUID 回执的 HTTP 错误也保持未知，避免通用 hook 将普通 4xx 解锁。 */
 export function collaborationFailure(error: unknown, requestID: string): SwaEnvelope {
+  if (error instanceof SwaCommandNotSubmittedError) throw error;
   if (error instanceof SwaCommandError && error.reply.request_id === requestID) return error.reply;
   throw new Error(`原请求结果尚未确认：${formatError(error)}`, { cause: error });
 }
