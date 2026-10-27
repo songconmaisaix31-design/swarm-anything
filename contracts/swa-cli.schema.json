@@ -65,6 +65,7 @@
         "input_file": { "type": "string", "minLength": 1 },
         "result_file": { "type": "string", "minLength": 1 },
         "output_dir": { "type": "string", "minLength": 1 },
+        "export_mode": { "enum": ["results", "audit"], "description": "run.export only. results (default) exports recorded task results; audit collects complete native sources." },
         "name": { "type": "string", "minLength": 1 },
         "agent": { "type": "string", "minLength": 1 },
         "model": { "type": "string", "minLength": 1 },

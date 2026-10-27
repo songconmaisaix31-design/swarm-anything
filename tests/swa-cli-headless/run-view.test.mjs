@@ -21,7 +21,7 @@ try {
     "export { OrcaRuntimeService } from './third_party/orca-v1.4.230/src/main/runtime/orca-runtime';",
     "export { OrchestrationError } from './third_party/orca-v1.4.230/src/main/runtime/orchestration/orchestration-error';",
     "export { getOrchestrationMutationExecutor, OrchestrationMutationExecutor } from './third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-executor';",
-    "export { readRunView } from './runtime/swa-orca/src/run-view'"
+    "export { readRunView, recordedRunResults } from './runtime/swa-orca/src/run-view'"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
     external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
     banner: { js: 'var __swaModuleUrl = require("node:url").pathToFileURL(__filename).href;' }, define: { 'import.meta.url': '__swaModuleUrl', 'process.env.NODE_ENV': '"production"' }, logOverride: { 'empty-import-meta': 'error' },
@@ -29,7 +29,7 @@ try {
       { name: 'original-jsonc-esm', setup(builder) { builder.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') })) } }],
     nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'node_modules')], logLevel: 'error' })
 } finally { stop() }
-const { OrchestrationDb, OrcaRuntimeService, OrchestrationError, getOrchestrationMutationExecutor, OrchestrationMutationExecutor, readRunView } = createRequire(bundle)(bundle)
+const { OrchestrationDb, OrcaRuntimeService, OrchestrationError, getOrchestrationMutationExecutor, OrchestrationMutationExecutor, readRunView, recordedRunResults } = createRequire(bundle)(bundle)
 
 function createCase(name, maximum = 120) {
   const path = join(directory, `${name}.sqlite`)
@@ -41,6 +41,42 @@ function createCase(name, maximum = 120) {
 function child(value, parent = value.root.id, deps = []) {
   return value.db.createTask({ runId: value.scope.run_id, parentId: parent, deps, spec: 'Read the public task record', taskTitle: 'Database observation' })
 }
+
+test('recorded results preserve partial SQLite snapshots without declaring execution or review complete', () => {
+  // 构造真实数据库状态，只验证存储与导出规则，不代表进程或模型执行。
+  for (const status of ['active', 'unknown', 'failed']) {
+    const value = createCase(`recorded-${status}`)
+    try {
+      const finished = child(value), missing = child(value)
+      value.db.updateTaskStatus(finished.id, 'completed', '已保存的任务成果')
+      if (status === 'active') value.db.createDispatchContext({ taskId: missing.id, assigneeHandle: 'recorded-storage-only', creator: { kind: 'system' }, maxDepth: 4 })
+      if (status === 'unknown') {
+        const started = value.db.createStartingWorkerDispatch({ taskId: missing.id, startOptions: {}, creator: { kind: 'system' }, maxDepth: 4 })
+        value.db.markWorkerStartUnknown(started.dispatch.id, 'test_rule', '未观察到进程执行')
+      }
+      if (status === 'failed') {
+        value.db.updateTaskStatus(missing.id, 'failed')
+        value.db.updateTaskStatus(value.root.id, 'failed')
+      }
+      const view = readRunView(value.db, value.scope)
+      const originalView = JSON.stringify(view)
+      assert.equal(view.status, status)
+      const result = recordedRunResults(view)
+      assert.equal(result.source, 'native_task_records')
+      assert.equal(result.status, status)
+      assert.equal(result.complete, status === 'failed')
+      assert.equal(result.acceptance, 'unreviewed')
+      assert.equal(result.completeness, 'partial')
+      assert.equal(result.audit, 'not_requested')
+      assert.equal(result.tasks.find(task => task.task_id === finished.id).result, '已保存的任务成果')
+      assert.deepEqual(result.tasks.find(task => task.task_id === missing.id), { task_id: missing.id, status: value.db.getTask(missing.id).status, availability: 'missing', result: null })
+      assert.equal(JSON.stringify(view), originalView)
+      assert.equal(value.db.getTask(finished.id).result, '已保存的任务成果')
+      value.db.updateTaskStatus(finished.id, 'completed', '快照之后的新结果')
+      assert.equal(recordedRunResults(view).tasks.find(task => task.task_id === finished.id).result, '已保存的任务成果')
+    } finally { value.db.close() }
+  }
+})
 
 test('one native transaction reads every descendant and preserves strict failures', () => {
   const value = createCase('recursive')

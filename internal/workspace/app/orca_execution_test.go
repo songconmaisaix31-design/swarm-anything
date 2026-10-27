@@ -17,6 +17,32 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/workspace/app"
 )
 
+func TestRunExportModeValidation(t *testing.T) {
+	// 仅验证命令输入，不构造授权或真实运行成功回执。
+	command := app.OrcaCommand{Action: "run.export", Controller: "rule-controller", RunID: "rule-run", TaskID: "rule-root", OutputDir: filepath.Join(t.TempDir(), "export")}
+	for _, mode := range []string{"", "results", "audit"} {
+		command.ExportMode = mode
+		if err := app.ValidateOrcaCommand(command); err != nil {
+			t.Fatalf("合法导出模式 %q 被拒绝：%v", mode, err)
+		}
+	}
+	for _, mode := range []string{"partial", "AUDIT", " audit "} {
+		command.ExportMode = mode
+		if err := app.ValidateOrcaCommand(command); err == nil {
+			t.Fatalf("非法导出模式 %q 被接受", mode)
+		}
+	}
+	for _, command := range []app.OrcaCommand{
+		{Action: "status", ExportMode: "results"},
+		{Action: "run.show", Controller: "rule-controller", RunID: "rule-run", TaskID: "rule-root", ExportMode: "audit"},
+		{Action: "task.result", Controller: "rule-controller", TaskID: "rule-root", OutputDir: command.OutputDir, ExportMode: "results"},
+	} {
+		if err := app.ValidateOrcaCommand(command); err == nil {
+			t.Fatalf("%s 错误接受了 export_mode", command.Action)
+		}
+	}
+}
+
 func TestOpenCodeStepFunAccountWireIsStrict(t *testing.T) {
 	// 仅验证公开合同形状，不创建账户、数据库或模型成功回执。
 	value := app.OrcaNativeLaunchAccount{Kind: "opencode-native-stepfun-api-key", Provider: "stepfun", ModelTarget: app.OrcaNativeModelTarget{ModelID: "step-3.5-flash", API: "openai-completions", BaseURL: "https://api.stepfun.com/v1"}}

@@ -13,6 +13,12 @@ import { verifyOpenCodeInputReceipt } from './opencode-policy-plugin'
 import { requireNativeCodexPrivatePath } from './native-codex-policy'
 
 const maximum = 12 * 1024 * 1024
+
+export function validateOpenCodeExport(apiKey: string, inputKey: string, text: string) {
+  for (const secret of [apiKey, inputKey]) {
+    if (!secret || text.includes(secret) || text.includes(JSON.stringify(secret).slice(1, -1))) throw new Error('native_opencode_result_contains_credential')
+  }
+}
 const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 const time = z.looseObject({ created: z.number().int().nonnegative(), completed: z.number().int().nonnegative().optional() })
 const rowSchema = z.object({ id: z.string().startsWith('msg_'), session_id: z.string(), type: z.enum(['agent-switched', 'model-switched', 'location-switched', 'user', 'synthetic', 'system', 'skill', 'shell', 'assistant', 'compaction', 'idle']), data: z.string(), seq: z.number().int().positive(), time_created: z.number().int().nonnegative() })
@@ -93,7 +99,7 @@ export async function readNativeOpenCodeSessionSource(input: { selection: AgentS
   const value = { format: 'opencode-sqlite-v2' as const, availability: complete ? 'complete' : 'incomplete', reason: complete ? null : 'no_complete_final_assistant_message', persistence: 'observed', path, native_id: input.nativeId, session, messages, input_receipts: inputReceipts, final: complete ? { input_message_id: lastUser!.message_id, assistant_message_id: lastAssistant!.id, assistant_sequence: lastAssistant!.seq, idle_message_id: messages.at(-1)!.id, text: finalText! } : null, usage: { known: usage.some(row => row.tokens !== null), value: usage, source: 'actual_native_message_usage', billed_cost: { known: false, value: null, reason: 'native_cost_fields_do_not_prove_billed_amount' } } }
   const serialized = JSON.stringify(value)
   if (Buffer.byteLength(serialized) > maximum || serialized.includes(snapshot.key) || serialized.includes(inputKey.key)) throw new Error('native_opencode_result_bound_or_credential_violation')
-  const validateExport = (text: string) => { if (text.includes(snapshot.key) || text.includes(inputKey.key)) throw new Error('native_opencode_result_contains_credential') }
+  const validateExport = (text: string) => validateOpenCodeExport(snapshot.key, inputKey.key, text)
   const verifySync = () => {
     assertNativeOpenCodeCurrent(snapshot)
     if (!isDeepStrictEqual(before, versions(path)) || privateSources.some(source => !isDeepStrictEqual(source, sourceVersion(source.path)))) throw new Error('native_opencode_result_changed_during_collection')

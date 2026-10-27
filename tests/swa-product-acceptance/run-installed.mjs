@@ -2586,7 +2586,7 @@ async function run() {
   }
   for (const worker of report.started_workers) worker.transcript = await readTranscript(worker.dispatch_id)
   const piInventory = piTarget ? piRootInventory() : null
-  const exported = await cli(runFlow ? ['export', '--controller', controller, '--task', rootTask, '--run', runId, '--output-dir', join(inputDirectory, 'result-' + randomUUID())]
+  const exported = await cli(runFlow ? ['export', '--audit', '--controller', controller, '--task', rootTask, '--run', runId, '--output-dir', join(inputDirectory, 'result-' + randomUUID())]
     : ['task', 'result', '--controller', controller, '--task', rootTask, '--output-dir', join(inputDirectory, 'result-' + randomUUID())])
   const result = runFlow ? object(native(exported).result) : native(exported)
   if (runFlow) {

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import type { OrcaRuntimeService } from '../../../third_party/orca-v1.4.230/src/main/runtime/orca-runtime'
 import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/orchestration-error'
 import { approvedWorkerLimit } from './task-budget'
-import { isTaskDescendant, readRunTaskTree } from './run-view'
+import { isTaskDescendant, readRunTaskTree, type RunView } from './run-view'
 import { executionObservation } from './execution-observation'
 import { agentDrivesSession } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-wire/structured-agent-session-provider-support'
 import { sessionIdFromStructuredWorkerIncarnation } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-worker-identity'
@@ -25,7 +25,9 @@ import { SendBodyStructure } from '../../../third_party/orca-v1.4.230/src/shared
 import type { OrchestrationDb } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/db/orchestration-db'
 import { iterateJournalEpochRows, readJournalSessionEpoch } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-row-table'
 import { agentSelectionSchema, nativeObject, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
-import { readNativeOpenCodeSessionSource } from './opencode-session-result'
+import { readNativeOpenCodeSessionSource, validateOpenCodeExport } from './opencode-session-result'
+import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
+import { readPrivateOpenCodeInputKey } from './private-opencode-account'
 import { readNativeCodexSessionSource } from './codex-session-result'
 import { assertNativeCodexCurrent, inspectNativeCodexPolicy, requireNativeCodexPrivatePath } from './native-codex-policy'
 import { verifyPrivateCodexAccount } from './private-codex-account'
@@ -664,6 +666,59 @@ async function observeWorkerSourceSnapshot(runtime: OrcaRuntimeService, scope: S
     selection,
     process: ownerProcess ? { pid: ownerProcess.pid, creation_time_ms: ownerProcess.processStartTimeMs, runtime_id: ownerProcess.runtime ?? null } : null,
     provider_link: head, journal_database: journal, provider_events: join(workerRoot, 'provider-events.ndjson'), worker_state: nativeWorker.state, release_state: resource.release_state })
+}
+
+// 任务结果快照只依赖身份与凭据过滤，原生日志完整性留给审计导出。
+export async function validateRecordedRunExport(runtime: OrcaRuntimeService, scope: Scope, workspaceId: string, view: RunView, serialized: string) {
+  if (view.run_id !== scope.run_id || view.root_task_id !== scope.root_task_id || view.controller !== scope.controller) return fail('The recorded result belongs to another Run')
+  const db = runtime.getOrchestrationDb()
+  approvedWorkerLimit(db.getTask(scope.root_task_id), scope)
+  if (Buffer.byteLength(serialized) > resultObservationLimits.result_bytes) return fail('The recorded task results exceed the export bound')
+  if (!view.dispatches.length) return
+  const host = getStructuredAgentSessionHost()
+  if (!host?.deps.resolveWorkspacePath) return fail('The original session bindings are unavailable')
+  const cwd = await realpath(await host.deps.resolveWorkspacePath(workspaceId))
+  const protectedRoots = codexProtectedRoots(await readAgentSettings(), cwd)
+  const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
+  const checks: (() => void)[] = []
+  for (const dispatch of view.dispatches) {
+    const actual = db.getDispatchContextById(dispatch.id)
+    if (!actual || actual.run_id !== scope.run_id || actual.task_id !== dispatch.task_id || !isTaskDescendant(db, scope.run_id, scope.root_task_id, actual.task_id)) return fail('The recorded result Dispatch left its original Run')
+    const resource = db.getWorkerTerminalResourceByOwner(dispatch.id)
+    const sessionId = resource && sessionIdFromStructuredWorkerIncarnation(resource.process_incarnation)
+    const record = sessionId && host.deps.store.getRecord(sessionId)
+    if (!record || !sessionId || !/^[a-zA-Z0-9_-]+$/.test(sessionId) || record.sessionId !== sessionId || record.location.workspaceId !== workspaceId || record.location.wslDistro !== null || actual.process_incarnation !== resource?.process_incarnation) return fail('The recorded result has no verified original session binding')
+    const { selection, binding } = originalWorkerSelection(runtime, scope, dispatch.id, record)
+    if (!binding || binding.dispatch_id !== dispatch.id || binding.session_id !== sessionId || binding.agent !== record.provider || actual.assignee_orca_session_id !== sessionId || dispatch.recipient_session_id !== sessionId) return fail('The recorded result has a different original Dispatch/session binding')
+    const account = selection.native_launch.account
+    const common = { executable: selection.executable, version: selection.version, sourceHome: account.source_home, projectId: scope.project_id, env: process.env, protectedRoots }
+    if (account.kind === 'codex-native-api-key') {
+      const snapshot = await inspectNativeCodexPolicy({ ...common, privateRoot: account.private_root, catalogPath: account.catalog_source.path })
+      if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Codex account source changed before export')
+      checks.push(() => { assertNativeCodexCurrent(snapshot); validateCodexExport(snapshot, serialized) })
+    } else if (account.kind === 'claude-native-api-key') {
+      const snapshot = await inspectNativeClaudePolicy({ ...common, privateRoot: account.private_root })
+      if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Claude account source changed before export')
+      checks.push(() => { assertNativeClaudeCurrent(snapshot); validateClaudeExport(snapshot, serialized) })
+    } else if (account.kind === 'pi-native-api-key-per-session') {
+      const snapshot = await inspectNativePiPolicy({ ...common, provider: account.provider, modelId: account.model_target.model_id, questionMode: selection.native_launch.tools.mode === 'questions-only' ? 'native' : 'disabled' })
+      if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original Pi account source changed before export')
+      const env = privatePiEnvironment(join(account.private_root, sessionId), environment)
+      checks.push(() => { assertNativePiSnapshotCurrent(snapshot); validatePiExport(snapshot, serialized, env) })
+    } else if (account.kind === 'opencode-native-api-key' || account.kind === 'opencode-native-stepfun-api-key') {
+      const snapshot = await inspectNativeOpenCodePolicy({ ...common, privateRoot: account.private_root })
+      if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original OpenCode account source changed before export')
+      const inputKey = await readPrivateOpenCodeInputKey(join(account.private_root, sessionId))
+      checks.push(() => {
+        assertNativeOpenCodeCurrent(snapshot)
+        const info = lstatSync(inputKey.source.path, { bigint: true })
+        requireNativeCodexPrivatePath(inputKey.source.path, false)
+        if (`${info.dev}:${info.ino}:${info.birthtimeNs}:${info.mtimeNs}:${info.size}` !== inputKey.source.version) return fail('The original OpenCode input key changed before export')
+        validateOpenCodeExport(snapshot.key, inputKey.key, serialized)
+      })
+    } else return fail('The native account has no recorded-result credential filter')
+  }
+  for (const check of checks) check()
 }
 
 export async function completeTaskResult(runtime: OrcaRuntimeService, scope: Scope, workspaceId: string, metadata: unknown, dispatchId?: string) {

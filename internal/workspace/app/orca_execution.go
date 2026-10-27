@@ -43,6 +43,7 @@ type OrcaCommand struct {
 	InputFile          string                      `json:"input_file,omitempty"`
 	ResultFile         string                      `json:"result_file,omitempty"`
 	OutputDir          string                      `json:"output_dir,omitempty"`
+	ExportMode         string                      `json:"export_mode,omitempty"`
 	Name               string                      `json:"name,omitempty"`
 	Agent              string                      `json:"agent,omitempty"`
 	Model              string                      `json:"model,omitempty"`
@@ -410,7 +411,7 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		"handoff.notify":  "controller task_id dispatch_id input_file request_id",
 		"question.answer": "controller run_id task_id dispatch_id question_id input_file text request_id",
 		"question.resume": "controller run_id task_id dispatch_id question_id request_id",
-		"run.submit":      "workdir spec_file input_file agent model name question_mode request_id role_id revision conversation_id", "run.show": "controller run_id task_id", "run.export": "controller run_id task_id output_dir",
+		"run.submit":      "workdir spec_file input_file agent model name question_mode request_id role_id revision conversation_id", "run.show": "controller run_id task_id", "run.export": "controller run_id task_id output_dir export_mode",
 		"controller.open": "workdir request_id", "controller.show": "controller", "controller.close": "controller request_id", "controller.recover": "controller request_id",
 		"task.create": "controller spec_file request_id", "task.show": "controller task_id", "task.list": "controller",
 		"task.complete": "controller task_id result_file request_id", "task.result": "controller task_id output_dir",
@@ -435,6 +436,9 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		if !allowed[name] {
 			return projectError(apierrors.ValidationFailed, "the action does not accept "+name)
 		}
+	}
+	if c.ExportMode != "" && c.ExportMode != "results" && c.ExportMode != "audit" {
+		return projectError(apierrors.ValidationFailed, "export_mode must be results or audit")
 	}
 	if c.QuestionMode != "" && c.QuestionMode != "disabled" && c.QuestionMode != "native" {
 		return projectError(apierrors.ValidationFailed, "question_mode must be disabled or native")

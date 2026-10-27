@@ -27,7 +27,7 @@ const usage = `swa serve --data-dir D --port N --protected-roots R [--agent-prof
 swa status|capabilities --json
 swa run --project P --workdir W --spec-file F --input-file I --agent A --model M --request-id UUID [--question-mode disabled|native] [--name lead] [--role ID --role-revision N] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa wait --controller C --task T --run R [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
-swa export --controller C --task T --run R --output-dir O --json
+swa export --controller C --task T --run R --output-dir O [--audit] --json
 swa question answer --controller C --run R --task T --dispatch D --question Q --input-file F --request-id UUID --json
 swa question resume --controller C --run R --task T --dispatch D --question Q --request-id UUID --json
 swa controller open --project P --workdir W --request-id UUID --json

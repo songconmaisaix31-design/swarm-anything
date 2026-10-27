@@ -20,8 +20,7 @@ import { createIncrementalNdjsonFramer } from '../../../third_party/orca-v1.4.23
 import { getPendingWorkerStartRecovery } from '../../../third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'
 import { invocationSchema, helperReply, nativeObject, nativeError, commandSchema, capabilityRequirementsSchema, agentSelectionSchema, scopeSchema, type AgentSelection, type Invocation, type Scope } from './contracts'
 import { discoverAgents, selectAgent, registeredAgent } from './agent-discovery'
-import { admitWorkerResources } from './resource-admission'
-import { completeTaskResult, observeWorkerSource, readNativeInputStatus } from './task-result'
+import { completeTaskResult, observeWorkerSource, readNativeInputStatus, validateRecordedRunExport } from './task-result'
 import { createPrivatePiProjectRoot } from './private-pi-account'
 import { createPrivateOpenCodeRoot } from './private-opencode-account'
 import { createPrivateCodexRoot } from './private-codex-account'
@@ -29,7 +28,7 @@ import { deliverNativeWorkerInput } from './worker-input'
 import { assertDeliveryGrantCurrent } from './delivery-admission'
 import { authority, controllerOwnerSchema, controllerScope, exactController, observeControllerExited, recorded } from './controller-scope'
 import { approvedWorkerLimit, assertCompletionInventory, assertWorkerCapacity, assertWorkerStartOpen } from './task-budget'
-import { readRunView, readRunTaskTree, isTaskDescendant } from './run-view'
+import { readRunView, readRunTaskTree, isTaskDescendant, recordedRunResults } from './run-view'
 import { collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment } from './collaboration-records'
 import { requestRunSettlement, validateHandoffInput } from './run-settlement'
 import { assertQuestionReservation, questionStartSelection, readAnswerQuestion, validateQuestionAnswer } from './question-answer'
@@ -264,6 +263,11 @@ export const SWA_METHODS = [
     const execution = { executor: getOrchestrationMutationExecutor(runtime), runtimeEpoch: runtime.getRuntimeId(), questions: () => observeRunQuestions(runtime, scope) }
     const runView = readRunView(runtime.getOrchestrationDb(), scope, execution)
     if (command.action === 'run.show') return { scope, native: { run_view: runView } }
+    if (command.export_mode !== 'audit') {
+      const response = { scope, output_dir: command.output_dir, native: { run_view: runView, result: recordedRunResults(runView) } }
+      await validateRecordedRunExport(runtime, scope, owner.worktree_id, runView, JSON.stringify(response))
+      return response
+    }
     const summary = await observeTask(runtime, { ...invocation, command: { ...command, action: 'task.result' } }, scope)
     const result = await completeTaskResult(runtime, scope, owner.worktree_id, summary)
     const after = readRunView(runtime.getOrchestrationDb(), scope, execution)
@@ -311,7 +315,6 @@ export const SWA_METHODS = [
           parent_task_id: parent.id, requester_dispatch_id: parentDispatch ? z.object({ id: z.string() }).parse(parentDispatch).id : null,
           completion_criteria: c.completion_criteria ?? spec.success_criteria,
           ...(c.role_id ? { recipient_role_id: c.role_id, recipient_role_revision: c.revision } : {}) } }
-      await admitWorkerResources()
     }
     const requestId = reserve(context, invocation, { project_id: invocation.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: invocation.selection, child_request: `${c.request_id}/native`, stage: 'helper-input' })
     return effect(async () => {
