@@ -291,3 +291,56 @@ func TestQuestionResumeAllowsOnlyExactIdentity(t *testing.T) {
 		t.Fatal("继续入口未沿用原 send 权限")
 	}
 }
+
+func TestDevelopmentModeUsesIndependentRoleDefaultAndExplicitSelection(t *testing.T) {
+	command := OrcaCommand{Action: "worker.start", Controller: "controller", TaskID: "root", Name: "developer", InputFile: "input.txt", RoleID: "role", Revision: 1, RequestID: uuid.NewString()}
+	selection := OrcaAgentSelection{NativeLaunch: OrcaNativeLaunchPolicy{Tools: OrcaNativeLaunchTools{Mode: "project", Allowed: []string{"bash"}}}}
+	for _, mode := range []string{"", "project", "disabled"} {
+		command.DevelopmentMode = mode
+		if err := ValidateOrcaCommand(command); err != nil {
+			t.Fatal("角色开发模式应在实际选择后核验", mode, err)
+		}
+		if err := validateOrcaQuestionSelection(command, selection); (err == nil) != (mode != "disabled") {
+			t.Fatal("显式关闭开发工具没有覆盖角色默认", mode, err)
+		}
+	}
+	command.DevelopmentMode, command.QuestionMode, command.DelegationMode = "project", "native", "native"
+	if validateOrcaQuestionSelection(command, selection) == nil {
+		t.Fatal("开发模式开放了未选择的问答和委派工具")
+	}
+	selection.NativeLaunch.Tools.Allowed = []string{"bash", "swa_ask", "swa_delegate"}
+	if err := validateOrcaQuestionSelection(command, selection); err != nil {
+		t.Fatal(err)
+	}
+	command.QuestionMode, command.DelegationMode = "disabled", "disabled"
+	for _, agent := range []string{"pi", "opencode"} {
+		command.Agent, command.Model = agent, "stepfun/step-3.5-flash"
+		if err := ValidateOrcaCommand(command); err != nil {
+			t.Fatal("支持的 CLI 拒绝了明确开发模式", agent, err)
+		}
+	}
+	for _, change := range []func(*OrcaCommand){
+		func(c *OrcaCommand) { c.DevelopmentMode = "enabled" },
+		func(c *OrcaCommand) { c.HandoffMode = "consult" },
+		func(c *OrcaCommand) { c.Agent = "codex" },
+		func(c *OrcaCommand) { c.Action = "worker.send" },
+	} {
+		invalid := command
+		change(&invalid)
+		if ValidateOrcaCommand(invalid) == nil {
+			t.Fatal("不支持的开发工具入口被接受", invalid)
+		}
+	}
+	for _, agent := range []string{"pi", "opencode", "codex"} {
+		role := OrcaRoleDefinition{Name: "开发角色", Responsibilities: "在批准项目修改和验证代码", DefaultAgent: agent, DefaultModel: "stepfun/step-3.5-flash", DevelopmentMode: "project"}
+		create := OrcaCommand{Action: "role.create", Role: &role, RequestID: uuid.NewString()}
+		if err := ValidateOrcaCommand(create); (err == nil) != (agent != "codex") {
+			t.Fatal("角色开发工具默认与支持的 CLI 不符", agent, err)
+		}
+		wire, err := json.Marshal(create)
+		var decoded OrcaCommand
+		if err != nil || json.Unmarshal(wire, &decoded) != nil || decoded.Role == nil || decoded.Role.DevelopmentMode != "project" {
+			t.Fatal("角色开发模式未保存到公共表示", err)
+		}
+	}
+}

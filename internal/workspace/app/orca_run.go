@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,8 +145,13 @@ func (s *OrcaExecutionService) submitOrcaRun(ctx context.Context, caller domain.
 	if current.Settings.Revision != p.Settings.Revision || packet.SettingsRevision != p.Settings.Revision {
 		return reply, projectError(apierrors.ContextStale, "project settings changed during run submission preparation")
 	}
-	if selection.NativeLaunch.Tools.Mode == "collaboration" {
+	if slices.Contains(selection.NativeLaunch.Tools.Allowed, "swa_delegate") {
 		if err := s.authorizeOrcaDelegation(ctx, caller, current, selection.ExternalTarget); err != nil {
+			return reply, err
+		}
+	}
+	if selection.NativeLaunch.Tools.Mode == "project" {
+		if _, err := s.authorizeOrcaProjectTools(ctx, caller, current, selection.ExternalTarget); err != nil {
 			return reply, err
 		}
 	}
@@ -159,7 +165,7 @@ func (s *OrcaExecutionService) submitOrcaRun(ctx context.Context, caller domain.
 	stages := []OrcaCommand{
 		{Action: "controller.open", ProjectID: p.ID, Workdir: root, RequestID: command.RequestID},
 		{Action: "task.create", ProjectID: p.ID, SpecFile: command.SpecFile, RequestID: taskRequest},
-		{Action: "worker.start", ProjectID: p.ID, Name: command.Name, Agent: command.Agent, Model: command.Model, QuestionMode: command.QuestionMode, DelegationMode: command.DelegationMode, InputFile: command.InputFile, RequestID: workerRequest, RoleID: command.RoleID, Revision: command.Revision},
+		{Action: "worker.start", ProjectID: p.ID, Name: command.Name, Agent: command.Agent, Model: command.Model, QuestionMode: command.QuestionMode, DelegationMode: command.DelegationMode, DevelopmentMode: command.DevelopmentMode, InputFile: command.InputFile, RequestID: workerRequest, RoleID: command.RoleID, Revision: command.Revision},
 	}
 	identity := OrcaEnvelope{RequestID: command.RequestID}
 	for i := range stages {

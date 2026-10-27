@@ -24,7 +24,7 @@ import { agentSessionSendBodyFingerprint } from '../../../third_party/orca-v1.4.
 import { SendBodyStructure } from '../../../third_party/orca-v1.4.230/src/shared/rpc-contract/structured-agent-session-message-params'
 import type { OrchestrationDb } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/db/orchestration-db'
 import { iterateJournalEpochRows, readJournalSessionEpoch } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-row-table'
-import { agentSelectionSchema, nativeObject, nativeToolModes, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
+import { agentSelectionSchema, nativeObject, nativeToolModes, nativeOpenCodeLaunchPolicySchema, structuredInputBindingSchema, type AgentSelection, type Scope } from './contracts'
 import { readNativeOpenCodeSessionSource, validateOpenCodeExport } from './opencode-session-result'
 import { assertNativeOpenCodeCurrent, inspectNativeOpenCodePolicy } from './native-opencode-policy'
 import { readPrivateOpenCodeInputKey } from './private-opencode-account'
@@ -706,7 +706,7 @@ export async function validateRecordedRunExport(runtime: OrcaRuntimeService, sco
       const env = privatePiEnvironment(join(account.private_root, sessionId), environment)
       checks.push(() => { assertNativePiSnapshotCurrent(snapshot); validatePiExport(snapshot, serialized, env) })
     } else if (account.kind === 'opencode-native-api-key' || account.kind === 'opencode-native-stepfun-api-key') {
-      const snapshot = await inspectNativeOpenCodePolicy({ ...common, privateRoot: account.private_root })
+      const snapshot = await inspectNativeOpenCodePolicy({ ...common, privateRoot: account.private_root, tools: nativeOpenCodeLaunchPolicySchema.parse(selection.native_launch).tools })
       if (!isDeepStrictEqual(snapshot.policy, selection.native_launch)) return fail('The original OpenCode account source changed before export')
       const inputKey = await readPrivateOpenCodeInputKey(join(account.private_root, sessionId))
       checks.push(() => {

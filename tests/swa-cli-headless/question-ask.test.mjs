@@ -25,7 +25,11 @@ try {
     "export { commandSchema, roleDefinitionSchema, questionToolParamsSchema, questionResumeBody } from './runtime/swa-orca/src/contracts';",
     "export { questionAskMethod, admitQuestionProducer, observeRunQuestions, assertQuestionResume, hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './runtime/swa-orca/src/question-ask';",
     "export { assertTaskQuestionSettlementReady, RunSettlementWaiting, handoffResumeInvocation, handoffParentDisposition } from './runtime/swa-orca/src/run-settlement';",
-    "export { assertDelegationParentStopOpen } from './runtime/swa-orca/src/delegation';",
+    "export { assertDelegationParentStopOpen, storedDelegationObservation } from './runtime/swa-orca/src/delegation';",
+    "export { assertNativePiStopInvocation } from './runtime/swa-orca/src/agent-launch-admission';",
+    "export { delegationRequestID, delegationWorkerRequestID } from './runtime/swa-orca/src/contracts';",
+    "export { initializeCollaborationRecords, writeCollaborationRecords, resolveCollaborationReferences } from './runtime/swa-orca/src/collaboration-records';",
+    "export { hashCanonical } from './third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt';",
     "export { inspectStructuredTrace } from './runtime/swa-orca/src/task-result';",
     "export { readRunView } from './runtime/swa-orca/src/run-view';"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
@@ -46,6 +50,30 @@ function storage(name) {
   const scope = { project_id: project, controller: 'question-storage-only', run_id: run.id, root_task_id: task.id, authority_domain: db.getOrCreateLocalMutationCallerFingerprint(), context: {} }
   return { db, runtime, project, run, task, dispatch, scope }
 }
+
+test('owned Pi stop retains its stable scope after project permissions change', () => {
+  const { assertNativePiStopInvocation } = createRequire(bundle)(bundle)
+  // 仅验证停止来源规则；这些对象不表示实际 Worker、模型调用或进程退出证据。
+  const requestId = randomUUID(), dispatchId = randomUUID()
+  const original = { project: { id: randomUUID(), root, settings: { revision: 1, allowed_tools: ['project_shell'] } }, scope: { controller: 'rule-only-controller', run_id: randomUUID(), root_task_id: randomUUID(), authority_domain: 'rule-only-authority', context: {} } }
+  const current = { ...structuredClone(original), command: { action: 'worker.stop', controller: original.scope.controller, dispatch_id: dispatchId, request_id: requestId } }
+  current.project.settings = { revision: 2, allowed_tools: [] }
+  assert.doesNotThrow(() => assertNativePiStopInvocation(current, original, requestId, dispatchId))
+  for (const change of [
+    value => { value.project.id = randomUUID() },
+    value => { value.project.root = join(root, 'different-project') },
+    value => { value.scope.run_id = randomUUID() },
+    value => { value.scope.root_task_id = randomUUID() },
+    value => { value.scope.authority_domain = 'different-authority' },
+    value => { value.command.dispatch_id = randomUUID() },
+    value => { value.command.controller = 'different-controller' },
+    value => { value.command.request_id = randomUUID() },
+    value => { value.command.action = 'worker.send' }
+  ]) {
+    const changed = structuredClone(current); change(changed)
+    assert.throws(() => assertNativePiStopInvocation(changed, original, requestId, dispatchId), /left its original scope/)
+  }
+})
 
 test('parent delegation rejects its exact pending stop or release, including unknown effects', async () => {
   const { assertDelegationParentStopOpen } = createRequire(bundle)(bundle)
@@ -78,6 +106,49 @@ test('parent delegation rejects its exact pending stop or release, including unk
       assert.throws(check, { code: 'scope_denied' })
     } finally { value.db.close() }
   }
+})
+
+test('a saved rejected delegation remains observable after its role changes without selecting or creating a child', async () => {
+  const { storedDelegationObservation, delegationRequestID, delegationWorkerRequestID, initializeCollaborationRecords, writeCollaborationRecords, resolveCollaborationReferences, hashCanonical } = createRequire(bundle)(bundle)
+  const value = storage('rejected-delegation-role'), executor = getOrchestrationMutationExecutor(value.runtime)
+  try {
+    // 构造父来源只用于存储规则，不声称存在实际 Worker 或原生模型工具调用。
+    initializeCollaborationRecords(value.db)
+    const caller = { id: 'storage-rule-owner', kind: 'human', project_id: value.project, settings_revision: 1 }, project = { id: value.project, root }
+    const writeRole = command => {
+      const invocation = { command: { ...command, request_id: randomUUID() }, caller, project, scope: value.scope }
+      const identity = { callerFingerprint: value.scope.authority_domain, requestId: invocation.command.request_id, method: 'swa.collaborationWrite', payloadHash: hashCanonical(invocation) }
+      value.db.beginMutationReceipt(identity)
+      return writeCollaborationRecords(value.db, invocation, identity).native.role
+    }
+    const definition = { name: 'Worker role', responsibilities: 'Return a public code review', default_agent: 'opencode', default_model: 'stepfun/step-3.5-flash', skills: [], knowledge: [] }
+    const role = writeRole({ action: 'role.create', role: definition })
+    const origin = { nativeSessionId: '0199dc51-df41-7000-8000-000000000001', assistantEntryId: 'rule-only-entry', toolCallId: 'rule-only-call' }, sessionId = 'rule-only-session'
+    const requestId = delegationRequestID(sessionId, origin), workerRequest = delegationWorkerRequestID(requestId)
+    const params = { role_id: role.id, revision: role.revision, input: 'Review the public source.', completion_criteria: ['Return findings.'], mode: 'work' }
+    const saved = { schema: 'swa.native-delegation.v1', request_id: requestId, worker_request_id: workerRequest, state: 'rejected', project_id: value.project, run_id: value.run.id, parent_task_id: value.task.id, parent_dispatch_id: value.dispatch.id, session_id: sessionId, origin, params, error: { code: 'context_stale', message: 'The original start was rejected' } }
+    await executor.run({ id: requestId, authToken: '', method: 'swa.delegate', orchestrationRequestId: requestId }, params, mutation => { mutation.recordReceipt(saved); return saved }, value.scope.authority_domain)
+    writeRole({ action: 'role.update', role_id: role.id, revision: 1, role: { ...definition, responsibilities: 'Updated role responsibilities' } })
+    assert.throws(() => resolveCollaborationReferences(value.db, value.project, { role_id: role.id, role_revision: 1 }), { code: 'context_stale' })
+    const selection = { agent_id: 'pi', adapter: 'rule-only', execution_mode: 'structured', executable: '/rule/pi', version: '1.0.1', model: 'stepfun/step-3.5-flash', provider: 'stepfun', external_target: 'pi', settings_source: { kind: 'native' }, settings_revision: 1, configuration_version: 'rule-only', native_launch: { schema: 'swa.native-launch.v1', account: { kind: 'pi-native-api-key-per-session', provider: 'stepfun', source_home: '/rule/source', auth_source: { path: '/rule/source/auth.json', version: 'rule-only' }, models_source: null, private_root: '/rule/private', model_target: { model_id: 'step-3.5-flash', api: 'openai-completions', base_url: 'https://api.stepfun.com/v1' } }, tools: { mode: 'collaboration', native_contract: 'pi-cli-1.0.1', extension: { path: '/rule/runtime/pi-collaboration-extension.mjs', version: 'rule-only' }, allowed: ['swa_delegate'] } } }
+    const call = { requestId, sessionId, row: { request_id: randomUUID() }, scope: value.scope, dispatch: value.dispatch, selection, origin, params, invocation: { caller, project } }
+    const counts = () => [value.db.db.prepare('SELECT count(*) count FROM tasks').get().count, value.db.db.prepare('SELECT count(*) count FROM dispatch_contexts').get().count]
+    const before = counts(), observed = storedDelegationObservation(value.runtime, call)
+    assert.equal(observed.command.action, 'request.show')
+    assert.equal(observed.command.request_id, requestId)
+    assert.equal(observed.command.project_id, undefined)
+    assert.equal(observed.command.controller, value.scope.controller)
+    assert.equal(observed.native_delegation.observation_only, true)
+    assert.equal(observed.input, undefined)
+    assert.deepEqual(observed.selection, selection)
+    const show = ORCHESTRATION_MUTATION_REQUEST_METHODS.find(method => method.name === 'orchestration.requestShow')
+    const { mutation, ...original } = show.handler({ request: requestId }, { runtime: value.runtime, authenticatedCallerFingerprint: value.scope.authority_domain }).receipt
+    assert.equal(mutation.requestId, requestId)
+    assert.deepEqual(original, saved)
+    assert.deepEqual(counts(), before)
+    assert.equal(value.db.getMutationReceipt(value.scope.authority_domain, workerRequest), undefined)
+    assert.throws(() => storedDelegationObservation(value.runtime, { ...call, params: { ...params, revision: 2 } }), { code: 'scope_denied' })
+  } finally { value.db.close() }
 })
 
 test('rolled-back settlement can observe a new turn under the same request while unknown effects stay reserved', async () => {

@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SwaEnvelope } from '../../api/swa';
 import type { components } from '../../api/schema';
-import { readSwaFleet, readSwaAgents, readSwaExecution, readPendingSwaRequest, recoverSwaRequest, canRequestSwaStart, swaDelegationBlock, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
+import { readSwaFleet, readSwaAgents, readSwaExecution, readPendingSwaRequest, recoverSwaRequest, canRequestSwaStart, swaDelegationBlock, swaDevelopmentBlock, swaStartRequestBlock, type PendingSwaRequest } from './swaObservation';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
 
 // 以下为解析器的明确参数输入，不表示存在原生执行、模型返回或安装验收结果。
@@ -89,7 +89,7 @@ function formAgentInput(): FormAgent {
   return {
     id: 'form-agent-input', model: 'form-model-input', settingsRevision: formSettings.revision,
     registered: observationInput('available'), enabled: observationInput('available'), installed: observationInput('available'), configured: observationInput('available'), start: observationInput('available'),
-    launchable: observationInput('unknown'), read: observationInput('unknown'), tools: observationInput('unknown'), questions: null, delegation: null,
+    launchable: observationInput('unknown'), read: observationInput('unknown'), tools: observationInput('unknown'), questions: null, delegation: null, development: null,
   };
 }
 const startInput = (agent: FormAgent | undefined = formAgentInput()) => ({ agent, settings: formSettings, disabled: false, pending: false, unresolved: false, name: 'explicit-worker-name-input', inputFile: '/explicit/server-input-path' });
@@ -119,6 +119,20 @@ describe('SWA 启动表单的明确参数规则，不表示原生发现或启动
     expect(swaDelegationBlock(agent, { ...settings, revision: settings.revision + 1 })).toContain('已过期');
     for (const delegation of [null, observationInput('unknown'), observationInput('unavailable')]) expect(swaDelegationBlock({ ...agent, delegation }, settings)).not.toBeNull();
     expect(swaDelegationBlock(undefined, settings)).not.toBeNull();
+  });
+
+  it('项目开发要求当前目录、工具与动作许可，未知或撤销的能力不开放', () => {
+    const agent = { ...formAgentInput(), development: observationInput('available') };
+    const settings = { ...formSettings, allowed_tools: ['project_shell'], allowed_subdirs: ['src'], allowed_actions: ['start', 'send', 'read_context'] };
+    expect(swaDevelopmentBlock(agent, settings)).toBeNull();
+    expect(swaDevelopmentBlock(agent, { ...settings, allowed_tools: ['swa_delegate'] })).toContain('未允许开发');
+    for (const changed of [{ allow_directory: false }, { allowed_subdirs: [] }, { allowed_subdirs: [' '] }]) expect(swaDevelopmentBlock(agent, { ...settings, ...changed })).toContain('项目路径');
+    for (const action of settings.allowed_actions) expect(swaDevelopmentBlock(agent, { ...settings, allowed_actions: settings.allowed_actions.filter(value => value !== action) })).toContain('读取上下文许可');
+    expect(swaDevelopmentBlock(agent, { ...settings, allow_agent_control: false })).not.toBeNull();
+    expect(swaDevelopmentBlock(agent, { ...settings, revision: settings.revision + 1 })).toContain('已过期');
+    for (const development of [null, observationInput('unknown'), observationInput('unavailable')]) expect(swaDevelopmentBlock({ ...agent, development }, settings)).not.toBeNull();
+    expect(agent.development.status).toBe('available');
+    expect(agent.launchable.status).toBe('unknown');
   });
 
   it('任何静态条件未核实、模型缺失或明确不可用的未握手能力都禁止提交', () => {
@@ -232,6 +246,22 @@ describe('实际执行 DTO 与 React 静态呈现，不表示真实 HTTP 或模�
     for (const internal of ['codex-native-api-key', 'CodexStructuredSessionAdapter', 'native_input_request_pending', requestID]) expect(main).not.toContain(internal);
     expect(html).not.toContain('已送达 Agent');
     expect(html).not.toContain('<button');
+  });
+
+  it('原启动工具显示同一 Worker 的选择，旧记录缺失时保持未知', () => {
+    const parameter = executionParameter();
+    expect(readExecution(parameter)?.tools).toBeNull();
+    const selection = { agent: 'opencode', adapter: 'AcpStructuredSessionAdapter', version: '2.0.31', execution_mode: 'structured', provider: 'stepfun', model: 'stepfun/step-3.5-flash', account_source: 'opencode-native-stepfun-api-key' };
+    const native = parameter.result.native;
+    const changed = { ...parameter, result: { ...parameter.result, native: { ...native, source: { ...native.source, selection: { ...native.source.selection, agent_id: selection.agent, adapter: selection.adapter, version: selection.version, provider: selection.provider, model: selection.model, native_launch: { account: { kind: selection.account_source }, tools: { mode: 'project', native_contract: 'opencode-cli-2.0.31', allowed: ['shell'] } } } }, execution: { ...native.execution, selection } } } };
+    expect(readExecution(changed)?.tools).toEqual({ mode: 'project', allowed: ['shell'] });
+    const html = renderExecution(changed);
+    expect(html).toContain('本次启动工具');
+    expect(html).toContain('项目开发 · shell');
+    expect(html).toContain('无网络');
+    expect(readExecution(changed)?.authenticated.status).toBe('unknown');
+    changed.result.native.source.selection.native_launch.tools.allowed = [];
+    expect(() => readExecution(changed)).toThrow('工具列表缺失');
   });
 
   it('五种恢复语义分别显示，并保留原生来源标签', () => {

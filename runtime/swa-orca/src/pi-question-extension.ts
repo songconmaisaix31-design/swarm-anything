@@ -7,11 +7,11 @@ import { nativeObject, questionOriginSchema, questionRequestID, questionToolPara
 import { piQuestionDescription, piQuestionParameters } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 
 // 固定扩展只读取本次真实调用；请求标识不能由模型或重连次数决定。
-export default function registerQuestionTool(pi: ExtensionAPI, collaboration = false) {
+export default function registerQuestionTool(pi: ExtensionAPI, collaboration = false, project = false) {
   const sessionId = readInjectedAgentSessionId(), proof = process.env[ORCA_AGENT_SESSION_SPAWN_TOKEN_ENV]
   if (!sessionId || !proof) throw new Error('The native question Worker identity is unavailable')
   const client = new RuntimeClient(undefined, undefined, undefined, undefined, undefined, undefined, { proof })
-  const toolsCurrent = () => collaboration ? [['swa_delegate'], ['swa_ask', 'swa_delegate']].some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed)) : isDeepStrictEqual(pi.getActiveTools(), ['swa_ask'])
+  const toolsCurrent = () => project ? [['bash'], ['bash', 'swa_ask'], ['bash', 'swa_delegate'], ['bash', 'swa_ask', 'swa_delegate']].some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed)) : collaboration ? [['swa_delegate'], ['swa_ask', 'swa_delegate']].some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed)) : isDeepStrictEqual(pi.getActiveTools(), ['swa_ask'])
   pi.on('before_agent_start', () => {
     if (!toolsCurrent()) {
       process.stderr.write('native_question_active_tools_changed\n')

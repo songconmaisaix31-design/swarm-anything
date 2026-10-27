@@ -2,7 +2,7 @@ import type { components } from '../../api/schema';
 import { SwaCommandError, SwaCommandNotSubmittedError, type SwaEnvelope } from '../../api/swa';
 import type { CommandOutcome } from '../../hooks/usePersistentCommand';
 import { formatError } from '../../hooks/useReadState';
-import { readSwaAgents, readSwaCapabilityDetails, swaDelegationBlock, swaStartRequestBlock } from './swaObservation';
+import { readSwaAgents, readSwaCapabilityDetails, swaDelegationBlock, swaDevelopmentBlock, swaStartRequestBlock } from './swaObservation';
 import { modelCLIAllowed } from '../workspace/modelCLIPermission';
 
 export type RoleDefinition = Omit<NonNullable<components['schemas']['command']['role']>, 'skills' | 'knowledge'> & { skills: string[]; knowledge: string[] };
@@ -35,7 +35,8 @@ function role(value: unknown, projectID: string): SwaRole {
   if (!Number.isSafeInteger(row.revision) || Number(row.revision) < 1 || typeof row.archived !== 'boolean') throw new Error('角色版本或归档状态无法确认');
   if (row.question_mode !== undefined && row.question_mode !== 'disabled' && row.question_mode !== 'native') throw new Error('角色的问题模式无法确认');
   if (row.delegation_mode !== undefined && row.delegation_mode !== 'disabled' && row.delegation_mode !== 'native') throw new Error('角色的委派模式无法确认');
-  return { id: text(row.id, 'role.id'), project_id: projectID, revision: Number(row.revision), archived: row.archived, name: text(row.name, 'name'), responsibilities: text(row.responsibilities, 'responsibilities'), default_agent: text(row.default_agent, 'default_agent'), default_model: text(row.default_model, 'default_model'), question_mode: row.question_mode ?? 'disabled', delegation_mode: row.delegation_mode ?? 'disabled', skills: strings(row.skills, 'skills'), knowledge: strings(row.knowledge, 'knowledge'), created_at: text(row.created_at, 'created_at'), updated_at: text(row.updated_at, 'updated_at') };
+  if (row.development_mode !== undefined && row.development_mode !== 'disabled' && row.development_mode !== 'project') throw new Error('角色的开发模式无法确认');
+  return { id: text(row.id, 'role.id'), project_id: projectID, revision: Number(row.revision), archived: row.archived, name: text(row.name, 'name'), responsibilities: text(row.responsibilities, 'responsibilities'), default_agent: text(row.default_agent, 'default_agent'), default_model: text(row.default_model, 'default_model'), question_mode: row.question_mode ?? 'disabled', delegation_mode: row.delegation_mode ?? 'disabled', development_mode: row.development_mode ?? 'disabled', skills: strings(row.skills, 'skills'), knowledge: strings(row.knowledge, 'knowledge'), created_at: text(row.created_at, 'created_at'), updated_at: text(row.updated_at, 'updated_at') };
 }
 function conversation(value: unknown, projectID: string): SwaConversation {
   const row = scoped(value, projectID);
@@ -123,12 +124,13 @@ export function readRoleAgentChoices(reply: SwaEnvelope, settings: components['s
   });
 }
 
-export function roleAgentSelectionBlock(choices: ReturnType<typeof readRoleAgentChoices>, definition: Pick<RoleDefinition, 'default_agent' | 'default_model' | 'question_mode' | 'delegation_mode'>, settings: components['schemas']['LocalProjectSettingsV1']): string | null {
+export function roleAgentSelectionBlock(choices: ReturnType<typeof readRoleAgentChoices>, definition: Pick<RoleDefinition, 'default_agent' | 'default_model' | 'question_mode' | 'delegation_mode' | 'development_mode'>, settings: components['schemas']['LocalProjectSettingsV1']): string | null {
   const selected = choices.find(agent => agent.id === definition.default_agent);
   if (!selected) return '角色默认的 Agent 未在当前项目的已发现许可列表中；原选择已保留';
   if (selected.blocked) return selected.blocked;
   if (!selected.models.some(model => model.id === definition.default_model)) return '角色默认模型未在当前 Agent 的已观察目录中，请明确选择当前模型';
   if (definition.question_mode === 'native' && selected.questions?.status !== 'available') return selected.questions?.reason ?? '当前 Agent 未声明原生问答能力';
-  if (definition.delegation_mode === 'native') return swaDelegationBlock(selected, settings);
+  if (definition.delegation_mode === 'native') { const blocked = swaDelegationBlock(selected, settings); if (blocked) return blocked; }
+  if (definition.development_mode === 'project') return swaDevelopmentBlock(selected, settings);
   return null;
 }

@@ -9,7 +9,7 @@ import type { AgentSessionRecord } from '../../../third_party/orca-v1.4.230/src/
 import { agentSessionRuntimeIncarnation } from '../../../third_party/orca-v1.4.230/src/main/runtime/agent-session-runtime-attribution'
 import type { SwaPiSessionPolicy, SwaProviderJobLauncher, PiPolicyConnection, PiWriteContext, PiObservedProjection, ProviderProcessLaunch } from '../../../third_party/orca-v1.4.230/src/main/provider-process/provider-process-launch'
 import type { SwaProviderProcessTree } from '../../../third_party/orca-v1.4.230/src/main/provider-process/swa-provider-process-tree'
-import { parseStrictPiJson, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, strictPiCollaborationRawSchema, strictPiStateSchema, type StrictPiCollaborationMessage as StrictPiQuestionMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { parseStrictPiJson, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, strictPiCollaborationRawSchema, strictPiProjectRawSchema, strictPiStateSchema, type StrictPiProjectMessage as StrictPiQuestionMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { structuredInputBindingSchema } from './contracts'
 import { assertNativePiSnapshotCurrent, inspectPrivatePiModelMetadata, nativeConfigurationSource, readNativePiFile, type NativePiPerSessionSnapshot } from './native-pi-policy'
 import { acquirePrivatePiSettingsGuardSync, privatePiEnvironment, verifyPrivatePiSessionAccount } from './private-pi-account'
@@ -113,6 +113,7 @@ export async function createPiSessionPolicy(input: {
   snapshot: NativePiPerSessionSnapshot; sessionId: string; fence: number; runtimeEpoch: string; launcher: SwaProviderJobLauncher; cwd: string
   record(): AgentSessionRecord | undefined
   approveInitialization(): Promise<() => void>
+  approveCurrent(): Promise<() => void>
   approveStop(): () => void
   inputBinding(clientMessageId: string): Binding
   expectedEnvironment: Readonly<Record<string, string>>
@@ -301,7 +302,7 @@ export async function createPiSessionPolicy(input: {
     },
     async verifyCurrent(connection: PiPolicyConnection) {
       assertCurrent()
-      if (!stopping) { approval = await input.approveInitialization(); assertApproval() }
+      if (!stopping) { approval = await input.approveCurrent(); assertApproval() }
       await verifyPrivatePiSessionAccount(snapshot, sessionId); assertCurrent()
       const actual = state(await connection.request('get_state'), false)
       assertCurrent()
@@ -360,7 +361,7 @@ export async function createPiSessionPolicy(input: {
       if (!processIdentity || !generation) { custody(); if (!generation) fail('preowner_native_record') }
       if (Buffer.byteLength(line) > 8 * 1024 * 1024 || !isDeepStrictEqual(parseStrictPiJson(line), value)) fail('raw_line_unverifiable')
       validatePiExport(snapshot, line, childEnvironment)
-      const parsed = (snapshot.policy.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : snapshot.policy.tools.mode === 'questions-only' ? strictPiQuestionRawSchema : strictPiRawSchema).safeParse(value)
+      const parsed = (snapshot.policy.tools.mode === 'project' ? strictPiProjectRawSchema : snapshot.policy.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : snapshot.policy.tools.mode === 'questions-only' ? strictPiQuestionRawSchema : strictPiRawSchema).safeParse(value)
       if (!parsed.success) fail('raw_dto_unreviewed')
       const frame = parsed.data
       if (frame.type === 'response') {

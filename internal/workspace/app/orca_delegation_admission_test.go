@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -95,23 +96,122 @@ func TestOrcaNativeDelegationCurrentAdmissionSQLite(t *testing.T) {
 	}
 }
 
-func TestDelegationProjectPermissionKeepsNativeToolsClosed(t *testing.T) {
+func TestProjectToolPermissionRequiresNamedCapabilities(t *testing.T) {
 	input := newDeliveryAdmissionInput(t, "delivery-current-human")
 	projects := workspace.NewLocalProjectService(input.db, nil, projectfiles.Files{}, nil)
 	if err := projects.ConfigureExternalCLIRegistry(&modelCLIRegistrationRule{}); err != nil {
 		t.Fatal(err)
 	}
-	settings := input.project.Settings
-	settings.AllowedTools = []string{"swa_delegate"}
-	project, err := projects.SetProjectSettings(context.Background(), input.human, input.project.ID, domain.SettingsCommand{ExpectedRevision: settings.Revision, Settings: settings})
-	if err != nil {
-		t.Fatal("明确项目委派许可被拒绝", err)
+	project := input.project
+	for _, tools := range [][]string{{"swa_delegate"}, {"project_shell"}, {"project_shell", "swa_delegate"}} {
+		settings := project.Settings
+		settings.AllowedTools = tools
+		var err error
+		project, err = projects.SetProjectSettings(context.Background(), input.human, project.ID, domain.SettingsCommand{ExpectedRevision: settings.Revision, Settings: settings})
+		if err != nil {
+			t.Fatal("明确项目工具许可被拒绝", tools, err)
+		}
 	}
-	for _, tools := range [][]string{{"bash"}, {"read"}, {"swa_delegate", "bash"}, {"swa_delegate", "swa_delegate"}} {
-		settings = project.Settings
+	for _, tools := range [][]string{{"bash"}, {"read"}, {"swa_delegate", "bash"}, {"swa_delegate", "swa_delegate"}, {"project_shell", "project_shell"}} {
+		settings := project.Settings
 		settings.AllowedTools = tools
 		if _, err := projects.SetProjectSettings(context.Background(), input.human, project.ID, domain.SettingsCommand{ExpectedRevision: settings.Revision, Settings: settings}); err == nil {
-			t.Fatal("项目委派许可扩大为其他原生工具", tools)
+			t.Fatal("项目接受了未知或重复的工具许可", tools)
 		}
+	}
+}
+
+// 原生 outer receipt 由 TS 宿主核验；这里以构造来源验证真实 SQLite 当前授权与私有观察字段。
+func TestNativeDelegationObservationKeepsOriginalRequestAndAuthority(t *testing.T) {
+	for _, name := range []string{"human", "agent", "project", "edited-context", "deleted-input", "no-observe", "no-start", "no-send", "no-tool", "project-without-permission", "revoked-agent", "agent-no-read", "cross-creator", "wrong-request", "wrong-root", "wrong-dispatch", "wrong-controller", "extra-project", "wrong-selection", "extra-input", "mutating-action", "ordinary-request", "observation-disabled"} {
+		t.Run(name, func(t *testing.T) {
+			creator := "delivery-current-human"
+			if name == "agent" || name == "revoked-agent" || name == "agent-no-read" || name == "cross-creator" {
+				creator = "original-observation-agent"
+			}
+			input := newDeliveryAdmissionInput(t, creator, func(settings *domain.ProjectSettings) {
+				settings.AllowedTools = []string{"swa_delegate", "project_shell"}
+				switch name {
+				case "no-observe":
+					settings.AllowedActions = []string{"read_context", "start", "send"}
+				case "no-start":
+					settings.AllowedActions = []string{"observe", "read_context", "send"}
+				case "no-send":
+					settings.AllowedActions = []string{"observe", "read_context", "start"}
+				case "no-tool":
+					settings.AllowedTools = []string{}
+				case "project-without-permission":
+					settings.AllowedTools = []string{"swa_delegate"}
+				}
+			})
+			bindNativeDelegationAdmission(t, input)
+			source := input.invocation.NativeDelegation
+			source.ObservationOnly = true
+			if name == "project" || name == "project-without-permission" {
+				bindProjectDevelopmentPolicy(input, "pi")
+				source.ParentSelection = *input.invocation.Selection
+				source.ParentSelection.NativeLaunch.Tools.Allowed = []string{"bash", "swa_delegate"}
+			}
+			parent := source.ParentSelection
+			input.invocation.Selection, input.invocation.Input = &parent, nil
+			input.invocation.Command = workspace.OrcaCommand{Action: "request.show", Controller: input.invocation.Scope.Controller, TaskID: input.invocation.Scope.RootTaskID, DispatchID: source.DispatchID, RequestID: source.RequestID}
+			if workspace.ValidateOrcaCommand(input.invocation.Command) == nil {
+				t.Fatal("公开 request.show 接受了仅私有观察可用的父 Worker 字段")
+			}
+			if name == "agent" || name == "revoked-agent" || name == "agent-no-read" {
+				grant := input.grant(t, creator)
+				input.invocation.Caller.ID, input.invocation.Caller.Kind, input.invocation.Caller.GrantExpiresAt = creator, "agent", grant.ExpiresAt
+				if name == "revoked-agent" {
+					if _, err := input.projects.RevokeProjectAgent(context.Background(), input.human, input.project.ID, creator); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if name == "agent-no-read" {
+					grant.Actions = []string{"observe", "start", "send"}
+					if err := input.db.SaveGrant(context.Background(), grant); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			switch name {
+			case "edited-context":
+				if err := os.WriteFile(filepath.Join(input.project.Root, "context.txt"), []byte("代码已变动，原 outer receipt 仍可查询。"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case "deleted-input":
+				if err := os.Remove(filepath.Join(input.project.Root, "input.txt")); err != nil {
+					t.Fatal(err)
+				}
+			case "wrong-request":
+				input.invocation.Command.RequestID = source.WorkerRequestID
+			case "wrong-root":
+				input.invocation.Command.TaskID = "different-root"
+			case "wrong-dispatch":
+				input.invocation.Command.DispatchID = "different-parent"
+			case "wrong-controller":
+				input.invocation.Command.Controller = "different-controller"
+			case "extra-project":
+				input.invocation.Command.ProjectID = input.project.ID
+			case "wrong-selection":
+				input.invocation.Selection.ConfigurationVersion = "different-parent-source"
+			case "extra-input":
+				input.invocation.Input = &domain.ContextFile{Path: "input.txt", Text: source.Params.Input, Version: source.RequestID}
+			case "mutating-action":
+				input.invocation.Command.Action = "worker.start"
+			case "ordinary-request":
+				input.invocation.NativeDelegation = nil
+				input.invocation.Command.TaskID, input.invocation.Command.DispatchID = "", ""
+			case "observation-disabled":
+				source.ObservationOnly = false
+			}
+			allowed := name == "human" || name == "agent" || name == "project" || name == "edited-context" || name == "deleted-input"
+			input.check(t, allowed)
+			if allowed {
+				result, err := input.service.AdmitOrcaDelivery(context.Background(), input.invocation)
+				if err != nil || result.RequestID != source.RequestID || len(result.WritableRoots) != 0 {
+					t.Fatal("只读委派观察改变了原请求或授予了命令目录", result, err)
+				}
+			}
+		})
 	}
 }

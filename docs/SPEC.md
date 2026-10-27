@@ -1211,7 +1211,7 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 
 | 对象 | 保存的业务事实 |
 | --- | --- |
-| Role | 职责、默认 Agent/模型及问题模式、技能及长期知识引用；有项目范围、版本和归档状态 |
+| Role | 职责、默认 Agent/模型、问题/委派/开发模式、技能及长期知识引用；有项目范围、版本和归档状态 |
 | Conversation | 当前讨论及追加要求；追加讨论不隐式调用模型 |
 | Task | 目标、依赖、验收条件和结果；固定角色版本及来源 |
 | Worker | 实际 Dispatch、进程与原生会话身份、输入和释放状态 |
@@ -1225,6 +1225,14 @@ Workspace 独占开发空间存储责任，沿用 `attention_project_spaces` 原
 `swa.delegate` 只接收 `role_id/revision/input/completion_criteria/mode`，mode 为 work 或 consult。项目、Run、父 Task/Dispatch、原启动选择、session、lease 与 native toolCall 从实际调用者解析，模型不得提供。外层请求 ID 由实际 session/nativeSession/assistantEntry/toolCall 稳定派生，内层 worker.start 使用独立且确定的 ID；复用原 mutation_receipts，不增加调度或重试账本。Go 在每次调用和实际启动边界核当前项目、settings revision、start/send、父子 CLI、工具许可与原 Grant；consult 禁止继续委派。
 
 委派回执在子 Worker 启动确认或失败后完成，不持有请求等待子任务成果；ready、failed、rejected 和 unknown 保留实际状态。未知请求只查询原 ID，不更换 ID 重发。子任务结束沿既有 mail/resume 将成果送回父会话；父任务忙时等待，父任务失败、取消或停止时保留未读成果并允许失败结算，不声称父 Agent 已读取。角色版本、默认值和显式覆盖均保存到原始启动记录，同请求重试不能切换执行目标。实现与真实验收状态见[本轮任务](../tasks/swa-role-delegation-20261027.md)。
+
+**项目开发工具。** Command 与 Role 的 `development_mode: disabled | project` 独立于问题和委派模式，未指定时继承准确角色版本，无角色时关闭。project 需要当前项目显式批准 `allowed_tools: project_shell`、目录及非空子目录范围、Agent 控制、read_context/start/send 和对应 CLI；GUI 同时依据 `control.development` 的实际能力决定能否启动。consult 强制关闭开发及进一步委派。原启动模式与实际工具名进入 Worker 记录和成果，不能从之后的角色或项目配置补推旧状态。
+
+Pi 使用原生 bash，OpenCode 使用原生 shell；读取、修改及检查命令都经过同一固定 Linux bubblewrap 执行器。模型只提供命令及原生支持的工作目录、超时；项目、工具链、保护目录、可写目录与原调用者由运行系统确定。执行器将获准目录读写挂载，系统和公开工具链只读挂载，使用独立 PID、用户和网络 namespace、私有临时目录及空环境，不向命令传入账号、代理或服务凭据；外部路径不可写，网络关闭。共享硬链接、特殊文件、重定向目录和与保护目录相交的挂载范围被拒绝。隔离能力不可用时明确拒绝，Windows 当前未提供该开发执行器。
+
+每次原生命令调用通过只读 `swa.projectToolAuthorize` 验证真实 session、lease、原启动请求和原生工具调用来源；Go 重新核当前项目、Grant、目录及操作范围，返回当前可写目录。固定扩展检查返回身份、Grant 有效期和取消状态，在创建命令前完成授权。撤销许可阻止后续命令；已准入命令由 Worker stop 取消。Pi 依据真实 assistant entry/toolCall，OpenCode 依据真实消息/工具记录及原生 shell execute 的 AsyncLocalStorage 上下文绑定授权；上下文缺失时拒绝。
+
+合法文件修改不改写已接受的历史输入。项目工具准入保留原 Context.Files 的正文和版本，同时重新核路径许可和当前 Materials。真实 project 母 Worker 的原生委派、问答也沿该历史文件输入检查当前许可。真实 project 模式子 Worker 的成果交接携带原 source_selection，并再次核当前 project_shell 许可，才可沿该历史文件上下文恢复父会话；首次启动及普通追加仍核现有文件新鲜度。该例外不扩大其他输入、项目或 Agent 的权限。
 
 questions-only 只允许以原文 question 创建问题或以 resume 读取所属原问题的答案，不接受路径、命令、模型、账号或任意收件人；原生文件和命令工具保持关闭。disabled 的原工具集合与启动参数不变。Worker preamble 从实际原启动选择取得模式：disabled 要求直接交付最终助手正文，由运行系统收集；questions-only 只说明可用的 `swa_ask` 和最终成果。原任务规格与验收条件保留，不能要求模型使用实际不可用的协作命令。consult 继续要求 disabled，不能隐式升级工具范围；既定 ToolsOff N4/N6 验收与本问答模式分别记录。
 

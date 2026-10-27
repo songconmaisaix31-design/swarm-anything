@@ -19,7 +19,7 @@ const contains = (root: string, value: string) => { const part = relative(root, 
 const overlaps = (a: string, b: string) => contains(a, b) || contains(b, a)
 
 function unavailable(message: string): never {
-  throw Object.assign(new Error(message), { code: 'capability_unavailable' })
+  throw Object.assign(new Error(message), { code: 'unsupported_capability' })
 }
 function denied(message: string): never {
   throw Object.assign(new Error(message), { code: 'scope_denied' })
@@ -95,7 +95,7 @@ export function prepareProjectShell(policyValue: unknown, inputValue: unknown) {
     for (const path of writable) mount(path, path, false)
     // 自动生成的挂载父目录也只读；只有明确绑定的项目目录和私有临时区可写。
     args.push('--remount-ro', '/')
-    const searchPath = [...toolchains.map(path => join(path, 'bin')), '/usr/bin', '/bin'].join(delimiter)
+    const searchPath = [...toolchains.flatMap(path => [join(path, 'bin'), path]), '/usr/bin', '/bin'].join(delimiter)
     args.push('--setenv', 'PATH', searchPath, '--setenv', 'HOME', '/home/swa', '--setenv', 'TMPDIR', '/tmp', '--setenv', 'LANG', 'C.UTF-8', '--setenv', 'LC_ALL', 'C.UTF-8', '--setenv', 'GOCACHE', '/tmp/go-build', '--setenv', 'GOPATH', '/tmp/go', '--setenv', 'GOTOOLCHAIN', 'local', '--setenv', 'GOPROXY', 'off', '--chdir', cwd, '--', '/bin/bash', '--noprofile', '--norc', '-c', input.command)
     return { file, args, cwd, env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, fds, close }
   } catch (error) { close(); throw error }

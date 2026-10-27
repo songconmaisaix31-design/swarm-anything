@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, toNamespacedPat
 import { isDeepStrictEqual } from 'node:util'
 import { createFileWithDacl, createPrivateDirectory, currentUserSid, getDaclAces } from '@orca/windows-security'
 import { z } from 'zod'
-import { assertNativeOpenCodeCurrent, openCodePlugins, openCodeStepFunConfiguration, openCodeTargets, type NativeOpenCodeSnapshot } from './native-opencode-policy'
+import { assertNativeOpenCodeCurrent, openCodePermissions, openCodePlugins, openCodeStepFunConfiguration, openCodeTargets, type NativeOpenCodeSnapshot } from './native-opencode-policy'
 import { nativeConfigurationSource, readNativePiFile } from './native-pi-policy'
 import { privateStructuredOpenCodeEnvironment } from '../../../third_party/orca-v1.4.230/src/main/opencode/opencode-structured-account-home'
 import { createPosixPrivateFile, requirePosixPrivatePath } from './private-posix-security'
@@ -116,13 +116,13 @@ export async function createPrivateOpenCodeRoot(projectId: string) {
 }
 
 export function privateOpenCodeConfig(root: string, plugin: string, correlation: string, snapshot: NativeOpenCodeSnapshot) {
-  const provider = snapshot.policy.account.provider
+  const provider = snapshot.policy.account.provider, project = snapshot.policy.tools.mode === 'project'
   return {
     model: openCodeTargets[provider].model, default_agent: 'build', update: 'disable', share: 'disabled',
-    warming: false, compaction: { auto: false }, snapshots: false, permissions: [deny],
-    agents: { build: { permissions: [deny] }, ...Object.fromEntries(['general', 'explore', 'title', 'summary', 'compaction'].map(id => [id, { disabled: true }])) },
+    warming: false, compaction: { auto: false }, snapshots: false, permissions: openCodePermissions(project),
+    agents: { build: { permissions: openCodePermissions(project) }, ...Object.fromEntries(['general', 'explore', 'title', 'summary', 'compaction'].map(id => [id, { disabled: true }])) },
     ...(provider === 'stepfun' ? { providers: { stepfun: openCodeStepFunConfiguration } } : {}),
-    plugins: ['-*', ...openCodePlugins(provider).filter(id => !['opencode.provider.opencode', 'opencode.config.policy'].includes(id)), { package: plugin, options: { root, correlation, provider, source: join(plugin, 'server.js'), sources: snapshot.sources, absent_sources: snapshot.absentSources } }]
+    plugins: ['-*', ...openCodePlugins(provider, project).filter(id => !['opencode.provider.opencode', 'opencode.config.policy'].includes(id)), { package: plugin, options: { root, correlation, provider, source: join(plugin, 'server.js'), sources: snapshot.sources, absent_sources: snapshot.absentSources, ...(project ? { project_shell: snapshot.policy.tools } : {}) } }]
   }
 }
 

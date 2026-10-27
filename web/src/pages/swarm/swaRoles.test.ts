@@ -117,6 +117,9 @@ describe('角色与讨论的原记录边界', () => {
     expect(readSwaRoles(envelope({ roles: [role] }), projectID)[0]?.delegation_mode).toBe('disabled');
     expect(readSwaRoles(envelope({ roles: [{ ...role, delegation_mode: 'native' }] }), projectID)[0]?.delegation_mode).toBe('native');
     for (const delegation_mode of [null, '', 'all-tools']) expect(() => readSwaRoles(envelope({ roles: [{ ...role, delegation_mode }] }), projectID)).toThrow('委派模式');
+    expect(readSwaRoles(envelope({ roles: [role] }), projectID)[0]?.development_mode).toBe('disabled');
+    expect(readSwaRoles(envelope({ roles: [{ ...role, development_mode: 'project', revision: 2 }] }), projectID)[0]).toMatchObject({ revision: 2, development_mode: 'project' });
+    for (const development_mode of [null, '', 'all-tools']) expect(() => readSwaRoles(envelope({ roles: [{ ...role, development_mode }] }), projectID)).toThrow('开发模式');
   });
 
   it('原创建身份和原追加条目必须出现在成功回执中，未保存不能显示成功', () => {
@@ -168,7 +171,7 @@ describe('角色与讨论的原记录边界', () => {
 // 构造能力 DTO，仅验证界面选择规则和来源显示。
 const observed = (status: 'available' | 'unavailable' | 'unknown', reason = '角色选择规则输入') => ({ status, reason, source: 'role-form-parameter', basis: 'configuration' as const });
 function capability(id: string, model: string) {
-  return { id, execution_mode: 'structured', registered: observed('available'), enabled: observed('available'), installed: { ...observed('available'), version: 'rule-version', executable: '/explicit/cli-path' }, configured: { ...observed('available'), model }, launchable: observed('unknown'), authenticated: observed('unknown', '配置尚未验证登录'), control: { start: observed('available'), read: observed('unknown'), tools: observed('unknown'), questions: observed('available'), delegation: observed('available') }, requirements: { settings_revision: settings.revision }, model_catalog: { origin: 'configured', availability: 'unverified', models: [{ id: model, label: model, provider: 'rule-provider' }] } };
+  return { id, execution_mode: 'structured', registered: observed('available'), enabled: observed('available'), installed: { ...observed('available'), version: 'rule-version', executable: '/explicit/cli-path' }, configured: { ...observed('available'), model }, launchable: observed('unknown'), authenticated: observed('unknown', '配置尚未验证登录'), control: { start: observed('available'), read: observed('unknown'), tools: observed('unknown'), questions: observed('available'), delegation: observed('available'), development: observed('available') }, requirements: { settings_revision: settings.revision }, model_catalog: { origin: 'configured', availability: 'unverified', models: [{ id: model, label: model, provider: 'rule-provider' }] } };
 }
 const capabilityEnvelope = (agents = [capability('pi', 'rule-model'), capability('opencode', 'other-model')]): SwaEnvelope => ({ ok: true, result: { schema: 'swa.capabilities.v1', agents } });
 const multiSettings = { ...settings, external_model_clis: ['pi', 'opencode'] };
@@ -211,5 +214,16 @@ describe('角色默认 CLI 与模型的实际能力选择', () => {
     expect(html).toContain('配置尚未验证登录');
     expect(html).toContain('尚未验证');
     expect(html).not.toContain('已登录');
+  });
+
+  it('角色同时启用委派与开发时分别检查许可，失效开发模式保留', () => {
+    const definition = { ...role, delegation_mode: 'native' as const, development_mode: 'project' as const };
+    const permitted = { ...multiSettings, allowed_tools: ['swa_delegate', 'project_shell'], allowed_subdirs: ['src'], allowed_actions: ['start', 'send', 'read_context'] };
+    const choices = readRoleAgentChoices(capabilityEnvelope(), permitted);
+    expect(roleAgentSelectionBlock(choices, definition, permitted)).toBeNull();
+    expect(roleAgentSelectionBlock(choices, definition, { ...permitted, allowed_tools: ['swa_delegate'] })).toContain('未允许开发');
+    expect(roleAgentSelectionBlock(choices, definition, { ...permitted, allowed_tools: ['project_shell'] })).toContain('未允许自主委派');
+    expect(definition.development_mode).toBe('project');
+    expect(roleAgentSelectionBlock(choices, { ...definition, development_mode: 'disabled' }, { ...permitted, allowed_tools: ['swa_delegate'] })).toBeNull();
   });
 });

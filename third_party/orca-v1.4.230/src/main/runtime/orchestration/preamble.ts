@@ -36,7 +36,7 @@ export type PreambleParams = {
   workerKind?: 'prompt-returning-agent' | 'bare-shell'
   // Why gated: advertising a verb the depth cap will reject just burns a turn.
   canDispatchSubWorkers?: boolean
-  toolsMode?: 'disabled' | 'questions-only' | 'collaboration'
+  toolsMode?: 'disabled' | 'questions-only' | 'collaboration' | 'project'
 }
 
 // Why: 5 minutes is frequent enough that the coordinator's stale-heartbeat
@@ -69,6 +69,7 @@ function dispatchIdentityLines(params: PreambleParams): string {
 // not as a separate prose block — LLM readers anchor on examples and skim
 // trailing prose, so rules must land at the point of use.
 export function buildDispatchPreamble(params: PreambleParams): string {
+  if (params.toolsMode === 'project') return `You are a dispatched worker inside SWA.\n${dispatchIdentityLines(params)}\nYour dispatch ID is: ${params.dispatchId}\nUse the native bash or shell tool to inspect code, make the requested changes and run necessary checks in the explicitly authorized project directories. Each command runs in Linux isolation with no network, no account credentials and a read-only toolchain. Operations outside the current project permission are refused. Report actual checks and changed files. Use swa_delegate or swa_ask only when present in your available tools. After delegation finish this turn while waiting; the child result returns as a continuation. Never repeat an unknown delegation or interrupted command automatically. Supplied context is the original task snapshot; inspect current files through the project tool.\n\n=== TASK ===\n${params.taskSpec}`
   if (params.toolsMode === 'collaboration') {
     return `You are a dispatched worker inside SWA.\n${dispatchIdentityLines(params)}\nYour dispatch ID is: ${params.dispatchId}\nUse swa_delegate only for an approved project role and exact revision. Its startup response identifies the child task. Finish this turn while waiting; the child result will return as a continuation. An unknown request must be inspected under its original ID, never repeated as a new delegation. Use swa_ask only when it appears in your available tools. File and command tools are unavailable.\n\n=== TASK ===\n${params.taskSpec}`
   }

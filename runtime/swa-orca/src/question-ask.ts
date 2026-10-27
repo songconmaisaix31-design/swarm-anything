@@ -12,7 +12,7 @@ import { AskParams } from '../../../third_party/orca-v1.4.230/src/main/runtime/r
 import { structuredWorkerIdentities } from '../../../third_party/orca-v1.4.230/src/main/runtime/structured-worker-identity'
 import { agentSessionProviderHandleChainHead } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-provider-handle'
 import { getStructuredAgentSessionHost } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-wire/structured-agent-session-registry'
-import { strictPiQuestionResultSchema, strictPiCollaborationRawSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { strictPiQuestionResultSchema, strictPiCollaborationRawSchema, strictPiProjectRawSchema } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { strictPiQuestionRawSchema, parseStrictPiJson } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 import { createIncrementalNdjsonFramer } from '../../../third_party/orca-v1.4.230/src/shared/main-process-ndjson-framer'
 import { replayJournal } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-open'
@@ -29,7 +29,7 @@ import { inspectStructuredTrace } from './task-result'
 function deny(code: string, message: string): never { throw new OrchestrationError(code, message, { effectsApplied: false }) }
 const rowsSchema = z.array(z.object({ request_id: z.string(), state: z.enum(['pending', 'completed']), receipt: z.string() }))
 
-function startForSession(runtime: OrcaRuntimeService, sessionId: string, tool: 'swa_ask' | 'swa_delegate' | 'any' = 'swa_ask') {
+function startForSession(runtime: OrcaRuntimeService, sessionId: string, tool: 'swa_ask' | 'swa_delegate' | 'bash' | 'shell' | 'any' = 'swa_ask', agent: 'pi' | 'opencode' = 'pi') {
   const db = runtime.getOrchestrationDb()
   const rows = rowsSchema.parse(db.db.prepare(`SELECT request_id,state,receipt FROM mutation_receipts WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND json_valid(receipt)=1
     AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.swa_input_binding.session_id')=?`).all(authority(runtime), sessionId))
@@ -38,7 +38,7 @@ function startForSession(runtime: OrcaRuntimeService, sessionId: string, tool: '
   const selection = agentSelectionSchema.parse(receipt.selection), binding = structuredInputBindingSchema.parse(receipt.swa_input_binding)
   const dispatch = db.getDispatchContextById(binding.dispatch_id), task = dispatch && db.getTask(dispatch.task_id)
   const tools = selection.native_launch.tools
-  if (invocation.command.action !== 'worker.start' || invocation.command.request_id !== row.request_id || binding.parent_request !== row.request_id || binding.child_request !== `${row.request_id}/native` || receipt.child_request !== binding.child_request || !isDeepStrictEqual(selection, invocation.selection) || selection.agent_id !== 'pi' || selection.native_launch.account.kind !== 'pi-native-api-key-per-session' || tools.mode === 'disabled' || tool !== 'any' && !tools.allowed.some(name => name === tool) || !dispatch || !task || dispatch.assignee_orca_session_id !== sessionId || dispatch.run_id !== invocation.scope.run_id || !isTaskDescendant(db, dispatch.run_id, invocation.scope.root_task_id, task.id)) deny('scope_denied', 'The native tool source differs from its original Run, Dispatch and selection')
+  if (invocation.command.action !== 'worker.start' || invocation.command.request_id !== row.request_id || binding.parent_request !== row.request_id || binding.child_request !== `${row.request_id}/native` || receipt.child_request !== binding.child_request || !isDeepStrictEqual(selection, invocation.selection) || selection.agent_id !== agent || tools.mode === 'disabled' || tool !== 'any' && !tools.allowed.some(name => name === tool) || !dispatch || !task || dispatch.assignee_orca_session_id !== sessionId || dispatch.run_id !== invocation.scope.run_id || !isTaskDescendant(db, dispatch.run_id, invocation.scope.root_task_id, task.id)) deny('scope_denied', 'The native tool source differs from its original Run, Dispatch and selection')
   const run = db.getRun(dispatch.run_id)
   if (!run || run.legacy || !run.coordinator_handle) deny('scope_denied', 'The question Run has no current local consumer')
   const { scope, owner } = controllerScope(runtime, invocation.project.id, run.coordinator_handle)
@@ -56,18 +56,24 @@ export function producerIdentity(context: RpcContext, tool: 'swa_ask' | 'swa_del
 }
 
 export function nativePiToolSource(runtime: OrcaRuntimeService, sessionId: string, tool: 'swa_ask' | 'swa_delegate' | 'any') {
-  const identity = structuredWorkerIdentities.getBySessionId(sessionId), original = startForSession(runtime, sessionId, tool)
+  const source = nativeWorkerToolSource(runtime, sessionId, 'pi', tool), account = source.account
+  if (account.kind !== 'pi-native-api-key-per-session') deny('worker_identity_changed', 'The native Pi account changed')
+  return { ...source, account }
+}
+
+export function nativeWorkerToolSource(runtime: OrcaRuntimeService, sessionId: string, agent: 'pi' | 'opencode', tool: 'swa_ask' | 'swa_delegate' | 'bash' | 'shell' | 'any') {
+  const identity = structuredWorkerIdentities.getBySessionId(sessionId), original = startForSession(runtime, sessionId, tool, agent)
   const record = runtime.openedAgentSessionRecordStore()?.getRecord(sessionId), worker = runtime.getOrchestrationDb().getWorkerDispatch(original.dispatch.id)
   const owner = record?.lease.ownerProcess, head = record && agentSessionProviderHandleChainHead(record.providerHandleChain)
-  if (!record || !identity || identity.hostScope.kind !== 'local' || identity.agent !== 'pi' || identity.dispatchId !== original.dispatch.id || identity.processIncarnation !== original.dispatch.process_incarnation || record.provider !== 'pi' || record.options?.model !== original.selection.model || record.location.wslDistro !== null || record.location.workspaceId !== original.owner.worktree_id || record.lease.claimStatus !== 'live' || record.lease.unreconciled || record.lease.handoffStage || record.lease.handoffOperationId || !owner || record.lease.runtimeFence !== original.binding.runtime_fence || !head || head.handle.agent !== 'pi' || head.handle.transport !== 'jsonl-rpc' || head.linkId !== record.lease.provenHandleLinkId || head.mintedAtFence !== record.lease.runtimeFence || !worker || !['starting', 'ready'].includes(worker.state) || worker.runtime_epoch !== runtime.getRuntimeId()) deny('worker_identity_changed', 'The native question Worker lease, source, fence or consumer is no longer current')
+  if (!record || !identity || identity.hostScope.kind !== 'local' || identity.agent !== agent || identity.dispatchId !== original.dispatch.id || identity.processIncarnation !== original.dispatch.process_incarnation || record.provider !== agent || record.options?.model !== original.selection.model || record.location.wslDistro !== null || record.location.workspaceId !== original.owner.worktree_id || record.lease.claimStatus !== 'live' || record.lease.unreconciled || record.lease.handoffStage || record.lease.handoffOperationId || !owner || record.lease.runtimeFence !== original.binding.runtime_fence || !head || head.handle.agent !== agent || head.handle.transport !== (agent === 'pi' ? 'jsonl-rpc' : 'acp') || head.linkId !== record.lease.provenHandleLinkId || head.mintedAtFence !== record.lease.runtimeFence || !worker || !['starting', 'ready'].includes(worker.state) || worker.runtime_epoch !== runtime.getRuntimeId()) deny('worker_identity_changed', 'The native tool Worker lease, source, fence or consumer is no longer current')
   const account = original.selection.native_launch.account
-  if (account.kind !== 'pi-native-api-key-per-session' || !('variable' in record.accountHome) || record.accountHome.variable !== 'PI_CODING_AGENT_DIR' || record.accountHome.path !== join(account.private_root, sessionId)) deny('worker_identity_changed', 'The actual native question account changed')
+  if (agent === 'pi' ? account.kind !== 'pi-native-api-key-per-session' || !('variable' in record.accountHome) || record.accountHome.variable !== 'PI_CODING_AGENT_DIR' || record.accountHome.path !== join(account.private_root, sessionId) : !['opencode-native-api-key', 'opencode-native-stepfun-api-key'].includes(account.kind) || !('private_root' in account) || !('kind' in record.accountHome) || record.accountHome.kind !== 'opencode' || record.accountHome.locator.kind !== 'private' || record.accountHome.locator.root !== join(account.private_root, sessionId)) deny('worker_identity_changed', 'The actual native tool account changed')
   assertDeliveryGrantCurrent(original.invocation)
   return { ...original, record, identity, worker, head, account, sessionId }
 }
 
 function sourceFor(producer: ReturnType<typeof producerIdentity>, cwd?: string) {
-  return readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), ...(cwd === undefined ? {} : { cwd: realpathSync.native(cwd) }), provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api, collaboration: producer.selection.native_launch.tools.mode === 'collaboration' })
+  return readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), ...(cwd === undefined ? {} : { cwd: realpathSync.native(cwd) }), provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api, collaboration: producer.selection.native_launch.tools.mode === 'collaboration', project: producer.selection.native_launch.tools.mode === 'project' })
 }
 
 function questionReceipts(runtime: OrcaRuntimeService, dispatchId: string) {
@@ -226,7 +232,7 @@ function nativeQuestionIdle(runtime: OrcaRuntimeService, original: ReturnType<ty
     if (row.event === 'failure') deny('operation_unknown', 'The actual native question provider recorded a failure')
     if (row.event === 'write_intent' && nativeObject(row.detail).command === 'prompt') lastPrompt = row.sequence
     if (row.event === 'native_record') {
-      const detail = nativeObject(row.detail), frame = (original.selection.native_launch.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : strictPiQuestionRawSchema).parse(detail.frame)
+      const detail = nativeObject(row.detail), frame = (original.selection.native_launch.tools.mode === 'project' ? strictPiProjectRawSchema : original.selection.native_launch.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : strictPiQuestionRawSchema).parse(detail.frame)
       if (!isDeepStrictEqual(parseStrictPiJson(z.string().parse(detail.raw_line)), frame)) deny('evidence_missing', 'The actual native question frame changed')
       if (frame.type === 'agent_settled') settled = row.sequence
       if (frame.type === 'response' && frame.command === 'get_state' && !frame.data.isStreaming && !frame.data.isCompacting && frame.data.pendingMessageCount === 0) idle = row.sequence
@@ -265,7 +271,7 @@ export function observeRunQuestions(runtime: OrcaRuntimeService, scope: Pick<Sco
         const worker = db.getWorkerDispatch(row.dispatch_id)
         inspectStructuredTrace({ agent: 'pi', record, binding: original.binding, nativeId: head.handle.nativeId, runtimeId: z.string().min(1).parse(worker?.runtime_epoch), requireClosed: true, rows: trace })
       } else if (record.lease.claimStatus !== 'live' || !record.lease.ownerProcess || record.lease.runtimeFence !== original.binding.runtime_fence) return unconfirmed()
-      const source = readPiQuestionEntries({ path: head.handle.nativeId, privateRoot: join(account.private_root, sessionId), provider: account.provider, modelId: account.model_target.model_id, api: account.model_target.api, collaboration: original.selection.native_launch.tools.mode === 'collaboration' })
+      const source = readPiQuestionEntries({ path: head.handle.nativeId, privateRoot: join(account.private_root, sessionId), provider: account.provider, modelId: account.model_target.model_id, api: account.model_target.api, collaboration: original.selection.native_launch.tools.mode === 'collaboration', project: original.selection.native_launch.tools.mode === 'project' })
       let ended = false
       for (const entry of source.entries) {
         if (entry.type !== 'message' || entry.message.role !== 'toolResult' || entry.message.toolName !== 'swa_ask' || entry.message.isError) continue

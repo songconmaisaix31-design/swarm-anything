@@ -29,12 +29,13 @@ export function assertDelegationParentStopOpen(runtime: OrcaRuntimeService, runI
 export function assertDelegationParentCurrent(runtime: OrcaRuntimeService, invocation: Invocation) {
   const binding = invocation.native_delegation
   if (!binding) return
+  if (binding.observation_only) deny('A delegation observation cannot authorize a new Worker effect')
   const parent = nativePiToolSource(runtime, binding.session_id, 'swa_delegate'), db = runtime.getOrchestrationDb()
   assertDelegationParentStopOpen(runtime, parent.scope.run_id, parent.dispatch.id)
   const task = db.getTask(parent.dispatch.task_id), row = db.getMutationReceipt(authority(runtime), binding.request_id)
   const receipt = row?.receipt && nativeObject(JSON.parse(row.receipt))
   if (parent.row.state !== 'completed' || parent.worker.state !== 'ready' || !task || ['completed', 'failed'].includes(task.status) || binding.start_request_id !== parent.row.request_id || binding.dispatch_id !== parent.dispatch.id || binding.parent_task_id !== parent.dispatch.task_id || invocation.command.parent_task_id !== parent.dispatch.task_id || !isDeepStrictEqual(binding.parent_selection, parent.selection) || !isDeepStrictEqual(invocation.caller, parent.invocation.caller) || !isDeepStrictEqual(invocation.scope, parent.scope) || invocation.project.id !== parent.invocation.project.id || binding.request_id !== delegationRequestID(binding.session_id, binding.origin) || invocation.command.request_id !== delegationWorkerRequestID(binding.request_id) || row?.method !== 'swa.delegate' || !receipt || !isDeepStrictEqual(receipt.origin, binding.origin) || !isDeepStrictEqual(receipt.params, binding.params)) deny('The original delegation parent is no longer current')
-  const source = readPiQuestionEntries({ path: parent.head.handle.nativeId, privateRoot: join(parent.account.private_root, parent.sessionId), provider: parent.account.provider, modelId: parent.account.model_target.model_id, api: parent.account.model_target.api, collaboration: true })
+  const source = readPiQuestionEntries({ path: parent.head.handle.nativeId, privateRoot: join(parent.account.private_root, parent.sessionId), provider: parent.account.provider, modelId: parent.account.model_target.model_id, api: parent.account.model_target.api, collaboration: true, project: parent.selection.native_launch.tools.mode === 'project' })
   const entry = source.entries.find(item => item.id === binding.origin.assistantEntryId)
   if (source.header.id !== binding.origin.nativeSessionId || !entry || entry.type !== 'message' || entry.message.role !== 'assistant') deny('The original delegation parent entry changed')
   const calls = entry.message.content.filter(item => item.type === 'toolCall' && item.id === binding.origin.toolCallId)
@@ -51,11 +52,11 @@ export function isDelegationRequest(request: RpcRequest, context: RpcContext) {
 
 async function inspectCall(context: RpcContext, requestId: string, params?: unknown) {
   const producer = producerIdentity(context, 'swa_delegate'), origin = questionOriginSchema.parse(context.swaQuestionOrigin)
-  if (producer.selection.native_launch.tools.mode !== 'collaboration') deny('The parent Worker delegation capability is not current')
+  if (!['collaboration', 'project'].includes(producer.selection.native_launch.tools.mode)) deny('The parent Worker delegation capability is not current')
   const resolvePath = getStructuredAgentSessionHost()?.deps.resolveWorkspacePath
   if (!resolvePath) deny('The native parent workspace is unavailable')
   const cwd = await realpath(await resolvePath(producer.record.location.workspaceId))
-  const source = readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), cwd, provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api, collaboration: true })
+  const source = readPiQuestionEntries({ path: producer.head.handle.nativeId, privateRoot: join(producer.account.private_root, producer.sessionId), cwd, provider: producer.account.provider, modelId: producer.account.model_target.model_id, api: producer.account.model_target.api, collaboration: true, project: producer.selection.native_launch.tools.mode === 'project' })
   const entry = source.entries.find(row => row.id === origin.assistantEntryId)
   if (source.header.id !== origin.nativeSessionId || !entry || entry.type !== 'message' || entry.message.role !== 'assistant') deny('The native delegation assistant entry is unavailable')
   const calls = entry.message.content.filter(block => block.type === 'toolCall' && block.id === origin.toolCallId)
@@ -76,14 +77,36 @@ export async function admitDelegationProducer(request: RpcRequest, params: unkno
   const query = request.method === 'orchestration.requestShow'
   const requestId = query ? z.strictObject({ request: z.uuid() }).parse(params).request : z.uuid().parse(request.orchestrationRequestId)
   const call = await inspectCall(context, requestId, query ? undefined : params)
-  await admit(call.invocation)
+  await admit(query ? storedDelegationObservation(context.runtime, call) ?? await delegationAdmissionInvocation(context, call) : await delegationAdmissionInvocation(context, call))
   producerIdentity(context, 'swa_delegate')
+}
+
+export function storedDelegationObservation(runtime: OrcaRuntimeService, call: Pick<Awaited<ReturnType<typeof inspectCall>>, 'requestId' | 'sessionId' | 'row' | 'scope' | 'dispatch' | 'selection' | 'origin' | 'params' | 'invocation'>): Invocation | undefined {
+  const db = runtime.getOrchestrationDb(), workerRequest = delegationWorkerRequestID(call.requestId)
+  if (db.getMutationReceipt(authority(runtime), workerRequest)) return undefined
+  const row = db.getMutationReceipt(authority(runtime), call.requestId)
+  if (!row?.receipt) return undefined
+  const saved = nativeObject(JSON.parse(row.receipt))
+  if (row.method !== 'swa.delegate' || saved.request_id !== call.requestId || saved.worker_request_id !== workerRequest || saved.session_id !== call.sessionId || saved.parent_dispatch_id !== call.dispatch.id || saved.parent_task_id !== call.dispatch.task_id || saved.run_id !== call.scope.run_id || saved.project_id !== call.invocation.project.id || !isDeepStrictEqual(saved.origin, call.origin) || !isDeepStrictEqual(saved.params, call.params)) deny('The saved delegation observation differs from its original native source')
+  return invocationSchema.parse({ command: { action: 'request.show', controller: call.scope.controller, task_id: call.scope.root_task_id, dispatch_id: call.dispatch.id, request_id: call.requestId }, caller: call.invocation.caller, project: call.invocation.project, scope: call.scope, selection: call.selection,
+    native_delegation: { schema: 'swa.native-delegation.v1', observation_only: true, start_request_id: call.row.request_id, request_id: call.requestId, worker_request_id: workerRequest, session_id: call.sessionId, dispatch_id: call.dispatch.id, parent_task_id: call.dispatch.task_id, parent_selection: call.selection, origin: call.origin, params: call.params } })
+}
+
+async function delegationAdmissionInvocation(context: RpcContext, call: Awaited<ReturnType<typeof inspectCall>>) {
+  const row = context.runtime.getOrchestrationDb().getMutationReceipt(authority(context.runtime), delegationWorkerRequestID(call.requestId))
+  if (row?.receipt) {
+    const receipt = nativeObject(JSON.parse(row.receipt)), original = invocationSchema.parse(receipt.invocation), binding = original.native_delegation
+    if (row.method !== 'swa.controllerDeliver' || !binding || binding.start_request_id !== call.row.request_id || binding.request_id !== call.requestId || binding.session_id !== call.sessionId || binding.dispatch_id !== call.dispatch.id || !isDeepStrictEqual(binding.parent_selection, call.selection) || !isDeepStrictEqual(binding.origin, call.origin) || !isDeepStrictEqual(binding.params, call.params)) deny('The original child admission differs from its native delegation')
+    return original
+  }
+  return invocationFor(context, call)
 }
 
 async function invocationFor(context: RpcContext, call: Awaited<ReturnType<typeof inspectCall>>) {
   const requestId = delegationWorkerRequestID(call.requestId), inputPath = `native-delegation:${call.requestId}`
   const command: Invocation['command'] = { action: 'worker.start', project_id: call.invocation.project.id, controller: call.scope.controller, task_id: call.scope.root_task_id, parent_task_id: call.dispatch.task_id, request_id: requestId, input_file: inputPath, name: `Delegated ${call.params.role_id}`, role_id: call.params.role_id, revision: call.params.revision, handoff_mode: call.params.mode, reply_mode: 'resume', completion_criteria: call.params.completion_criteria, question_mode: 'disabled', delegation_mode: 'disabled' }
   const references = resolveCollaborationReferences(context.runtime.getOrchestrationDb(), call.invocation.project.id, { role_id: command.role_id, role_revision: command.revision })
+  command.development_mode = call.params.mode === 'consult' ? 'disabled' : references.role_snapshot?.development_mode ?? 'disabled'
   const selection = await resolveSelection(context.runtime, call.invocation.project.id, command)
   return invocationSchema.parse({ command, caller: call.invocation.caller, project: call.invocation.project, scope: call.scope, spec: references, selection,
     input: { path: inputPath, version: call.requestId, text: call.params.input },
@@ -109,14 +132,14 @@ export function delegationMethod(admit: (invocation: Invocation) => Promise<unkn
     let invocation: Invocation
     try {
       let call = await inspectCall(context, requestId, params)
+      invocation = await delegationAdmissionInvocation(context, call)
       const deadline = Date.now() + 90_000
       while (call.row.state !== 'completed' || call.worker.state !== 'ready') {
         if (context.signal?.aborted || Date.now() >= deadline) deny('The parent Worker start did not settle before delegation')
-        await admit(call.invocation)
+        await admit(invocation)
         await delay(100, undefined, { signal: context.signal })
         call = await inspectCall(context, requestId, params)
       }
-      invocation = await invocationFor(context, call)
       await admit(invocation)
       const current = await inspectCall(context, requestId, params)
       if (current.row.state !== 'completed' || current.worker.state !== 'ready') deny('The parent Worker changed before delegation')

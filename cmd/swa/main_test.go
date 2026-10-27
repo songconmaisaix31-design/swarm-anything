@@ -162,7 +162,7 @@ func TestRoleAndHandoffCLITransport(t *testing.T) {
 	defer server.Close()
 	t.Setenv("SWA_PROJECT_TOKEN", "transport-rule-input")
 	t.Setenv("SWA_ENDPOINT", server.URL)
-	role := workspaceapp.OrcaRoleDefinition{Name: "Reviewer", Responsibilities: "Review public changes", DefaultAgent: "pi", DefaultModel: "stepfun/step-3.5-flash", DelegationMode: "native", Skills: []string{}, Knowledge: []string{}}
+	role := workspaceapp.OrcaRoleDefinition{Name: "Reviewer", Responsibilities: "Review public changes", DefaultAgent: "pi", DefaultModel: "stepfun/step-3.5-flash", DelegationMode: "native", DevelopmentMode: "project", Skills: []string{}, Knowledge: []string{}}
 	data, err := json.Marshal(role)
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestRoleAndHandoffCLITransport(t *testing.T) {
 		t.Fatal("CLI did not transmit the exact role definition")
 	}
 	for _, explicit := range []bool{false, true} {
-		args := []string{"worker", "start", "--project", "project", "--controller", "controller", "--task", "root", "--name", "reviewer", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--parent-task", "parent", "--handoff-mode", "consult", "--reply-mode", "resume", "--delegation-mode", "disabled", "--completion-criterion", "Review code", "--completion-criterion", "Report findings", "--request-id", request, "--json"}
+		args := []string{"worker", "start", "--project", "project", "--controller", "controller", "--task", "root", "--name", "reviewer", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--parent-task", "parent", "--handoff-mode", "consult", "--reply-mode", "resume", "--delegation-mode", "disabled", "--development-mode", "disabled", "--completion-criterion", "Review code", "--completion-criterion", "Report findings", "--request-id", request, "--json"}
 		if explicit {
 			args = append(args, "--agent", "opencode", "--model", "stepfun/step-3.5-flash")
 		}
@@ -190,7 +190,7 @@ func TestRoleAndHandoffCLITransport(t *testing.T) {
 			t.Fatalf("worker transport exit=%d: %s", code, stdout.String())
 		}
 		command := <-commands
-		if command.Action != "worker.start" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.ParentTaskID != "parent" || command.HandoffMode != "consult" || command.ReplyMode != "resume" || command.DelegationMode != "disabled" || !reflect.DeepEqual(command.CompletionCriteria, []string{"Review code", "Report findings"}) {
+		if command.Action != "worker.start" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.ParentTaskID != "parent" || command.HandoffMode != "consult" || command.ReplyMode != "resume" || command.DelegationMode != "disabled" || command.DevelopmentMode != "disabled" || !reflect.DeepEqual(command.CompletionCriteria, []string{"Review code", "Report findings"}) {
 			t.Fatal("CLI lost the selected role or handoff fields")
 		}
 		if explicit && (command.Agent != "opencode" || command.Model != "stepfun/step-3.5-flash") || !explicit && (command.Agent != "" || command.Model != "") {
@@ -199,11 +199,11 @@ func TestRoleAndHandoffCLITransport(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := run(context.Background(), []string{"run", "--project", "project", "--workdir", t.TempDir(), "--spec-file", "task.json", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--delegation-mode", "native", "--request-id", request, "--json"}, &stdout, &stderr); code != 3 {
+	if code := run(context.Background(), []string{"run", "--project", "project", "--workdir", t.TempDir(), "--spec-file", "task.json", "--input-file", "brief.txt", "--role", "reviewer-role", "--role-revision", "2", "--delegation-mode", "native", "--development-mode", "project", "--request-id", request, "--json"}, &stdout, &stderr); code != 3 {
 		t.Fatalf("run transport exit=%d: %s", code, stdout.String())
 	}
-	if command := <-commands; command.Action != "run.submit" || command.DelegationMode != "native" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.Agent != "" || command.Model != "" {
-		t.Fatal("Run CLI lost delegation mode or changed the role default selection")
+	if command := <-commands; command.Action != "run.submit" || command.DelegationMode != "native" || command.DevelopmentMode != "project" || command.RoleID != "reviewer-role" || command.Revision != 2 || command.Agent != "" || command.Model != "" {
+		t.Fatal("Run CLI lost tool modes or changed the role default selection")
 	}
 }
 

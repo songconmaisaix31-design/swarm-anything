@@ -6,8 +6,8 @@ import { useReadApi, formatError } from '../../hooks/useReadState';
 import { QueryState } from '../../components/QueryState';
 import { SectionCard } from '../../components/SectionCard';
 import { navigate, useRoute } from '../../router';
-import { readSwaFleet, readSwaAgents, readSwaTranscript, readPendingSwaRequest, recoverSwaRequest, observationJSON, swaDelegationBlock, swaStartRequestBlock, canRequestSwaStart, type PendingSwaRequest } from './swaObservation';
-import { SwaAgentCapabilities, SwaDelegationModeField, SwaQuestionModeField, SwaRunWorkspace } from './SwaRunWorkspace';
+import { readSwaFleet, readSwaAgents, readSwaTranscript, readPendingSwaRequest, recoverSwaRequest, observationJSON, swaDelegationBlock, swaDevelopmentBlock, swaStartRequestBlock, canRequestSwaStart, type PendingSwaRequest } from './swaObservation';
+import { SwaAgentCapabilities, SwaDelegationModeField, SwaDevelopmentModeField, SwaQuestionModeField, SwaRunWorkspace } from './SwaRunWorkspace';
 import { SwaRoles, type SelectedSwaRole } from './SwaRolesPanel';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
 import { inspectSwaRunSubmission } from './swaRunView';
@@ -120,19 +120,22 @@ function WorkerStartForm({ project, controller, taskID, capabilities, disabled, 
   const [agentID, setAgentID] = useState(project.settings.external_model_cli), [name, setName] = useState(''), [inputFile, setInputFile] = useState('');
   const [questionMode, setQuestionMode] = useState<'disabled' | 'native'>('disabled');
   const [delegationMode, setDelegationMode] = useState<'disabled' | 'native'>('disabled');
+  const [developmentMode, setDevelopmentMode] = useState<'disabled' | 'project'>('disabled');
   const agent = agents.find(item => item.id === agentID);
   const command = useSwaCommand(project.id, `worker.start:${controller}:${taskID}`);
   const nativeQuestionsAvailable = agent?.questions?.status === 'available';
   const delegationBlock = swaDelegationBlock(agent, project.settings);
-  const canRequestStart = (questionMode === 'disabled' || nativeQuestionsAvailable) && (delegationMode === 'disabled' || !delegationBlock) && canRequestSwaStart({ agent, settings: project.settings, disabled, pending: command.pending, unresolved: command.blocked, name, inputFile });
+  const developmentBlock = swaDevelopmentBlock(agent, project.settings);
+  const canRequestStart = (questionMode === 'disabled' || nativeQuestionsAvailable) && (delegationMode === 'disabled' || !delegationBlock) && (developmentMode === 'disabled' || !developmentBlock) && canRequestSwaStart({ agent, settings: project.settings, disabled, pending: command.pending, unresolved: command.blocked, name, inputFile });
   const observationLabel = (status: string) => status === 'unknown' ? '未知' : status === 'available' ? '可用' : '不可用';
-  return <details><summary>向同一任务添加 Worker</summary><p className={styles.note}>Worker 数量受任务额度和可用资源限制。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); if (!canRequestStart || !agent) return; void command.run({ action: 'worker.start', controller, task_id: taskID, name: name.trim(), agent: agent.id, model: agent.model, question_mode: questionMode, delegation_mode: delegationMode, input_file: inputFile.trim() }, reply => { if (!reply.dispatch_id) throw new Error('回执缺少 Dispatch，请查询原请求'); onStarted(); }); }}>
+  return <details><summary>向同一任务添加 Worker</summary><p className={styles.note}>Worker 数量受任务额度和可用资源限制。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); if (!canRequestStart || !agent) return; void command.run({ action: 'worker.start', controller, task_id: taskID, name: name.trim(), agent: agent.id, model: agent.model, question_mode: questionMode, delegation_mode: delegationMode, development_mode: developmentMode, input_file: inputFile.trim() }, reply => { if (!reply.dispatch_id) throw new Error('回执缺少 Dispatch，请查询原请求'); onStarted(); }); }}>
     <label>当前项目的 Agent<select required value={agentID} onChange={event => setAgentID(event.target.value)}><option value="">选择 Agent</option>{agents.map(item => {
       const blocked = swaStartRequestBlock(item, project.settings);
       return <option key={item.id} value={item.id} disabled={!!blocked}>{item.id} · {item.model || '模型未提供'} · {blocked ?? `启动${observationLabel(item.launchable.status)}`}</option>;
     })}</select></label>
     <SwaQuestionModeField value={questionMode} nativeAvailable={nativeQuestionsAvailable} disabled={disabled || command.pending || command.blocked} onChange={setQuestionMode} />
     <SwaDelegationModeField value={delegationMode} block={delegationBlock} disabled={disabled || command.pending || command.blocked} onChange={setDelegationMode} />
+    <SwaDevelopmentModeField value={developmentMode} block={developmentBlock} disabled={disabled || command.pending || command.blocked} paths={project.settings.allowed_subdirs} onChange={setDevelopmentMode} />
     <label>此 Worker 名称<input required value={name} onChange={event => setName(event.target.value)} /></label><label>已批准的服务端输入文件<input required value={inputFile} onChange={event => setInputFile(event.target.value)} /></label><button className="ac-button compact" type="submit" disabled={!canRequestStart}>提交启动请求</button>
   </form>{agent && <p className={styles.note}>启动：{observationLabel(agent.launchable.status)}；读取：{observationLabel(agent.read.status)}；工具限制：{observationLabel(agent.tools.status)}。{swaStartRequestBlock(agent, project.settings)}</p>}{capabilityError && <p role="alert">{capabilityError}</p>}{!agents.length && <p role="status">未找到已许可的 Agent，请检查项目设置和能力清单。</p>}<OperationState command={command} controller={controller} onRecovered={onStarted} /></details>;
 }

@@ -208,6 +208,10 @@ func (r *Runtime) environment() []string {
 		}
 		env = append(env, item)
 	}
+	// 仅转交宿主启动时明确选择的工具链目录；其 JSON 与目录边界由原生工具 policy 核验。
+	if roots := os.Getenv("SWA_PROJECT_TOOLCHAIN_ROOTS"); roots != "" {
+		env = append(env, "SWA_PROJECT_TOOLCHAIN_ROOTS="+roots)
+	}
 	return append(env,
 		"ORCA_USER_DATA="+r.config.DataRoot,
 		"ORCA_USER_DATA_PATH="+r.config.DataRoot,

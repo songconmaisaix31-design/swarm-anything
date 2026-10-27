@@ -7,14 +7,14 @@ import { piDelegationDescription, piDelegationParameters, strictPiDelegationResu
 import { delegationToolParamsSchema, delegationRequestID, delegationWorkerRequestID, questionOriginSchema, nativeObject } from './contracts'
 import registerQuestionTool from './pi-question-extension'
 
-export default function registerCollaboration(pi: ExtensionAPI) {
+export default function registerCollaboration(pi: ExtensionAPI, project = false) {
   const sessionId = readInjectedAgentSessionId(), proof = process.env[ORCA_AGENT_SESSION_SPAWN_TOKEN_ENV]
   if (!sessionId || !proof) throw new Error('The native delegation Worker identity is unavailable')
   const client = new RuntimeClient(undefined, undefined, undefined, undefined, undefined, undefined, { proof })
-  registerQuestionTool(pi, true)
+  registerQuestionTool(pi, true, project)
   pi.registerTool({ name: 'swa_delegate', label: 'Delegate to a project role', description: piDelegationDescription, exposure: 'model-only', executionMode: 'sequential', parameters: Type.Unsafe(piDelegationParameters),
     async execute(toolCallId, input, signal, _onUpdate, context) {
-      if (![['swa_delegate'], ['swa_ask', 'swa_delegate']].some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed))) throw new Error('The native delegation tools changed')
+      if (!(project ? [['bash', 'swa_delegate'], ['bash', 'swa_ask', 'swa_delegate']] : [['swa_delegate'], ['swa_ask', 'swa_delegate']]).some(allowed => isDeepStrictEqual([...pi.getActiveTools()].sort(), allowed))) throw new Error('The native delegation tools changed')
       const params = delegationToolParamsSchema.parse(input)
       const entries = context.sessionManager.getEntries().filter(entry => entry.type === 'message' && entry.message.role === 'assistant' && entry.message.content.some(block => block.type === 'toolCall' && block.id === toolCallId))
       if (entries.length !== 1) throw new Error('The actual native delegation entry is not unique')

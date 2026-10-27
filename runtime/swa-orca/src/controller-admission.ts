@@ -12,6 +12,7 @@ import { isTaskDescendant } from './run-view'
 import { questionReplyParams, readAnswerQuestion } from './question-answer'
 import { admitQuestionProducer } from './question-ask'
 import { admitDelegationProducer, isDelegationRequest } from './delegation'
+import { admitProjectToolProducer, isProjectToolRequest } from './project-tools'
 
 function deny(message: string): never { throw new OrchestrationError('scope_denied', message, { effectsApplied: false }) }
 const historyReads = new Set(['status.get', 'orchestration.requestShow', 'orchestration.runShow', 'orchestration.taskList', 'orchestration.workerShow', 'orchestration.workerList', 'orchestration.workerRead'])
@@ -24,9 +25,10 @@ export function isProductOwner(request: RpcRequest, context: RpcContext, capabil
 
 export async function admitControllerRPC(request: RpcRequest, input: unknown, context: RpcContext, capability: Buffer, admitDelegation?: (invocation: Invocation) => Promise<unknown>) {
   const params = input == null ? {} : nativeObject(input)
-  if (request.swaQuestionProducerProof !== undefined || request.swaQuestionOrigin !== undefined) {
+  if (request.swaQuestionProducerProof !== undefined || request.swaQuestionOrigin !== undefined || request.swaProjectToolOrigin !== undefined) {
     const producerContext = { ...context, orchestrationCompatibilityEvidence: request.orchestrationCompatibilityEvidence }
-    if (isDelegationRequest(request, producerContext)) {
+    if (isProjectToolRequest(request, producerContext)) admitProjectToolProducer(request, params, producerContext)
+    else if (isDelegationRequest(request, producerContext)) {
       if (!admitDelegation) deny('Current project delegation admission is unavailable')
       await admitDelegationProducer(request, params, producerContext, admitDelegation)
     }

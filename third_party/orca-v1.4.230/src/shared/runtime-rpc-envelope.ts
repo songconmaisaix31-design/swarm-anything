@@ -79,6 +79,7 @@ export type RuntimeOrchestrationEnvelope = {
   swaOwnerCapability?: string
   swaQuestionProducerProof?: string
   swaQuestionOrigin?: { nativeSessionId: string; assistantEntryId: string; toolCallId: string }
+  swaProjectToolOrigin?: { agent: 'pi'; native_session_id: string; assistant_entry_id: string; tool_call_id: string } | { agent: 'opencode'; native_session_id: string; message_id: string; tool_call_id: string }
   orchestrationCapability?: string
   orchestrationContractVersion?: number
   orchestrationRequestId?: string

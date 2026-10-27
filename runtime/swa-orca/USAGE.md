@@ -53,9 +53,11 @@ swa worker start --project "$project_id" --controller "$controller" --task "$roo
 
 主 Pi Worker 可在启动时选择 `--delegation-mode native`，也可在角色定义中保存 `"delegation_mode":"native"`；省略命令选项时继承角色设置，默认关闭。项目须明确允许 `swa_delegate` 工具、start/send 操作及 Agent 控制。显式 `--delegation-mode disabled` 关闭本次 Worker 的委派工具，问答模式独立选择。
 
-委派工具接受 `swa_delegate({role_id, revision, input, completion_criteria, mode})`，其中 mode 为 work 或 consult。子 Worker 使用目标角色的 Agent 和模型，并绑定当前项目、Run 和父任务。工具在确认启动后返回 Task、Dispatch；主 Agent 结束当前轮等待，子任务结果通过原交接继续主 Agent。本次委派的子 Worker 工具保持关闭，consult 不执行外部操作。未知结果保留原 request_id/worker_request_id，不能换工具调用重发。该功能的真实模型闭环仍待验收。
+委派工具接受 `swa_delegate({role_id, revision, input, completion_criteria, mode})`，其中 mode 为 work 或 consult。子 Worker 使用目标角色的 Agent 和模型，并绑定当前项目、Run 和父任务。工具在确认启动后返回 Task、Dispatch；主 Agent 结束当前轮等待，子任务结果通过原交接继续主 Agent。本次委派的子 Worker 问答及委派工具保持关闭，开发模式继承目标角色；consult 不执行外部操作。未知结果保留原 request_id/worker_request_id，不能换工具调用重发。该功能的真实模型闭环仍待验收。
 
-新 Run 和 `worker start` 可用 `--question-mode disabled|native` 选择问题模式。省略时继承所选角色的准确默认值，没有角色或旧角色没有该字段时为 disabled；显式 disabled 关闭本次 Worker 的问答工具。native 仅支持固定 Pi 1.0.1 的 per-session 账号模式，通过随安装固定的 `swa_ask` 扩展提问与读取原答案，原生文件和命令工具仍关闭。其它 Agent 或不相容账号合同返回能力不可用；不能在已有 Worker 中切换模式。GUI 只在当前 Agent 已声明该能力时开放选项，声明支持不表示真实提问已经验收。
+`run` 和 `worker start` 可选择 `--development-mode project`，或在角色定义中保存 `"development_mode":"project"`。省略时继承角色设置，默认 disabled；显式 `--development-mode disabled` 关闭本次 Worker 的开发工具。项目须允许 `project_shell`、目录访问、对应子目录、Agent 控制及 start/send/read_context 操作。Linux 上使用 bwrap 隔离后的 Pi 原生 bash 或 OpenCode 原生 shell，只在批准目录读取、修改文件和执行检查，命令无网络；缺失隔离能力或不支持的平台明确拒绝，consult 不允许 project。问答、委派和开发模式分别选择，不能在已启动 Worker 中切换。真实代码修改、检查、边界拒绝及异构委派闭环仍待同一安装候选验收。
+
+新 Run 和 `worker start` 可用 `--question-mode disabled|native` 选择问题模式。省略时继承所选角色的准确默认值，没有角色或旧角色没有该字段时为 disabled；显式 disabled 关闭本次 Worker 的问答工具。native 仅支持固定 Pi 1.0.1 的 per-session 账号模式，通过随安装固定的 `swa_ask` 扩展提问与读取原答案，原生文件和命令能力由开发模式另行控制。其它 Agent 或不相容账号合同返回能力不可用；不能在已有 Worker 中切换模式。GUI 只在当前 Agent 已声明该能力时开放选项，声明支持不表示真实提问已经验收。
 
 CLI 与 GUI 读取同一后端 Run 视图。stderr 的进度包含当前状态、阻塞原因、问题及失败数量；stdout 只发布一个最终 JSON。`--strict` 在完整递归任务集合的任一子任务失败时返回 7，实际创建 Task 的咨询同样计入；单向通知不创建 Task。普通成功仍保留子任务失败事实，不能将主 Agent 的结束当作全部任务完成。
 

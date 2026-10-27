@@ -225,6 +225,7 @@ export async function sendRequest<TResult>(
           swaOwnerCapability: envelope?.swaOwnerCapability,
           swaQuestionProducerProof: envelope?.swaQuestionProducerProof,
           swaQuestionOrigin: envelope?.swaQuestionOrigin,
+          swaProjectToolOrigin: envelope?.swaProjectToolOrigin,
           expectedRuntimeSource
         })}\n`
       )

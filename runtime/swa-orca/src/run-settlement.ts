@@ -11,7 +11,7 @@ import { replayJournal } from '../../../third_party/orca-v1.4.230/src/main/nativ
 import { renderJournalState } from '../../../third_party/orca-v1.4.230/src/main/native-chat/agent-session-journal/journal-reducer'
 import { latestStructuredAgentSessionRequest, latestStructuredAgentSessionAssistantMessage } from '../../../third_party/orca-v1.4.230/src/shared/structured-agent-session-latest-request'
 import { authority, controllerScope, recorded } from './controller-scope'
-import { invocationSchema, nativeObject, type Invocation, type Scope } from './contracts'
+import { invocationSchema, nativeObject, structuredInputBindingSchema, type Invocation, type Scope } from './contracts'
 import { readRunTaskTree } from './run-view'
 import { readRootResultInventory, readNativeInputStatus, type completeTaskResult } from './task-result'
 import { hasQuestionSettlementBlock, hasTaskQuestionSettlementBlock } from './question-ask'
@@ -32,12 +32,22 @@ export function handoffParentDisposition(turn: { outcome: string } | null, worke
   return workerState === 'ready' ? 'resume' : 'waiting'
 }
 
-export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }): Invocation {
+export function handoffResumeInvocation(original: Invocation, scope: Scope, mail: { id: string; body: string; handoff: z.infer<typeof completionMailSchema> }, sourceSelection?: Invocation['selection']): Invocation {
   const h = mail.handoff, marker = `native-handoff:${mail.id}`
   // 新输入沿用原调用者和账号；首次提交、问题工具等字段只属于原操作。
   return invocationSchema.parse({ caller: original.caller, project: original.project, selection: original.selection, context: original.context,
     command: { action: 'worker.send', controller: scope.controller, task_id: scope.root_task_id, dispatch_id: h.parent_dispatch_id, request_id: h.resume_request_id, input_file: marker }, scope,
-    input: { path: marker, version: mail.id, text: mail.body }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id } })
+    input: { path: marker, version: mail.id, text: mail.body }, handoff: { schema: 'swa.handoff-resume.v1', source_task_id: h.source_task_id, source_dispatch_id: h.source_dispatch_id, parent_task_id: h.parent_task_id, parent_dispatch_id: h.parent_dispatch_id, mail_id: mail.id, ...(sourceSelection?.native_launch.tools.mode === 'project' ? { source_selection: sourceSelection } : {}) } })
+}
+
+function handoffSourceSelection(runtime: OrcaRuntimeService, scope: Scope, dispatchId: string) {
+  const db = runtime.getOrchestrationDb()
+  const rows = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND state='completed' AND json_valid(receipt)=1 AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.run_id')=? AND json_extract(receipt,'$.native.dispatchId')=?`).all(authority(runtime), scope.run_id, dispatchId))
+  if (rows.length !== 1) fail('The handoff source has no unique original Worker start')
+  const receipt = nativeObject(JSON.parse(rows[0]!.receipt)), original = invocationSchema.parse(receipt.invocation)
+  const binding = structuredInputBindingSchema.parse(receipt.swa_input_binding), dispatch = db.getDispatchContextById(dispatchId)
+  if (!dispatch || dispatch.run_id !== scope.run_id || binding.dispatch_id !== dispatchId || binding.session_id !== dispatch.assignee_orca_session_id || binding.parent_request !== original.command.request_id || receipt.child_request !== binding.child_request || !isDeepStrictEqual(original.selection, receipt.selection) || original.project.id !== scope.project_id || original.scope.root_task_id !== scope.root_task_id) fail('The handoff source selection changed its original Dispatch')
+  return original.selection
 }
 
 export function assertTaskQuestionSettlementReady(runtime: OrcaRuntimeService, scope: Scope, taskId: string, dispatchId: string) {
@@ -75,6 +85,8 @@ export function validateHandoffInput(runtime: OrcaRuntimeService, invocation: In
   const payload = completionMailSchema.parse(JSON.parse(message.payload))
   const execution = db.getMutationReceipt(authority(runtime), `${scope.root_task_id}/native-lifecycle/${source.id}/execution`)
   const evidence = execution?.receipt ? nativeObject(JSON.parse(execution.receipt)) : null
+  const selection = handoffSourceSelection(runtime, scope, h.source_dispatch_id)
+  if (!isDeepStrictEqual(h.source_selection, selection?.native_launch.tools.mode === 'project' ? selection : undefined)) fail('The handoff development permission differs from its actual child Worker')
   if (c.action !== 'worker.send' || c.dispatch_id !== h.parent_dispatch_id || c.input_file !== `native-handoff:${h.mail_id}` || invocation.input?.path !== c.input_file || invocation.input.version !== h.mail_id || invocation.input.text !== message.body
     || !message.body || message.run_id !== scope.run_id || message.type !== 'handoff' || message.delivery_contract !== 'audit_only' || message.from_handle !== `dispatch:${h.source_dispatch_id}` || message.to_handle !== `dispatch:${h.parent_dispatch_id}`
     || source.run_id !== scope.run_id || parent.run_id !== scope.run_id || source.parent_id !== parent.id || source.result !== message.body || !['completed', 'failed'].includes(source.status)
@@ -150,7 +162,7 @@ export function installRunSettlement(runtime: OrcaRuntimeService, collect: Colle
     const starts = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts WHERE method='swa.controllerDeliver' AND state='completed' AND caller_fingerprint=? AND json_valid(receipt)=1 AND json_extract(receipt,'$.action')='worker.start' AND json_extract(receipt,'$.run_id')=? AND json_extract(receipt,'$.native.dispatchId')=?`).all(authority(runtime), scope.run_id, h.parent_dispatch_id))
     if (starts.length !== 1) fail('The original parent Worker input authorization is unavailable')
     const original = invocationSchema.parse(nativeObject(JSON.parse(starts[0]!.receipt)).invocation), message = db.getMessageById(mail.id)!
-    const invocation = handoffResumeInvocation(original, scope, { ...mail, body: message.body })
+    const invocation = handoffResumeInvocation(original, scope, { ...mail, body: message.body }, handoffSourceSelection(runtime, scope, h.source_dispatch_id))
     validateHandoffInput(runtime, invocation)
     await deliver(invocation)
   }

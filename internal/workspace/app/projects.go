@@ -194,9 +194,12 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 			}
 		}
 	}
-	// 委派沿当前项目准入；文件和命令工具仍需要独立的范围限制合同。
-	if len(cmd.Settings.AllowedTools) > 1 || len(cmd.Settings.AllowedTools) == 1 && cmd.Settings.AllowedTools[0] != "swa_delegate" {
-		return p, projectError(apierrors.UnsupportedCapability, "native filesystem and command tools are not scoped by this adapter")
+	seenTools := map[string]bool{}
+	for _, tool := range cmd.Settings.AllowedTools {
+		if tool != "swa_delegate" && tool != "project_shell" || seenTools[tool] {
+			return p, projectError(apierrors.UnsupportedCapability, "project tools must be unique supported capabilities")
+		}
+		seenTools[tool] = true
 	}
 	cmd.Settings.Revision = p.Settings.Revision + 1
 	if cmd.Settings.HistoryRoots == nil {

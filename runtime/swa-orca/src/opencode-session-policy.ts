@@ -20,8 +20,8 @@ import { encodeOpenCodeInput, openCodeInputPayloadSchema, verifyOpenCodeInputRec
 
 const common = { type: z.literal('swa_opencode_policy'), correlation: z.string(), pid: z.number().int().positive(), root: z.string(), sequence: z.number().int().positive() }
 const statusSchema = z.discriminatedUnion('state', [
-  z.strictObject({ ...common, state: z.literal('active'), tools_count: z.literal(0), directory: z.string(), roots: z.record(z.string(), z.string()), plugins: z.array(z.strictObject({ id: z.string(), state: z.literal('active') })) }),
-  z.strictObject({ ...common, state: z.literal('http_request'), session_id: z.string(), model: z.enum(['deepseek-v4-pro', 'step-3.5-flash']), tools_count: z.literal(0), initial_url: z.enum(['https://api.deepseek.com/chat/completions', 'https://api.stepfun.com/v1/chat/completions']), monotonic_ms: z.number().nonnegative() }),
+  z.strictObject({ ...common, state: z.literal('active'), tools_count: z.union([z.literal(0), z.literal(1)]), directory: z.string(), roots: z.record(z.string(), z.string()), plugins: z.array(z.strictObject({ id: z.string(), state: z.literal('active') })) }),
+  z.strictObject({ ...common, state: z.literal('http_request'), session_id: z.string(), model: z.enum(['deepseek-v4-pro', 'step-3.5-flash']), tools_count: z.union([z.literal(0), z.literal(1)]), initial_url: z.enum(['https://api.deepseek.com/chat/completions', 'https://api.stepfun.com/v1/chat/completions']), monotonic_ms: z.number().nonnegative() }),
   z.strictObject({ ...common, state: z.literal('http_response'), session_id: z.string(), status: z.number().int(), monotonic_ms: z.number().nonnegative() }),
   z.strictObject({ ...common, state: z.literal('retry_disabled'), session_id: z.string(), attempt: z.number().int() }),
   z.strictObject({ ...common, state: z.literal('rejected'), session_id: z.string(), code: z.literal('native_session_selection_changed') }),
@@ -41,6 +41,7 @@ export function createOpenCodeSessionPolicy(input: {
   const { snapshot, root, plugin, correlation, launcher } = input
   const env = privateOpenCodeEnvironment(root, process.env as Record<string, string>)
   const provider = snapshot.policy.account.provider, target = openCodeTargets[provider]
+  const project = snapshot.policy.tools.mode === 'project', toolsCount = project ? 1 : 0
   const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
   const identity = (value: Stats) => `${value.dev}:${value.ino}:${value.birthtimeMs}`
   const tracePath = join(launcher.eventDirectory, 'provider-events.ndjson')
@@ -117,7 +118,7 @@ export function createOpenCodeSessionPolicy(input: {
       let exists = false
       try { const info = await lstat(env.OPENCODE_DB); if (!info.isFile() || info.isSymbolicLink()) throw new Error('native_opencode_private_database_redirected'); exists = true }
       catch (error) { if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error }
-      if (exists) { await verifyAccount(); (await input.approve())() }
+      if (exists) { await verifyAccount(); (await input.approveInitialization())() }
       else await importPrivateOpenCodeCredential({ snapshot, root, plugin, correlation, node: launcher.node, entry: launcher.entry, executable: input.executable, cwd, inherited: process.env as Record<string, string>, beforeInput: input.approveInitialization,
         observe({ managed, tree: importTree }) {
           track({
@@ -146,13 +147,13 @@ export function createOpenCodeSessionPolicy(input: {
         if (row.correlation !== correlation || !samePath(row.root, root) || row.sequence !== sequence + 1 || row.pid !== actualServer.pid || server && !isDeepStrictEqual(server, actualServer)) throw new Error('native_opencode_policy_identity_changed')
         server = actualServer; sequence = row.sequence
         if (row.state === 'active') {
-          const actual = row.plugins.map(item => item.id).sort(), expected = [...openCodePlugins(provider), openCodePolicyPluginId].sort()
+          const actual = row.plugins.map(item => item.id).sort(), expected = [...openCodePlugins(provider, project), openCodePolicyPluginId].sort()
           const roots = { home: env.HOME, data: env.XDG_DATA_HOME, cache: env.XDG_CACHE_HOME, config: env.XDG_CONFIG_HOME, state: env.XDG_STATE_HOME, programdata: env.ProgramData, temp: env.TEMP, database: env.OPENCODE_DB }
-          if (failure || !isDeepStrictEqual(actual, expected) || !isDeepStrictEqual(row.roots, roots)) throw new Error('native_opencode_policy_inventory_changed')
+          if (failure || row.tools_count !== toolsCount || !isDeepStrictEqual(actual, expected) || !isDeepStrictEqual(row.roots, roots)) throw new Error('native_opencode_policy_inventory_changed')
           active = true; resolveReady()
         } else if (row.state === 'failed' || row.state === 'rejected') fail()
         else if (row.state === 'inactive') active = false
-        else if (row.state === 'http_request' && (row.model !== target.model_id || row.initial_url !== target.initial_url || row.session_id !== session)) throw new Error('native_opencode_policy_target_changed')
+        else if (row.state === 'http_request' && (row.tools_count !== toolsCount || row.model !== target.model_id || row.initial_url !== target.initial_url || row.session_id !== session)) throw new Error('native_opencode_policy_target_changed')
         const { correlation: _nonce, ...publicRow } = row
         trace('native_policy', { server, identity_basis: row.state === 'inactive' ? 'previously_verified_identity' : 'live_process_observation', row: publicRow })
       } catch { fail() }

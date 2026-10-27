@@ -82,6 +82,7 @@ export async function buildSWARuntime(output) {
   }
   const entries = {
     'host.cjs': join(runtime, 'src', 'host-entry.ts'),
+    'project-shell-entry.cjs': join(runtime, 'src', 'project-shell-entry.ts'),
     'client.cjs': join(runtime, 'src', 'client.ts'),
     'controller-helper.cjs': join(runtime, 'src', 'controller-helper.ts'),
     'native-cli-entry.cjs': join(runtime, 'src', 'native-cli-entry.ts'),
@@ -121,19 +122,20 @@ export async function buildSWARuntime(output) {
     for (const input of Object.keys(result.metafile.inputs)) inputs.add(input)
     await writeFile(join(output, name + '.mjs.metafile.json'), JSON.stringify(result.metafile, null, 2) + '\n', { flag: 'wx' })
   }
-  for (const extensionName of ['pi-question-extension', 'pi-collaboration-extension']) {
+  for (const extensionName of ['pi-question-extension', 'pi-collaboration-extension', 'pi-project-extension']) {
   const questionExtension = await build({ ...common, entryPoints: [join(runtime, 'src', extensionName + '.ts')], outfile: join(output, extensionName + '.mjs'), format: 'esm',
     banner: { js: 'import { createRequire as swaCreateRequire } from "node:module"; const require = swaCreateRequire(import.meta.url);' },
-    define: { 'process.env.NODE_ENV': '"production"' }, external: [...common.external, '@earendil-works/pi-ai'] })
+    define: { 'process.env.NODE_ENV': '"production"' }, external: [...common.external, '@earendil-works/pi-ai', '@earendil-works/pi-coding-agent'] })
   for (const input of Object.keys(questionExtension.metafile.inputs)) inputs.add(input)
   await writeFile(join(output, extensionName + '.mjs.metafile.json'), JSON.stringify(questionExtension.metafile, null, 2) + '\n', { flag: 'wx' })
   }
   const policyDirectory = join(output, 'opencode-policy')
   await mkdir(policyDirectory)
-  const policy = await build({ ...common, entryPoints: [join(runtime, 'src/opencode-policy-plugin.ts')], outfile: join(policyDirectory, 'server.js'), format: 'esm', banner: {}, define: { 'process.env.NODE_ENV': '"production"' } })
+  const policy = await build({ ...common, entryPoints: [join(runtime, 'src/opencode-policy-plugin.ts')], outfile: join(policyDirectory, 'server.js'), format: 'esm', banner: { js: 'import { createRequire as swaCreateRequire } from "node:module"; const require = swaCreateRequire(import.meta.url);' }, define: { 'process.env.NODE_ENV': '"production"' } })
   for (const input of Object.keys(policy.metafile.inputs)) inputs.add(input)
   await writeFile(join(policyDirectory, 'server.js.metafile.json'), JSON.stringify(policy.metafile, null, 2) + '\n', { flag: 'wx' })
   await writeFile(join(policyDirectory, 'package.json'), JSON.stringify({ name: 'swa-opencode-policy', version: '1.0.0', type: 'module', exports: './server.js' }) + '\n', { flag: 'wx' })
+  await writeFile(join(output, 'project-shell'), '#!/bin/sh\nSWA_RUNTIME_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)" || exit 1\nexec "$SWA_RUNTIME_DIR/../node/node" "$SWA_RUNTIME_DIR/project-shell-entry.cjs" "$@"\n', { flag: 'wx', mode: 0o755 })
   const pkg = JSON.parse(await readFile(join(output, 'package.json'), 'utf8'))
   if (pkg.type !== 'commonjs') throw new Error('The deployed runtime must preserve CommonJS child entry semantics')
   await copyInlinedLicenses(output, inputs)

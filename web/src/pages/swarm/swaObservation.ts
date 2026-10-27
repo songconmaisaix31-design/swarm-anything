@@ -68,7 +68,7 @@ export function readSwaExecution(reply: SwaEnvelope, projectID: string, controll
   if (scope.project_id !== projectID || scope.controller !== controller || scope.run_id !== runID || dispatch.runId !== runID || dispatch.id !== dispatchID) throw new Error('Worker 执行观察不属于当前项目、Run 或 Dispatch');
   if (native.execution === undefined) return null;
   const execution = object(native.execution), selected = object(execution.selection), source = object(native.source);
-  const original = object(source.selection), account = object(object(original.native_launch).account);
+  const original = object(source.selection), launchPolicy = object(original.native_launch), account = object(launchPolicy.account);
   if (source.availability !== 'observed' || selected.agent !== original.agent_id || selected.adapter !== original.adapter || selected.version !== original.version || selected.execution_mode !== original.execution_mode || selected.model !== original.model || selected.provider !== original.provider || selected.account_source !== account.kind) throw new Error('Worker 实际选择与原生来源不一致');
   const selection = {
     agent: text(selected.agent, 'selection.agent'), adapter: text(selected.adapter, 'selection.adapter'), version: text(selected.version, 'selection.version'),
@@ -91,8 +91,21 @@ export function readSwaExecution(reply: SwaEnvelope, projectID: string, controll
   if (new Set(models.map(model => model.id)).size !== models.length) throw new Error('模型目录含重复身份');
   const observedAt = catalog.observed_at === undefined ? null : text(catalog.observed_at, 'model_catalog.observed_at');
   if (observedAt && !Number.isFinite(Date.parse(observedAt))) throw new Error('模型目录的观察时间不可解析');
+  let tools: { mode: 'disabled' | 'questions-only' | 'collaboration' | 'project'; allowed: string[] } | null = null;
+  if (launchPolicy.tools !== undefined) {
+    const policy = object(launchPolicy.tools), mode = choice(policy.mode, ['disabled', 'questions-only', 'collaboration', 'project'], 'tools.mode');
+    if (mode === 'disabled') {
+      if (policy.allowed !== undefined) throw new Error('关闭工具的原启动记录包含未知工具列表');
+      tools = { mode, allowed: [] };
+    } else {
+      if (!Array.isArray(policy.allowed) || !policy.allowed.length) throw new Error('原启动工具列表缺失');
+      const allowed = policy.allowed.map(tool => text(tool, 'tools.allowed'));
+      if (new Set(allowed).size !== allowed.length) throw new Error('原启动工具列表含重复身份');
+      tools = { mode, allowed };
+    }
+  }
   return {
-    selection, delivery, resume,
+    selection, delivery, resume, tools,
     launch: readObservation(execution.launch), control: readObservation(execution.control), result: readObservation(execution.result), authenticated: readObservation(execution.authenticated),
     catalog: { origin: choice(catalog.origin, ['live-session', 'probe', 'configured', 'unknown'], 'model_catalog.origin'), availability: choice(catalog.availability, ['verified', 'unverified'], 'model_catalog.availability'), models, observedAt },
   };
@@ -105,7 +118,7 @@ export function readSwaCapabilityDetails(reply: SwaEnvelope) {
     const agent = object(value), control = object(agent.control), configured = object(agent.configured), installed = object(agent.installed);
     const stages = [
       ['注册', agent.registered], ['安装', agent.installed], ['配置', agent.configured], ['账号认证', agent.authenticated], ['可启动', agent.launchable],
-      ['追加指令', control.send], ['读取', control.read], ['停止', control.stop], ['会话恢复', control.resume], ['图片', control.images], ['切换模型', control.model_switch], ['工具限制', control.tools], ['原生问答', control.questions], ['自主委派', control.delegation],
+      ['追加指令', control.send], ['读取', control.read], ['停止', control.stop], ['会话恢复', control.resume], ['图片', control.images], ['切换模型', control.model_switch], ['工具限制', control.tools], ['原生问答', control.questions], ['自主委派', control.delegation], ['项目开发', control.development],
     ].map(([label, observation]) => ({ label: String(label), observation: observation === undefined ? null : readObservation(observation) }));
     let catalog: { origin: string; verified: boolean; models: { id: string; label: string; provider: string | null }[] } | null = null;
     if (agent.model_catalog !== undefined) {
@@ -130,6 +143,7 @@ export function readSwaAgents(reply: SwaEnvelope) {
       launchable: readObservation(agent.launchable), start: readObservation(control.start), read: readObservation(control.read), tools: readObservation(control.tools),
       questions: control.questions === undefined ? null : readObservation(control.questions),
       delegation: control.delegation === undefined ? null : readObservation(control.delegation),
+      development: control.development === undefined ? null : readObservation(control.development),
     };
   });
   if (new Set(agents.map(agent => agent.id)).size !== agents.length) throw new Error('能力清单包含重复 Agent，保持未确认');
@@ -142,6 +156,14 @@ export function swaDelegationBlock(agent: SwaAgent | undefined, settings: Projec
   if (!settings.allowed_tools.includes('swa_delegate')) return '当前项目未允许自主委派，请在项目权限中明确启用';
   if (!settings.allow_agent_control || !settings.allowed_actions.includes('start') || !settings.allowed_actions.includes('send')) return '自主委派需要当前项目的 Agent 控制、启动和发送许可';
   if (!agent || agent.delegation?.status !== 'available') return agent?.delegation?.reason ?? '当前 Agent 未声明自主委派能力';
+  return swaStartRequestBlock(agent, settings);
+}
+
+export function swaDevelopmentBlock(agent: SwaAgent | undefined, settings: ProjectSettings): string | null {
+  if (!settings.allowed_tools.includes('project_shell')) return '当前项目未允许开发命令，请在项目权限中明确启用';
+  if (!settings.allow_directory || !settings.allowed_subdirs.some(path => path.trim())) return '项目开发需要允许目录访问并明确填写获准的项目路径';
+  if (!settings.allow_agent_control || !['start', 'send', 'read_context'].every(action => settings.allowed_actions.includes(action))) return '项目开发需要 Agent 控制、启动、发送和读取上下文许可';
+  if (!agent || agent.development?.status !== 'available') return agent?.development?.reason ?? '当前 Agent 未确认项目开发能力';
   return swaStartRequestBlock(agent, settings);
 }
 

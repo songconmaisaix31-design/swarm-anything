@@ -1,17 +1,29 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync, writeSync } from 'node:fs'
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { join } from 'node:path'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { join, resolve } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
+import { RuntimeClient } from '../../../third_party/orca-v1.4.230/src/cli/runtime/client'
+import { readInjectedAgentSessionId, ORCA_AGENT_SESSION_SPAWN_TOKEN_ENV } from '../../../third_party/orca-v1.4.230/src/shared/agent-session-caller-env'
+import { openCodeProjectInputSchema, projectToolAuthorizationSchema, projectToolOriginSchema } from './contracts'
+import { projectShellPolicyEnvironment, type ProjectShellPolicy } from './project-shell'
 
 const pluginId = 'swa.opencode.policy'
 const targets = { deepseek: { model: 'deepseek-v4-pro', base: 'https://api.deepseek.com', url: 'https://api.deepseek.com/chat/completions' }, stepfun: { model: 'step-3.5-flash', base: 'https://api.stepfun.com/v1', url: 'https://api.stepfun.com/v1/chat/completions' } } as const
-const optionsSchema = z.strictObject({ root: z.string().min(1), correlation: z.string().regex(/^[a-f0-9]{64}$/), provider: z.enum(['deepseek', 'stepfun']), source: z.string().min(1), sources: z.array(z.strictObject({ path: z.string(), version: z.string() })).min(1), absent_sources: z.array(z.string()) })
+const sourceSchema = z.strictObject({ path: z.string().min(1), version: z.string().min(1) })
+const projectToolsSchema = z.strictObject({ mode: z.literal('project'), native_contract: z.literal('opencode-cli-2.0.31'), allowed: z.tuple([z.literal('shell')]), shell: sourceSchema })
+const optionsSchema = z.strictObject({ root: z.string().min(1), correlation: z.string().regex(/^[a-f0-9]{64}$/), provider: z.enum(['deepseek', 'stepfun']), source: z.string().min(1), sources: z.array(sourceSchema).min(1), absent_sources: z.array(z.string()), project_shell: projectToolsSchema.optional() })
 const inventorySchema = z.array(z.object({ id: z.string(), state: z.object({ status: z.literal('active') }) }))
+export const openCodeShellInputSchema = openCodeProjectInputSchema
+type ToolContext = { sessionID: string; agent: string; messageID: string; id: string; signal: AbortSignal }
+type NativeTool = { id: string; name: string; execute(input: unknown, context: ToolContext): Promise<unknown> }
 type Context = {
   options: unknown
   location: { directory: string }
   plugin: { list(): Promise<unknown> }
-  tool: { list(): Promise<readonly unknown[]> }
+  tool: { list(): Promise<readonly unknown[]>; transform(callback: (editor: { update(id: string, callback: (tool: NativeTool) => void): void }) => void): Promise<unknown>; hook(name: string, callback: (event: unknown) => Promise<void> | void): Promise<unknown> }
+  shell: { hook(name: 'create.before', callback: (event: { command: string; cwd: string; timeout: number; shell: string; env: Record<string, string | undefined> }) => Promise<void> | void): Promise<unknown> }
   agent: { list(): Promise<unknown> }
   session: { get(input: { sessionID: string }): Promise<unknown>; hook(name: string, callback: (event: unknown) => Promise<void> | void): Promise<unknown> }
   integration: { connection: { active(id: string): Promise<unknown>; resolve(connection: unknown): Promise<unknown> } }
@@ -60,8 +72,9 @@ export default {
   id: pluginId,
   async setup(ctx: Context) {
     const options = optionsSchema.parse(ctx.options), root = realpathSync(options.root)
+    const project = options.project_shell !== undefined, toolsCount = project ? 1 : 0
     const target = targets[options.provider], modelSchema = z.object({ id: z.literal(target.model), providerID: z.literal(options.provider) })
-    const expectedIds = ['opencode.provider.opencode', 'opencode.config.policy', 'opencode.agent', 'opencode.models.dev', 'opencode.config.agent', 'opencode.config.compaction', ...(options.provider === 'stepfun' ? ['opencode.config.provider'] : []), pluginId].sort()
+    const expectedIds = ['opencode.provider.opencode', 'opencode.config.policy', 'opencode.agent', 'opencode.models.dev', 'opencode.config.agent', 'opencode.config.compaction', ...(options.provider === 'stepfun' ? ['opencode.config.provider'] : []), ...(project ? ['opencode.tool.shell'] : []), pluginId].sort()
     if (!equalPath(root, options.root)) throw new Error('swa_opencode_private_root_changed')
     const authPath = join(root, 'data/opencode/auth.json'), configPath = join(root, 'config/opencode/opencode.json')
     const keyPath = join(root, 'swa-input-key.json')
@@ -101,12 +114,13 @@ export default {
       checking = 'plugin_ids'
       if (JSON.stringify(plugins.map(row => row.id).sort()) !== JSON.stringify(expectedIds)) throw new Error('swa_opencode_plugin_inventory_changed')
       checking = 'tool_list'
-      if ((await ctx.tool.list()).length) throw new Error('swa_opencode_tools_available')
+      const tools = z.array(z.object({ id: z.string(), name: z.string(), options: z.object({ codemode: z.boolean().optional() }).optional() })).parse(await ctx.tool.list())
+      if (project ? tools.length !== 1 || tools[0]!.id !== 'shell' || tools[0]!.name !== 'shell' || tools[0]!.options?.codemode !== false : tools.length !== 0) throw new Error('swa_opencode_tools_available')
       checking = 'agent_permissions'
       const agents = z.object({ location: z.object({ directory: z.string() }), data: z.array(z.object({ id: z.string(), permissions: permissionSchema })) }).parse(await ctx.agent.list())
       if (!equalPath(realpathSync(agents.location.directory), realpathSync(ctx.location.directory)) || agents.data.length !== 1 || agents.data[0]!.id !== 'build') throw new Error('swa_opencode_agent_selection_changed')
-      const last = agents.data[0]!.permissions.at(-1)
-      if (last?.action !== '*' || last.resource !== '*' || last.effect !== 'deny') throw new Error('swa_opencode_agent_permissions_changed')
+      const expectedPermissions = [{ action: '*', resource: '*', effect: 'deny' }, ...(project ? [{ action: 'shell', resource: '*', effect: 'allow' }] : [])]
+      if (!isDeepStrictEqual(agents.data[0]!.permissions.slice(-expectedPermissions.length), expectedPermissions)) throw new Error('swa_opencode_agent_permissions_changed')
       checking = 'connection_active'
       const connection = await ctx.integration.connection.active(options.provider)
       if (connection === undefined) throw new Error('swa_opencode_native_credential_missing')
@@ -128,6 +142,43 @@ export default {
       if (session.permissions?.some(rule => rule.effect !== 'deny')) throw new Error('swa_opencode_session_permission_changed')
       return { scope, plugins }
     }
+    const shellInvocation = new AsyncLocalStorage<{ command: string; cwd: string; policy: ProjectShellPolicy; used: boolean; signal: AbortSignal; expiresAt?: number }>()
+    await ctx.shell.hook('create.before', event => {
+      filesCurrent()
+      const current = shellInvocation.getStore()
+      if (!project || !current || current.used || current.signal.aborted || current.expiresAt !== undefined && current.expiresAt <= Date.now() || event.command !== current.command || realpathSync(resolve(ctx.location.directory, event.cwd)) !== current.cwd) throw new Error('swa_opencode_unbound_shell_denied')
+      current.used = true
+      event.shell = options.project_shell!.shell.path
+      event.cwd = current.cwd
+      event.env = { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', [projectShellPolicyEnvironment]: JSON.stringify(current.policy) }
+    })
+    await ctx.tool.hook('execute.before', async event => {
+      await guardSession(event)
+      z.object({ tool: z.literal('shell'), agent: z.literal('build'), input: openCodeShellInputSchema }).parse(event)
+      if (!project) throw new Error('swa_opencode_tool_denied')
+    })
+    if (project) {
+      await ctx.tool.transform(editor => editor.update('shell', tool => {
+        const execute = tool.execute
+        tool.execute = async (rawInput, context) => {
+          await guardSession(context)
+          const input = openCodeShellInputSchema.parse(rawInput)
+          if (!isDeepStrictEqual(input, rawInput) || context.agent !== 'build') throw new Error('swa_opencode_tool_input_changed')
+          const origin = projectToolOriginSchema.parse({ agent: 'opencode', native_session_id: context.sessionID, message_id: context.messageID, tool_call_id: context.id })
+          const sessionId = readInjectedAgentSessionId(), proof = process.env[ORCA_AGENT_SESSION_SPAWN_TOKEN_ENV]
+          if (!sessionId || !proof || context.signal.aborted) throw new Error('swa_opencode_tool_identity_unavailable')
+          const cwd = realpathSync(resolve(ctx.location.directory, input.workdir ?? '.'))
+          const client = new RuntimeClient(undefined, undefined, undefined, undefined, undefined, undefined, { proof })
+          const result = projectToolAuthorizationSchema.parse((await client.call('swa.projectToolAuthorize', { input, cwd }, { swaProjectToolOrigin: origin, signal: context.signal })).result)
+          const expiresAt = result.grant_expires_at === undefined ? undefined : Date.parse(result.grant_expires_at)
+          if (result.agent_session_id !== sessionId || !isDeepStrictEqual(result.origin, origin) || context.signal.aborted || expiresAt !== undefined && (!Number.isFinite(expiresAt) || expiresAt <= Date.now())) throw new Error('swa_opencode_tool_authorization_changed')
+          const current = { command: input.command, cwd, policy: result.policy, used: false, signal: context.signal, expiresAt }
+          const output = await shellInvocation.run(current, () => execute(rawInput, context))
+          if (!current.used) throw new Error('swa_opencode_shell_hook_missing')
+          return output
+        }
+      }))
+    }
     await ctx.session.hook('prompt', async event => {
       const { scope } = await guardSession(event)
       const value = z.object({ messageID: z.string().startsWith('msg_'), prompt: z.object({ text: z.string(), files: z.array(z.never()).optional(), agents: z.array(z.never()).optional(), skills: z.array(z.never()).optional() }), metadata: z.record(z.string(), z.unknown()).optional() }).parse(event)
@@ -145,7 +196,7 @@ export default {
     await ctx.session.hook('context', async event => {
       const { scope } = await guardSession(event)
       const context = z.object({ model: modelSchema, agent: z.literal('build'), tools: z.record(z.string(), z.unknown()) }).parse(event)
-      if (Object.keys(context.tools).length) throw new Error('swa_opencode_request_tools_available')
+      if (!isDeepStrictEqual(Object.keys(context.tools).sort(), project ? ['shell'] : [])) throw new Error('swa_opencode_request_tools_available')
       // context.messages 可能与原生历史共享对象；先复制模型输入，再移除桥接元数据。
       const messages = structuredClone(z.object({ messages: z.array(z.record(z.string(), z.unknown())) }).parse(event).messages)
       for (const message of messages) {
@@ -171,14 +222,15 @@ export default {
       if (request.method !== 'POST' || url.href !== target.url || request.headers.get('authorization') !== `Bearer ${key}`) throw new Error('swa_opencode_native_target_changed')
       const rawBody: unknown = await request.clone().json()
       const body = z.object({ model: z.literal(target.model), tools: z.array(z.unknown()).optional(), messages: z.array(z.object({ role: z.string(), content: z.unknown() })) }).parse(rawBody)
-      if (body.tools?.length) throw new Error('swa_opencode_http_tools_available')
+      const httpTools = z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string() }) })).parse(body.tools ?? [])
+      if (!isDeepStrictEqual(httpTools.map(tool => tool.function.name).sort(), project ? ['shell'] : [])) throw new Error('swa_opencode_http_tools_available')
       const serialized = JSON.stringify(rawBody)
       if (serialized.includes(inputPrefix) || serialized.includes('"swa_input"') || serialized.includes(inputKey)) throw new Error('swa_opencode_http_input_bridge_leaked')
       const actualUsers = body.messages.filter(message => message.role === 'user').map(message => typeof message.content === 'string' ? message.content : z.array(z.object({ type: z.literal('text'), text: z.string() })).parse(message.content).map(part => part.text).join(''))
       const expectedUsers = contextUsers.get(scope.sessionID)
       if (JSON.stringify(actualUsers) !== JSON.stringify(expectedUsers)) throw new Error('swa_opencode_http_input_changed')
       filesCurrent()
-      emit('http_request', { session_id: scope.sessionID, model: body.model, tools_count: 0, initial_url: url.href, monotonic_ms: performance.now() })
+      emit('http_request', { session_id: scope.sessionID, model: body.model, tools_count: toolsCount, initial_url: url.href, monotonic_ms: performance.now() })
     })
     await ctx.session.hook('http.response', async event => {
       const payload = z.object({ sessionID: z.string(), response: z.instanceof(Response) }).parse(event)
@@ -195,7 +247,7 @@ export default {
         if (z.object({ type: z.string() }).parse(event).type !== 'plugin.updated') continue
         const plugins = await inventory()
         active = true
-        emit('active', { plugins, tools_count: 0, directory: ctx.location.directory, roots: { home: process.env.HOME, data: process.env.XDG_DATA_HOME, cache: process.env.XDG_CACHE_HOME, config: process.env.XDG_CONFIG_HOME, state: process.env.XDG_STATE_HOME, programdata: process.env.ProgramData, temp: process.env.TEMP, database: process.env.OPENCODE_DB } })
+        emit('active', { plugins, tools_count: toolsCount, directory: ctx.location.directory, roots: { home: process.env.HOME, data: process.env.XDG_DATA_HOME, cache: process.env.XDG_CACHE_HOME, config: process.env.XDG_CONFIG_HOME, state: process.env.XDG_STATE_HOME, programdata: process.env.ProgramData, temp: process.env.TEMP, database: process.env.OPENCODE_DB } })
       }
       if (!controller.signal.aborted) throw new Error('swa_opencode_policy_event_stream_ended')
     })().catch(error => {

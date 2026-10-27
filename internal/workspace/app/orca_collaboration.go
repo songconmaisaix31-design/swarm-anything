@@ -32,6 +32,9 @@ func validateOrcaCollaborationCommand(c OrcaCommand) error {
 		if role.DelegationMode != "" && role.DelegationMode != "disabled" && role.DelegationMode != "native" || role.DelegationMode == "native" && role.DefaultAgent != "pi" {
 			return invalid("role delegation mode requires disabled or native with the Pi default Agent")
 		}
+		if role.DevelopmentMode != "" && role.DevelopmentMode != "disabled" && role.DevelopmentMode != "project" || role.DevelopmentMode == "project" && role.DefaultAgent != "pi" && role.DefaultAgent != "opencode" {
+			return invalid("role development mode requires disabled or project with Pi or OpenCode")
+		}
 		for _, values := range [][]string{role.Skills, role.Knowledge} {
 			seen := map[string]bool{}
 			for _, value := range values {
