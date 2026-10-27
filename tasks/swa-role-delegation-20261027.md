@@ -50,3 +50,9 @@ Pi 官方 CLI 离线 `--list-models stepfun` 实际退出 0，当前独立来源
 Pi 停止路径原先把当前项目设置与旧启动记录全对象比较，会阻断撤工具许可后的已授权停止。现在仅允许设置变化，继续固定项目 ID/root、完整 Run scope、原 stop 父子回执和所属进程身份；11 项问答/委派/停止规则通过。独立 Reviewer 接受本批最终源码及实际服务 owner。完整构建、新安装、真实模型、实际同服务浏览器与 N>3 均尚未执行。
 
 每次失败先报告最小复现、根因证据和局部结果，再启动下一次完整构建；完整构建使用已提交、干净且冻结的源码。
+
+`6406c4b9cda0f91f2268c12989ca07725f06ed2a` 已提交推送；combined 完整构建、归档、外部解包和新安装均退出 0。安装内 Node 24.21.0、依赖闭包、原生 PTY、文件观察及提供方隔离通过；D12 12/12，通过同安装 HTTP、Web 静态资源和服务进程正常退出检查。原件在 `.verification/swa-linux/evidence/6406c4b9cda0f91f2268c12989ca07725f06ed2a-combined-role-dev-01/`。
+
+真实角色验收 `/workspace/swa-role-acceptance-6406-01` 在首条只读 capabilities 的 OpenCode installed 断言失败；configured/enabled 均 available，installed 为 unknown。尚未调用 role.create、worker.start 或模型。两个 Controller 关闭、Grant 撤销与服务退出均成功。最小复现 `/workspace/swa-opencode-version-probe-6406-01/result.json` 使用官方 Linux CLI 和安装物版本专用环境：175 毫秒内正常 close/code 0，stdout 为 `opencode v2.0.31`，stderr 为 INFO cli starting。根因为版本环境继承了产品固定 `OPENCODE_PRINT_LOGS=1`，而版本探针要求 stderr 为空。
+
+修复仅在版本专用环境删除该日志变量，Worker 日志及严格安装状态断言保留。固定官方源码确认仅值 `1` 开启 stderr 日志；安装物原 helper 加相同单键删除的局部真实复验 153 毫秒内 close/code 0，stdout 版本准确、stderr 空，原 Worker 环境仍为 `1`。该结果尚未经过新产品构建。独立源审、`pnpm typecheck:swa` 和 `git diff --check` 均通过；原件为上述目录的 `result-without-stderr-logging.json` 及 `.verification/role-delegation-20261027/opencode-version-typecheck.log`。

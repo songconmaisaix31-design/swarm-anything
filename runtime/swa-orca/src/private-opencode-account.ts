@@ -102,7 +102,10 @@ export async function preparePrivateOpenCodeVersionEnvironment(root: string, inh
   writePrivateJSON(join(root, 'config/opencode/opencode.json'), {
     update: 'disable', share: 'disabled', warming: false, snapshots: false, compaction: { auto: false }, permissions: [deny], plugins: ['-*']
   })
-  return privateOpenCodeEnvironment(root, inherited)
+  const env: Record<string, string> = privateOpenCodeEnvironment(root, inherited)
+  // 官方 --version 也记录 cli starting；版本探测只读标准输出，Worker 仍保留原生日志。
+  delete env.OPENCODE_PRINT_LOGS
+  return env
 }
 
 export async function createPrivateOpenCodeRoot(projectId: string) {
