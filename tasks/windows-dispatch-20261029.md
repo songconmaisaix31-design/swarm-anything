@@ -17,3 +17,4 @@
 - `local-worker-start.ts` 在已确定的 Structured 模式下使用 ACP 会话自己的模型应用与核验；只有终端模式执行 TUI 启动探测。先向实际 host 查询指定工作树的 Structured 支持，保持原生适配器版本、模型、账号和工具权限检查。
 - 写入范围增加 `third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts`。执行完整 strict TypeScript 和 Windows 包构建，并以新独立安装真实运行模型验证，不将通过静态检查当作模型启动成功。
 - 独立后台在自己的设置库中启用 Structured Pi/OpenCode 路由，并在派发预留之前检查实际工作树支持；不支持时立即拒绝。`host-entry.ts` 和 `native-methods.ts` 纳入写入范围。真实 `fe2de7ea` 安装验证确认：仅修改模型预检仍被默认终端路由阻塞。
+- 独立后台的 `nativeChatPermissionMode` 固定为 `ask`，保留禁用工具策略。`1e72dd4e` 产生真实 Structured Dispatch `ctx_611df4a14e0b`，实际启动因默认 `full-access` 与受限策略冲突被拒绝；该错误不能通过移除受限检查解决。
