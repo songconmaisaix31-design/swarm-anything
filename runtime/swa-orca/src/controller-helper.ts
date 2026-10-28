@@ -36,7 +36,7 @@ async function execute(action: string, requestId: string, invocation?: Invocatio
     case 'worker.start': {
       if (!invocation.input || !invocation.selection || invocation.selection.agent_id !== c.agent || invocation.selection.model !== c.model) throw new Error('selected_native_worker_input_required')
       return call('orchestration.workerStart', {
-        from: controller, run, parent: invocation.scope.root_task_id, worktree: 'current', name: c.name,
+        from: controller, run, parent: invocation.scope.root_task_id, worktree: 'current',
         taskTitle: c.name, agent: invocation.selection.agent_id, model: invocation.selection.model, timeoutMs: 90_000,
         spec: `${invocation.input.text}\n\n固定公开上下文：\n${JSON.stringify(invocation.scope.context)}`
       }, `${requestId}/native`)
