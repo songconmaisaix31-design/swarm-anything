@@ -10,3 +10,9 @@
 - 验证：完整 strict TypeScript、架构检查、完整 Windows 候选构建和真实独立安装；通过真实 Swarm CLI 创建控制端、任务、分析 Worker，取得实际输出并停止、释放、获取成果和关闭。验证中发现的新错误保留原结果并继续定位。
 - 运行范围：固定公开 `swarm-anything` main 源码，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；没有模型结果前不记为调用成功。
 - 旧失败请求和私有数据保留；不自动重放未知请求，不修改已安装的旧候选或其数据库。
+
+## Structured 模型选择
+
+- 安装后的 `89a726a` 已通过工作树参数校验；真实派发请求 `ddb8c091-8a71-46a4-8300-e29c50611668` 随后被仅支持旧 TUI 版本的模型探测拒绝，Worker 列表为空。
+- `local-worker-start.ts` 在已确定的 Structured 模式下使用 ACP 会话自己的模型应用与核验；只有终端模式执行 TUI 启动探测。先向实际 host 查询指定工作树的 Structured 支持，保持原生适配器版本、模型、账号和工具权限检查。
+- 写入范围增加 `third_party/orca-v1.4.230/src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts`。执行完整 strict TypeScript 和 Windows 包构建，并以新独立安装真实运行模型验证，不将通过静态检查当作模型启动成功。

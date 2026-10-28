@@ -78,11 +78,20 @@ export async function startLocalWorker(args: {
       params.from,
       callerSession
     )
-    openCodeModelLaunchSupported = await probeWorkerOpenCodeModelLaunchSupport(
-      runtime,
-      launchParams,
-      { worktree: requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree }
+    const modelWorktree = await runtime.showManagedTerminalWorkspace(
+      requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree
     )
+    const modelMode = await resolveWorkerStartModeOnHost(
+      runtime,
+      args.mode,
+      modelWorktree.id,
+      'opencode'
+    )
+    // Structured 模式由 ACP 会话应用并核验 model；终端模式继续探测 TUI 启动能力。
+    openCodeModelLaunchSupported = modelMode.mode === 'structured'
+      || await probeWorkerOpenCodeModelLaunchSupport(runtime, launchParams, {
+        worktree: requestedWorktree === 'current' ? `id:${callerWorkspaceId}` : requestedWorktree
+      })
   }
 
   const { agent, launch } = prepareLocalWorkerStart({
