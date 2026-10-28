@@ -209,7 +209,12 @@ export const SWA_METHODS = [
       const selected = await resolveSelection(context.runtime, invocation.project.id, c)
       if (!invocation.selection || !isDeepStrictEqual(selected, invocation.selection)) return fail('request_mismatch', 'The exact selected Agent configuration changed before native execution')
     }
-    if (c.action === 'worker.start') await admitWorkerResources()
+    if (c.action === 'worker.start') {
+      if (c.agent !== 'pi' && c.agent !== 'opencode') return fail('unsupported_capability', 'The selected Agent has no approved structured launch policy')
+      const support = await context.runtime.getStructuredAgentSessionCreateSupport(`id:${owner.worktree_id}`, c.agent)
+      if (!support.supported) return fail('unsupported_capability', 'The selected workspace cannot launch the approved structured Agent')
+      await admitWorkerResources()
+    }
     const requestId = reserve(context, invocation, { project_id: invocation.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: invocation.selection, child_request: `${c.request_id}/native`, stage: 'helper-input' })
     return effect(async () => ({ project_id: invocation.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: invocation.selection, invocation: { ...invocation, scope }, child_request: `${requestId}/native`, native: (await helperCall(context.runtime, c.controller!, requestId, c.action, { ...invocation, scope })).result }))
   } }),
