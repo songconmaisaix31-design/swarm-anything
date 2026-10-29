@@ -49,6 +49,16 @@
 真实限制：`task result` 与 `task complete` 首次调用缺少 `--task` 与 `--result-file` 参数而被拒绝，随后控制端已关闭，未取得完整成果导出；两名 Worker 的最终正文与 token 用量由各自原生 OpenCode SQLite 只读读取，原件位于 `roles-run/worker-A-request.json`、`worker-B-request.json` 与 `service-discovery/opencode/`。本次授权由本机操作者会话建立，凭据未落盘。
 
 本轮 `swa serve` 已结束，端口 64811 不再监听，无残留 `swa`/`server` 进程。
+
+## 使用路径测量与性能尝试
+
+在候选 `b5b2a8aa` 上按真实使用路径测量：`swa status` 0.56 秒；`swa capabilities` 轻载 2.79/2.82/2.86 秒，随后同一机器负载升高时串行实现为 4.92/4.40/4.50 秒；本机 10 个已安装 CLI 的 `--version` 串行合计 2.49 秒；主产品 `dist/astrocyte.exe` 首次可响应 5.06 秒、同数据根再次启动 3.7 秒；`/local-agents` 9 ms、`/local-projects/registered` 16 ms、其余核心读取 0–2 ms，未出现 5xx。`/source-collections` 的 403 是未选择来源范围的明确拒绝。
+
+曾把版本探测改为最多 4 个并发子进程（`a938a578`）。同一机器连续三次能力发现为 4.81/5.04/6.71 秒，串行实现为 4.50/4.40/4.92 秒，并发没有带来可测收益，还增加了子进程并发；源码已按文件编辑恢复到 `b5b2a8aa` 的串行实现（`851cac46`），严格 TypeScript 复验通过，并发构建候选已删除。一次能力发现后服务短暂无响应的现象未能在同一候选上复现，回退后三次调用后 `/auth/session` 均正常。
+
+操作限制：服务被强制终止后，其数据根在下一次启动时按未知归属拒绝（退出 6），需要新的私有数据根；这是既定的不静默恢复行为。
+
+性能结论：当前发现耗时主要来自外部 CLI 进程启动，串行已是安全下限；在不缓存版本（要求每次读取真实版本）的前提下没有可验证的软件侧优化空间。
 - 运行范围：固定公开 `swarm-anything` main 源码，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；没有模型结果前不记为调用成功。
 - 旧失败请求和私有数据保留；不自动重放未知请求，不修改已安装的旧候选或其数据库。
 
