@@ -21,7 +21,7 @@
 
 ## 安装与实际结果
 
-四项修复分别提交为 `89a726a095caf4572ccdd8694128058d60a9d2e4`、`fe2de7eaf92031badcabc40a7a6e2a0592c65182`、`1e72dd4eceec4feede8d10d439f1207ad09117ec`、`9ba9530073f5ec28443d808bb8e2aa8360a18de3`。当前已运行安装位于 `C:/Users/DW/AppData/Local/SwarmCli/candidates/9ba95300-windows-20261029`，版本为 `9ba95300`；后继文档提交不改变此安装来源。没有修改 PATH、原安装、其他工作树、原服务或用户账号。
+前一批四项修复分别提交为 `89a726a095caf4572ccdd8694128058d60a9d2e4`、`fe2de7eaf92031badcabc40a7a6e2a0592c65182`、`1e72dd4eceec4feede8d10d439f1207ad09117ec`、`9ba9530073f5ec28443d808bb8e2aa8360a18de3`。本批源码为 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75`，已安装至 `C:/Users/DW/AppData/Local/SwarmCli/candidates/c8bc7a67-windows-20261029`。原 `9ba95300-windows-20261029` 安装和记录保留，没有修改 PATH、原安装、其他工作树、原服务或用户账号。
 
 | 检查 | 实际结果 |
 | --- | --- |
@@ -44,10 +44,14 @@
 
 2026-10-29 后续授权：用户要求继续修复剩余 bug，保持当前分支。下一批写域为 `runtime/swa-orca/src/native-methods.ts`、必要的同模块回执/生命周期消费者、`cmd/swa` 的服务 Job 所属逻辑、对应真实验证脚本和本任务记录。先由 Swarm CLI Reviewer 核对测试计划；只允许依据持久原生状态证明启动前失败或实际进程退出，不以空 resource、过期 PID 或缺少 Job 句柄单独认定安全。正常、失败、活跃拒绝、未知保留及实际服务重启均须验证。
 
-- 无资源失败 Worker 的关闭检查现要求原生创建入口给出明确 `not_started`，并核对同 runtime、失败阶段、空所属资源、复用 worktree、原生与外层持久回执和在途请求。旧记录缺失此证明时继续拒绝；安装后的真实拒绝回执验证尚未完成。
+- 无资源失败 Worker 的关闭检查要求原生创建入口给出明确 `not_started`，并核对同 runtime、失败阶段、空所属资源、复用 worktree、原生与外层持久回执和在途请求。实际 `ctx_b0f62ae22695` 在配置改变后、原生创建前被拒绝，父子持久回执均保留标记，控制端关闭请求 `e5efaca9-1d1c-4d15-bcb8-8f695cfc5aa3` 返回成功。旧记录缺失此证明时继续拒绝。
 - 前置校验与磁盘满过程中留下的 pending 请求保留，没有重发、删除或改写回执。原有失败数据目录保持不动。
-- Windows 服务记录保存实际 OS Session。只有原 serve/daemon 身份均确认退出、同一 Session 的原 Job 返回 `ERROR_FILE_NOT_FOUND`，才允许建立新 Job；存活、PID 复用、跨 Session、访问拒绝与旧记录缺失 Session 均保持拒绝。源码检查通过，安装后的同目录重启尚未完成。
+- Windows 服务记录保存实际 OS Session。只有原 serve/daemon 身份均确认退出、同一 Session 的原 Job 返回 `ERROR_FILE_NOT_FOUND`，才允许建立新 Job。同一安装已通过正常退出重启、活跃第二 serve 拒绝，以及真实 daemon 被终止、原 serve 退出后同目录恢复。PID 复用、跨 Session、访问拒绝与旧记录缺失 Session 的拒绝保持静态检查范围。
 - main 的 Go OpenCode 1.18.35 适配器与本 CLI 的 ACP 是不同路径；本机新版入口不兼容及完整 main 检查失败范围见另一个 Windows 任务。
 - 尚未验证 Pi 模型正向调用、全部异常资源回收、存活 Worker 的后续输入及全部安装验收。未合并到 main，未创建 Release。
 
-本批独立审查使用 Swarm CLI `run_380c0f90b555 / ctx_cb496d4b4ae3`，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭。计划已审核；补充原生 executor 的直接 JSON 持久化及父回执镜像来源后，代码审查解除静态阻断，仍要求实际安装验证。`go test -mod=readonly ./cmd/swa` 与完整 strict TypeScript 通过；真实运行结果继续写入本任务。
+本批独立审查先使用 Swarm CLI `run_380c0f90b555 / ctx_cb496d4b4ae3`，后由同一 `c8bc7a67` 安装的 `ctx_d771ca31e0d3` 审核准确源码和实际结果；客户端均为 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭。最终审查接受上述两项修复，保留未真实触发的失败分支。
+
+`go test -mod=readonly ./cmd/swa`、完整 strict TypeScript、完整 Windows 包构建和仓库外安装均退出 0；安装闭包为 28251 项。本批记录位于 CLI 工作树 `.verification/windows-dispatch-20261029/`，实际服务与审查证据位于 main 工作树 `.verification/windows-20261029/phase2-cli/`、`final2-cli/`、`final3-cli/`。
+
+`9ba95300` 长审查任务两名 Worker 均已停止和释放；其两个后续发送请求因原生安装/配置准入未证明而保持 unknown，未重放。完整成果导出超过既定 12 MiB 上限而失败；两个实际 journal 分别为 11,605,953 和 14,122,026 字节，原始 SQLite 与已有审查正文保留，不能宣称该长任务完成了完整导出。
