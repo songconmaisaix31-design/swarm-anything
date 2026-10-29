@@ -63,7 +63,10 @@ export function privateOpenCodeConfig(root: string, plugin: string, correlation:
     model: 'deepseek/deepseek-v4-pro', default_agent: 'build', update: 'disable', share: 'disabled',
     warming: false, compaction: { auto: false }, snapshots: false, permissions: [deny],
     agents: { build: { permissions: [deny] }, ...Object.fromEntries(['general', 'explore', 'title', 'summary', 'compaction'].map(id => [id, { disabled: true }])) },
-    plugins: ['-*', ...openCodeBuiltinPlugins.filter(id => !['opencode.provider.opencode', 'opencode.config.policy'].includes(id)), { package: plugin, options: { root, correlation, source: join(plugin, 'server.js'), sources: snapshot.sources, absent_sources: snapshot.absentSources } }]
+    plugins: ['-*', ...openCodeBuiltinPlugins.filter(id => !['opencode.provider.opencode', 'opencode.config.policy'].includes(id)), { package: plugin, options: {
+      root, correlation, source: join(plugin, 'server.js'), sources: snapshot.sources, absent_sources: snapshot.absentSources,
+      credential_source: { ...snapshot.policy.account.database_source, id: snapshot.policy.account.credential_id, updated_at: snapshot.policy.account.credential_updated_at }
+    } }]
   }
 }
 

@@ -16,7 +16,7 @@ import { readAgentSettings, type AgentSettingsSnapshot } from './agent-settings'
 import { parsePiModelOptionId } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-options'
 import { agentCapabilitiesSchema, agentSelectionSchema, registeredAgentSchema, type AgentSelection, type CapabilityRequirements } from './contracts'
 import { inspectNativePiPolicy } from './native-pi-policy'
-import { inspectNativeOpenCodePolicy, readOpenCodeCredential } from './native-opencode-policy'
+import { inspectNativeOpenCodePolicy, readOpenCodeCredential, readOpenCodeDatabaseIdentity } from './native-opencode-policy'
 import { parse as parseJSONC, type ParseError } from 'jsonc-parser'
 
 type Observation = { status: 'available' | 'unavailable' | 'unknown'; reason: string; source: string; checked_at?: string }
@@ -100,8 +100,7 @@ async function configuration(agent: string, snapshot: AgentSettingsSnapshot, req
     const file = join(sourceHome, '.local/share/opencode/opencode.db')
     let databaseVersion = 'absent', databaseKeyMatches = false
     try {
-      const info = await stat(file, { bigint: true })
-      databaseVersion = `${info.dev}:${info.ino}:${info.mtimeNs}:${info.size}`
+      databaseVersion = readOpenCodeDatabaseIdentity(file).version
       const credential = readOpenCodeCredential(file)
       databaseKeyMatches = credential.key === entry?.key
       databaseVersion += `;${credential.id};${credential.updatedAt}`

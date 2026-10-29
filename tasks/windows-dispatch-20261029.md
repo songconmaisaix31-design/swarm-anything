@@ -75,3 +75,17 @@
 两个失败 Worker 的 stop 返回 alreadySettled/failed 和 processAction=none，公开结果为 operation_unknown；controller close 返回 worker_release_unconfirmed。服务退出时报告资源未释放及 daemon busy。按本次回执核对 PID/创建时间/名称后，清理本次 helper 和 shell，daemon、OpenConsole 随之退出。原请求、SQLite、会话和原生未释放状态保留；进程退出不能代替释放确认。实际证据位于 main 的 `final7-cli/`。
 
 C 盘约剩 260 MiB；自动审批拒绝删除本次旧构建副本，目录保持。新增修复计划未审、新源码与新安装包均未产生。当前已安装源码仍为 `c8bc7a67`；本批实际正常链通过、历史异常和关闭问题未通过。
+
+## 后继修复计划
+
+2026-10-29 用户明确允许清理本轮可重新构建的旧副本，保留数据库与验证记录，并要求继续通过 Swarm CLI 完成服务关闭及剩余问题修复。主 Agent 延续单一实现轨道，分支和工作树保持；独立 Reviewer 使用 Swarm CLI、OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，工具关闭。
+
+基线为本分支 `d904d902` 与安装 `c8bc7a67`。写域：`runtime/swa-orca/src/native-methods.ts`、`host-entry.ts`、同模块 OpenCode 来源/成果消费者、对应真实验证入口和任务记录。第一项复用严格的确定未创建证明统一服务关闭检查；历史记录必须核对准确控制端关闭及原进程退出，不以空资源放行。第二项核实 SQLite/WAL 普通写入是否被误判为认证来源改变，只有证据证明与选中凭据无关时才提出修复；认证、配置、执行文件与权限变化继续拒绝。
+
+验收为 strict TypeScript、Go CLI、完整构建与独立安装；真实正常双 Worker 完整结果和退出、真实确定未启动失败关闭、同目录重启、历史未知记录拒绝。所有数据库和失败请求保留。先由 Reviewer 审核具体计划，再实施源码；每项实际失败返回原轨道修复。现有权限边界、工具禁用、完整结果上限及准确身份要求保持。
+
+Swarm 新目录 `windows-phase3-20261029` 中，`ctx_161d7e74946b` 接受关闭计划，`ctx_f9e6714592bf` 接受来源计划并要求凭据值单独变化、替换/重解析和实际运行时检查。模型最终正文均来自真实原生 SQLite。关闭实现复用准确关闭回执和两次进程观察，资源清单无分页限制并在完成后再次比较；RPC 停止后执行，前后检查全局 pending。
+
+来源实现保留真实 SQLite `readOnly`、`query_only` 和事务读取，选中凭据逐次比较，数据库使用 canonical path、dev、ino、birthtime 标识。调用端配置版本及插件检查同步使用该身份，数据库/WAL 普通写入不作为认证变化。数据库版本字段没有迁移或备份消费者；旧政策记录保持原内容。配置、auth、EXE、package 和插件仍使用完整文件版本；私有 session 内容一致性和 12 MiB 上限保持。实际 `node:sqlite` 插件加载必须通过原生 OpenCode 2.0.31 检查，未通过时直接失败。
+
+新增真实验证入口 `tests/swa-cli-headless/opencode-credential-source.mjs` 使用本轮实际公开任务的原生 SQLite 在线备份，仅在自有副本中执行 WAL/checkpoint、选中凭据破坏、删除、文件替换和符号链接重定向；原凭据保持，输出不含密钥。单独比较真实数据库及 WAL/SHM 在只读检查前后的字节，验证读取没有改写来源。不使用人工构造的协议或会话记录。
