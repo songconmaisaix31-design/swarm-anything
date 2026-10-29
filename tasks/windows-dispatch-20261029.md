@@ -59,6 +59,26 @@
 操作限制：服务被强制终止后，其数据根在下一次启动时按未知归属拒绝（退出 6），需要新的私有数据根；这是既定的不静默恢复行为。
 
 性能结论：当前发现耗时主要来自外部 CLI 进程启动，串行已是安全下限；在不缓存版本（要求每次读取真实版本）的前提下没有可验证的软件侧优化空间。
+
+## 使用路径缺陷扫描
+
+在独立私有数据根上启动候选 `b5b2a8aa` 的真实服务，建立项目、执行授权、控制端与根任务后逐一执行命令探针，原件在 `sweep-run3/`。
+
+| 探针 | 实际结果 |
+| --- | --- |
+| `task list`、`worker list`、`task show`、`request show`（原请求） | 退出 0，返回原记录 |
+| `request show`（随机 UUID） | 退出 0，`state:"absent"` 并明确说明缺失不等于未发生 |
+| `worker read --limit 0`、`--limit 1001` | 退出 2，`validation_failed`，`read requires transcript source and limit between 1 and 1000` |
+| `worker show --dispatch ctx_unknown` | 退出 3，409 `scope_denied`，`The exact Worker does not belong to this root task` |
+| `worker start` 未安装 Agent | 退出 7，409 `agent_unconfigured`，在原生写入前拒绝 |
+| `task complete` 缺结果文件 | 退出 2，`validation_failed`，要求显式文件 |
+| 任务规格 `max_workers=1` | 退出 1，`task specification requires ... max_workers=2`，与固定任务契约一致 |
+
+本批没有复现新的产品缺陷；`request show` 的退出 0 是既定语义，不是静默成功。
+
+同一服务上重复三次测量读取路径：CLI 进程启动 `--version`/`--help` 为 90–180 毫秒，原始 `/auth/session` 热态 16–78 毫秒；`status` 1212–1341 毫秒；`task list` 2227–2907 毫秒、`task show` 2371–2609 毫秒、`worker list` 2242–2443 毫秒。带控制端的命令比 `status` 多约 1 秒，与每次按原控制端执行活跃校验一致；该校验属于授权边界，未按性能理由移除。
+
+排查中发现的操作约束：`swa serve` 要求任务规格的 `max_workers` 固定为 2；强制终止后的数据根再次启动会按未知归属退出 6。
 - 运行范围：固定公开 `swarm-anything` main 源码，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；没有模型结果前不记为调用成功。
 - 旧失败请求和私有数据保留；不自动重放未知请求，不修改已安装的旧候选或其数据库。
 
