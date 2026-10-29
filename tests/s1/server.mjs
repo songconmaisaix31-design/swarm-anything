@@ -118,6 +118,8 @@ export async function startS1Server({ browser = false, relay = false, env: extra
     ASTROCYTE_TEST_OUTPUT_ROOT: verification, ASTROCYTE_TEST_VITE_CACHE: join(temporary, 'vite-cache'),
     ASTROCYTE_DATA_DIR: dataDir, ASTROCYTE_PORT: String(requestedAPIPort ?? 0), ASTROCYTE_WEB_PORT: String(requestedWebPort || 5173) };
   await mkdir(env.GOCACHE, { recursive: true });
+  // 构建保留工具链的用户目录，避免 Relay 运行隔离改变 Go 模块缓存位置。
+  const buildEnv = { ...baseEnv, TEMP: toolTemporary, TMP: toolTemporary, GOTMPDIR: toolTemporary, GOCACHE: env.GOCACHE };
   let apiChild;
   let webChild;
   const processes = [];
@@ -157,7 +159,7 @@ export async function startS1Server({ browser = false, relay = false, env: extra
     }
   }
   try {
-    await copyFile(await buildServer(verification, env), executable);
+    await copyFile(await buildServer(verification, buildEnv), executable);
     if (browser) {
       const owned = await launchLogged(process.execPath, [join(root, 'scripts/vite-server.mjs')], { cwd: web, env: { ...env, ASTROCYTE_WEB_PORT: String(requestedWebPort ?? 0) }, ipc: true, detached: process.platform !== 'win32' }, logsDirectory, 'vite');
       processes.push(owned);

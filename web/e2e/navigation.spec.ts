@@ -172,13 +172,13 @@ test.describe('实际资料键盘和焦点管理', () => {
     for (let index = 0; index < 5; index++) await page.keyboard.press('Tab');
     await expect(page.locator(':focus')).toHaveCount(1);
   });
-  test('实际资料详情包含来源和未启用操作说明', async ({ page }) => {
+  test('实际资料详情包含来源和人工批准说明', async ({ page }) => {
     const trigger = await open(page);
     await trigger.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('素材详情');
     await expect(dialog).toContainText('来源定位');
-    await expect(dialog).toContainText('任务执行尚未实现');
+    await expect(dialog.getByText('保存资料后可形成候选，人工准入与任务批准分别确认', { exact: true })).toBeVisible();
     await expect(dialog.getByText('示例数据', { exact: true })).toHaveCount(0);
   });
   test('详情打开时关闭按钮获得焦点', async ({ page }) => {

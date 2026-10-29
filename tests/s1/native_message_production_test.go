@@ -3,6 +3,7 @@ package s1_test
 import (
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/sqlite"
@@ -11,7 +12,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/workspace/domain"
 )
 
-func TestNativeMessageActualProductionPreparationAndPermission(t *testing.T) {
+func TestNativeMessageActualProductionPreparationAndToolRestriction(t *testing.T) {
 	s := newAutomaticHTTP(t)
 	var space app.ProjectSpaceResult
 	s.request("POST", "/api/v1/project-spaces", app.ProjectSpaceCommand{CommandMeta: localCommand(1), Title: "Public native message verification"}, http.StatusCreated, &space)
@@ -57,20 +58,38 @@ func TestNativeMessageActualProductionPreparationAndPermission(t *testing.T) {
 		app.CommandMeta
 		Message string `json:"message"`
 	}{localCommand(1), "仅依据固定公开 README 回复项目名称。不要调用工具。"}
-	var observation struct {
-		Observation domain.NativeObservation `json:"observation"`
+	var rejected apierrors.ErrorEnvelope
+	s.request("POST", path+"/send", command, http.StatusNotImplemented, &rejected)
+	if rejected.Error == nil || rejected.Error.Code != apierrors.UnsupportedCapability {
+		t.Fatal("actual native tool restriction was not preserved")
 	}
-	s.request("POST", path+"/send", command, http.StatusOK, &observation)
-	s.request("GET", path+"/observe", nil, http.StatusOK, &observation)
-	s.request("POST", path+"/send", command, http.StatusOK, &observation)
 	db, err := sqlite.Open(filepath.Join(s.dir, "state.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	var status string
-	if err := db.Conn().QueryRow("SELECT json_extract(data, '$.operations.\"' || ? || '\".status') FROM local_agent_sessions WHERE id=?", command.RequestID, started.Session.ID).Scan(&status); err != nil || status != "accepted" {
-		t.Fatal("actual native send receipt was not retained", err)
+	prepared, err := db.LoadNativeMessagePreparation(t.Context(), started.Session.ID, command.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Phase != "send_attempted" || prepared.ObjectRef == "" || prepared.Input.ControllerID == "" || prepared.Input.StartupOperationID == "" || prepared.Input.OperationID != command.RequestID || prepared.Input.Session.ID != started.Session.ID || prepared.Input.Session.NativeID != started.Session.NativeID {
+		t.Fatal("actual native message preparation was not retained")
+	}
+	readSession := func() string {
+		var data, status string
+		if err := db.Conn().QueryRowContext(t.Context(), "SELECT data, json_extract(data, '$.operations.\"' || ? || '\".status') FROM local_agent_sessions WHERE id=?", command.RequestID, started.Session.ID).Scan(&data, &status); err != nil || status != "unknown" {
+			t.Fatal("actual unknown native send receipt was not retained", err)
+		}
+		return data
+	}
+	before := readSession()
+	s.request("POST", path+"/send", command, http.StatusConflict, &rejected)
+	if rejected.Error == nil || rejected.Error.Code != apierrors.DeliveryUnknown {
+		t.Fatal("duplicate unknown native send was not rejected")
+	}
+	after, err := db.LoadNativeMessagePreparation(t.Context(), started.Session.ID, command.RequestID)
+	if err != nil || !reflect.DeepEqual(prepared, after) || readSession() != before {
+		t.Fatal("duplicate native send changed the original preparation or session", err)
 	}
 	settings.AllowedActions = []string{"read_context", "start", "observe", "stop"}
 	s.request("PUT", "/api/v1/local-projects/"+project.ID+"/settings", struct {
@@ -80,8 +99,8 @@ func TestNativeMessageActualProductionPreparationAndPermission(t *testing.T) {
 	command.CommandMeta = localCommand(1)
 	var denied apierrors.ErrorEnvelope
 	s.request("POST", path+"/send", command, http.StatusForbidden, &denied)
-	if denied.Error == nil || denied.Error.Code != apierrors.ScopeDenied {
-		t.Fatal("revoked native send permission was not preserved")
+	if denied.Error == nil || denied.Error.Code != apierrors.ApprovalRequired {
+		t.Fatalf("revoked native send permission was not preserved: %+v", denied.Error)
 	}
-	t.Logf("actual native preparation, send, duplicate and permission rejection; evidence=%s native_id=%s", s.dir, started.Session.NativeID)
+	t.Logf("actual native preparation, tool restriction, unknown receipt, duplicate rejection and revoked permission; evidence=%s native_id=%s", s.dir, started.Session.NativeID)
 }
