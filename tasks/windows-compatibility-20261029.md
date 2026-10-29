@@ -254,3 +254,13 @@ Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod v
 一次假阳性已排除：首轮扫描中 `POST /project-spaces` 不带 CSRF 返回 201。隔离复现显示 PowerShell 的 `-WebSession` 会把上一次 `-Headers` 中的 `X-CSRF-Token` 保存进会话头并在后继请求自动发送；新建且未携带过该头的会话在无 CSRF 时返回 403。服务端强制正确，没有修改授权代码。
 
 其余探针结果符合当前契约：设置更新 200、旧 revision 409 `version_conflict`、未知授权动作 400、未知 Agent 签发 404、`/local-agents` 200、`/local-projects/registered` 200（48 毫秒）；`request_id` 按 OpenAPI 为字符串，非 UUID 被接受不属于缺陷；`GET /local-projects/{id}` 没有对应路由，404 与实现一致。
+
+## 原生会话路径扫描
+
+用含本次修复的候选 `phase8/astrocyte-candidate.exe` 在独立数据根执行 8 项会话探针（`phase8/session-sweep/`）：会话列表 200；未知会话的上下文、发送、停止、继续均返回 404 `not_found`；未批准原生动作时 `sessions/probe` 与 `sessions` 启动返回 403 `approval_required`；两次探针后 `native-sessions` 目录为空，没有启动任何真实进程。
+
+批准 `start` 后探测未注册 CLI 返回 403 `approval_required`，消息为 `project external model consent does not cover this CLI`：授权与外发同意先于适配器查找，属于既定顺序；未把该结果记为输入校验缺陷。
+
+本次修复对 Relay 与批准流程消费者没有回归：`go test ./internal/workspace/app`（14.4 秒）与 `go test ./cmd/server`（22.8 秒，含 Relay 组装）通过。
+
+会话路径本批没有发现新的错误分类或状态码缺陷。
