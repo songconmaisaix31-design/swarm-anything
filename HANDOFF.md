@@ -1,5 +1,7 @@
 # SWA 主线接续
 
+2026-10-29 用户批准的独立 Windows CLI 修复位于 `codex/swa-windows-dispatch-20261029`，来源 `893fb885`，已运行安装为 `9ba95300`。正常双 Worker 流程已完成；失败关闭和恢复保持未通过。接续首先读取 [Windows 派发任务](tasks/windows-dispatch-20261029.md)，保留原数据库和未知请求，不据旧 PID 操作进程。
+
 先读 [STATUS](STATUS.md)、[AGENTS](AGENTS.md)、[代码规范](docs/CODING.md) 和[资源限制](docs/RESOURCES.md)，再读 [META_PLAN](docs/META_PLAN.md)、[总任务](tasks/swa-mainline-20261020.md)、[M0](tasks/swa-m0-20261020.md)、具体规格与[用户决定](docs/QUESTIONS.md)。开发者从 [CONTRIBUTING](CONTRIBUTING.md) 进入，完整导航见[文档目录](docs/README.md)。
 
 用户以 re.md v2.1 重构主线。M0 从产品 `32ab1eec808a5848aabad40f11133735a1214e55` 接续，仅整合文档；主控独有决定、研究、实验入口和归档来自准确 `cf22f118193d5dcc3f2d2ec436bd4f06e9a22c9b`。程序来源 S、已恢复服务和 M1 实际结果统一见 STATUS。处理运行服务前重新核对真实 PID、路径、创建时间、所属终端和唯一监听，遵守原库保全及授权。

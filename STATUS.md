@@ -2,6 +2,8 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
+2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 从 `893fb885` 修复已有工作树参数、Structured 模型预检、私有 host 路由和受限权限模式。安装源码 `9ba95300` 通过 strict TypeScript、Windows 构建/安装及 Swarm CLI 两个真实 OpenCode Worker 的正常派发、输出、停止、释放、成果导出、任务完成和控制端关闭。验证服务已退出；无资源失败任务关闭与中断后 Job 恢复仍未通过。准确验证、Commit 和限制见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
+
 ## 当前主线与 M0
 
 | 项目 | 当前事实 |
