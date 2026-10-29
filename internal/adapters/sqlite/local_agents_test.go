@@ -188,17 +188,20 @@ func TestLocalProjectPermissionsTokensAndNativeReceiptsSurviveSQLiteRestart(t *t
 	if strings.Contains(stored, "fixed original selected body") {
 		t.Fatal("SQLite native session duplicated original material body")
 	}
-	if _, err := service.SendNativeMessage(ctx, agent, other.ID, session.ID, "text"); err == nil {
+	if _, err := service.ObserveNativeSession(ctx, agent, other.ID, session.ID); err == nil {
 		t.Fatal("cross-project native session accepted")
 	}
 	agent.OperationID = uuid.NewString()
-	native.failSend = true
 	if _, err := service.SendNativeMessage(ctx, agent, project.ID, session.ID, "first delivery"); err == nil {
-		t.Fatal("unknown delivery not preserved")
+		t.Fatal("native send without the actual native message composition was accepted")
+	} else {
+		var refused *apierrors.ServiceError
+		if !errors.As(err, &refused) || refused.Code != apierrors.UnsupportedCapability {
+			t.Fatal("native send refusal did not identify the missing native message composition", err)
+		}
 	}
-	unknownOperation := agent.OperationID
-	if _, err := service.SendNativeMessage(ctx, agent, project.ID, session.ID, "first delivery"); err == nil || native.sends != 1 {
-		t.Fatal("unknown request automatically replayed")
+	if native.sends != 0 {
+		t.Fatal("refused native send reached the native adapter")
 	}
 	native.failStop = true
 	if obs, err := service.StopNativeSession(ctx, agent, project.ID, session.ID); err == nil || obs.StopConfirmed {
@@ -222,22 +225,16 @@ func TestLocalProjectPermissionsTokensAndNativeReceiptsSurviveSQLiteRestart(t *t
 		t.Fatal("scoped token did not survive actual SQLite reopen")
 	}
 	saved, err := db.LoadSession(ctx, session.ID)
-	if err != nil || !saved.StopConfirmed || saved.NativeID != session.NativeID || saved.Operations[unknownOperation].Status != "unknown" {
-		t.Fatalf("native receipt restart %+v %v", saved, err)
+	if err != nil || !saved.StopConfirmed || saved.NativeID != session.NativeID {
+		t.Fatalf("native stop receipt restart %+v %v", saved, err)
 	}
 	agent.OperationID = uuid.NewString()
-	native.failSend = false
 	if _, err := service.ResumeNativeSession(ctx, agent, project.ID, session.ID, domain.NativeCommand{Context: request}); err != nil || native.resumes != 1 {
 		t.Fatalf("confirmed native resume: %v", err)
 	}
-	agent.OperationID = unknownOperation
-	if _, err := service.SendNativeMessage(ctx, agent, project.ID, session.ID, "old unknown"); err == nil || native.sends != 1 {
-		t.Fatal("old unknown request replayed after resume")
-	}
 	refs.denied = true
-	agent.OperationID = uuid.NewString()
-	if _, err := service.SendNativeMessage(ctx, agent, project.ID, session.ID, "revoked reference"); err == nil || native.sends != 1 {
-		t.Fatal("reference revocation did not stop native input")
+	if _, err := service.ReadProjectContext(ctx, agent, project.ID, request); err == nil {
+		t.Fatal("reference revocation did not stop native context read")
 	}
 	if _, err := service.RevokeProjectAgent(ctx, human, project.ID, agent.ID); err != nil {
 		t.Fatal(err)

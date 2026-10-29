@@ -80,15 +80,22 @@ func TestNeutralWindowsActualLongRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := filepath.Join(root, strings.Repeat("public-path-", 8))
+	state := filepath.Join(root, strings.Repeat("public-path-", 14))
 	service := New(state, Options{AllowCommittedGit: true})
 	work := domain.Work{Root: source, Kind: domain.WorkKindFolder}
 	prepared, err := service.Prepare(ctx, work, domain.RelayWorkspace{ID: uuid.NewString()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prepared.Root) < 230 || !prepared.Prepared || !sameExistingDirectory(prepared.Root, filepath.Join(state, prepared.ID)) {
+	if len(prepared.Root) <= 260 || !prepared.Prepared || !sameExistingDirectory(prepared.Root, filepath.Join(state, prepared.ID)) {
 		t.Fatal("actual long worktree did not retain its owned destination")
+	}
+	commandRoot, err := gitDirectory(prepared.Root)
+	if err != nil || len(commandRoot) >= 260 || !sameExistingDirectory(commandRoot, prepared.Root) {
+		t.Fatal("Git directory alias did not preserve the actual long directory", err)
+	}
+	if _, err = gitDirectory(filepath.Join(prepared.Root, "missing-directory")); err == nil {
+		t.Fatal("missing Git directory was accepted")
 	}
 	actual, err := git(ctx, prepared.Root, "rev-parse", "HEAD")
 	if err != nil || actual != head {
@@ -97,8 +104,26 @@ func TestNeutralWindowsActualLongRoot(t *testing.T) {
 	if body, err := os.ReadFile(filepath.Join(prepared.Root, "README.md")); err != nil || len(body) == 0 {
 		t.Fatal("actual public README unavailable", err)
 	}
-	if _, err = service.Observe(ctx, prepared); err != nil {
+	before, err := service.Observe(ctx, prepared)
+	if err != nil {
 		t.Fatal(err)
+	}
+	readme := filepath.Join(prepared.Root, "README.md")
+	file, err := os.OpenFile(readme, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.WriteString("\nWindows 长目录实际观察检查。\n")
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatal(writeErr, closeErr)
+	}
+	if err = os.WriteFile(filepath.Join(prepared.Root, "windows-observation.txt"), []byte("public Windows worktree observation\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := service.Observe(ctx, prepared)
+	if err != nil || after == before || !strings.Contains(after, "windows-observation.txt") || !strings.Contains(after, "README.md") {
+		t.Fatal("actual edits were not observed in the long worktree", err)
 	}
 	if _, err = service.Prepare(ctx, work, prepared); err != nil {
 		t.Fatal(err)

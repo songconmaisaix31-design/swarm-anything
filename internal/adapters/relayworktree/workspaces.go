@@ -90,11 +90,11 @@ func (s *Workspaces) Prepare(ctx context.Context, work domain.Work, w domain.Rel
 	branch := "relay/" + w.ID
 	target := path
 	if runtime.GOOS == "windows" {
-		sourceRoot, resolveErr := filepath.EvalSymlinks(work.Root)
+		sourceRoot, resolveErr := gitDirectory(work.Root)
 		if resolveErr != nil {
 			return w, resolveErr
 		}
-		stateRoot, resolveErr := filepath.EvalSymlinks(s.root)
+		stateRoot, resolveErr := gitDirectory(s.root)
 		if resolveErr != nil {
 			return w, resolveErr
 		}
@@ -174,7 +174,27 @@ func (b *bounded) Write(p []byte) (int, error) {
 func git(ctx context.Context, root string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "--no-pager", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "core.longpaths=true", "-C", root}, args...)...)
+	directory, err := gitDirectory(root)
+	if err != nil {
+		return "", err
+	}
+	location := []string{"-C", directory}
+	cwd := directory
+	if runtime.GOOS == "windows" {
+		canonical, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return "", err
+		}
+		if len(canonical) >= 248 {
+			// 显式指定 Git 目录，避免 Git 在长目录中调用 getcwd。
+			location = []string{"--git-dir=" + filepath.Join(directory, ".git"), "--work-tree=" + directory}
+			cwd = filepath.VolumeName(directory) + string(filepath.Separator)
+		}
+	}
+	options := []string{"--no-optional-locks", "--no-pager", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "core.longpaths=true"}
+	options = append(options, location...)
+	command := exec.CommandContext(ctx, "git", append(options, args...)...)
+	command.Dir = cwd
 	command.Env = []string{}
 	for _, v := range os.Environ() {
 		key, _, _ := strings.Cut(v, "=")

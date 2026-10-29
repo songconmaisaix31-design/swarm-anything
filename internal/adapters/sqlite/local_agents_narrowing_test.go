@@ -128,6 +128,12 @@ func TestConcurrentObservationCannotEraseAcceptedDeliveryReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	receiptOperation := uuid.NewString()
+	now := time.Now().UTC()
+	session.Operations = map[string]domain.NativeOperation{receiptOperation: {Action: "send", Status: "accepted", CreatedAt: now, FinishedAt: &now}}
+	if err := db.SaveSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
 	observed := make(chan error, 1)
 	go func() { _, err := service.ObserveNativeSession(ctx, human, p.ID, session.ID); observed <- err }()
 	select {
@@ -135,35 +141,33 @@ func TestConcurrentObservationCannotEraseAcceptedDeliveryReceipt(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("observation did not start")
 	}
-	sender := human
-	sender.OperationID = uuid.NewString()
-	sent := make(chan error, 1)
+	stopped := make(chan error, 1)
 	go func() {
-		_, err := service.SendNativeMessage(ctx, sender, p.ID, session.ID, "one authorized message")
-		sent <- err
+		_, err := service.StopNativeSession(ctx, human, p.ID, session.ID)
+		stopped <- err
 	}()
 	select {
-	case err := <-sent:
+	case err := <-stopped:
 		close(n.release)
-		t.Fatalf("send raced unsynchronized stale observation: %v", err)
+		t.Fatalf("native stop raced unsynchronized stale observation: %v", err)
 	case <-time.After(30 * time.Millisecond):
 	}
 	close(n.release)
 	if err := <-observed; err != nil {
 		t.Fatal(err)
 	}
-	if err := <-sent; err != nil {
+	if err := <-stopped; err != nil {
 		t.Fatal(err)
 	}
 	saved, err := db.LoadSession(ctx, session.ID)
-	if err != nil || saved.Operations[sender.OperationID].Status != "accepted" {
-		t.Fatal("observation erased durable accepted receipt", err)
-	}
-	if _, err := service.SendNativeMessage(ctx, sender, p.ID, session.ID, "one authorized message"); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
-	if n.sends != 1 {
-		t.Fatal("accepted HTTP retry sent another native turn")
+	if receipt, exists := saved.Operations[receiptOperation]; !exists || receipt.Status != "accepted" {
+		t.Fatal("observation erased durable accepted receipt", err)
+	}
+	if !saved.StopConfirmed {
+		t.Fatal("concurrent native stop was not retained")
 	}
 }
 
