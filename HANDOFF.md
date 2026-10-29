@@ -1,5 +1,7 @@
 # SWA 主线接续
 
+2026-10-29 全量复验以分支 `codex/windows-compatibility-20261029` 的 `32fef0fe` 为准，前序为 `6fab099c`。长路径 Git 使用系统短目录别名，321 字符真实工作树通过创建、观察、重开与错根拒绝；两项 SQLite 原生回执测试按当前发送授权成分契约通过。完整 `scripts/check.mjs` 退出 1：importers 两项与 attention 一项真实外部来源失败，workspace/app 一项受控 CLI 就绪窗口改为有界 20 秒后单独通过，其余 Go 包与 tests/s1 通过；后续阶段单独复验，依赖清单补齐 go-git 后通过，契约与构建通过，Web 174 项通过、两个 L1 套件缺真实输入。CLI 分支 `codex/swa-windows-dispatch-20261029` 的 `0375598c` 构建并安装候选 `b5b2a8aa`，实际发现 45 项注册 Agent、3 张角色卡和 10 项真实 CLI 版本，两名不同角色 Worker 完成真实模型调用。准确命令、证据与剩余限制见 [Windows 任务](tasks/windows-compatibility-20261029.md) 和 CLI 任务 `windows-dispatch-20261029.md`；未合并 PR、未发布 Release。
+
 2026-10-29 Windows 复验以 main 为准并通过 Swarm CLI 协作。分支 `codex/windows-compatibility-20261029` 最新局部测试修复 `4a90dc2099146f5cd2331cbba5715979906653f7` 已通过输出越界、取消和真实 Git 隔离检查，并获独立 Swarm 接受；前序产品/测试修复为 `eff620f08`、`897f5dff`，基线 `5c11bbf8`。用户要求逐项针对修复并做局部检查，全部代码修复与审查后再统一全量；本批未重新运行全量。前序完整 Go 检查中 S1/S2/S3/S5 通过，整体仍失败。独立 CLI 最终安装源码为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`，关闭及凭据来源修复已通过 Swarm 审查和限定实际验证。完整 Windows 验收仍未通过，命令、准确源码及剩余限制见 [Windows 复验任务](tasks/windows-compatibility-20261029.md)。保留原私有数据库及未知请求，不按历史 PID 操作进程。
 
 最终 CLI 的双 Worker 停止、释放、完整导出、任务完成及控制端关闭全部通过；同目录 EOF 重启退出 0，11 个观察到的所属进程全部退出。旧库未知记录仍拒绝并退出 6。用户批准的旧构建副本清理完成，数据库与验证记录保留。剩余范围包括 Git 长目录、旧 SQLite 测试与真实原生端口不一致、外部 Bilibili 输入不可用、L1/非空跨日数据缺失，以及历史未创建记录的全局正向关闭实测。
