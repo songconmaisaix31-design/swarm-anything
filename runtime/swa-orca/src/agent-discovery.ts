@@ -134,6 +134,18 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
   const details = new Map<string, { selection: AgentSelection | undefined; configuration: Awaited<ReturnType<typeof configuration>> }>()
   const registrations = new Map(host.deps.agents.registrations().map(({ definition, adapter }) => [definition.agent as string, adapter.constructor.name]))
   const ids = new Set([...registrations.keys(), ...Object.keys(TUI_AGENT_CONFIG)])
+  type Prepared = {
+    id: string
+    structured: boolean
+    adapterName: string
+    mode: 'structured' | 'terminal'
+    registered: Observation
+    enabled: Observation
+    installed: Observation & { executable?: string; version?: string }
+    executable?: string
+  }
+  const prepared: Prepared[] = []
+  const probes: Array<{ id: string; executable: string }> = []
   for (const id of ids) {
     if (onlyAgent !== undefined && id !== onlyAgent) continue
     const structured = registrations.has(id)
@@ -144,7 +156,7 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
       : available('The native terminal Agent definition is registered', 'TUI_AGENT_CONFIG')
     const enabled = observation(disabled.has(id) ? 'unavailable' : 'available', disabled.has(id) ? 'Disabled in the selected native settings' : 'Enabled in the selected native settings', 'native-settings')
     let installed: Observation & { executable?: string; version?: string } = unknown('No absolute native command has been resolved', 'native-command-resolution')
-    let executable: string | undefined, version: string | undefined
+    let executable: string | undefined
     if (isTuiAgent(id)) {
       const spec = ACP_LAUNCH_SPECS.find(item => item.agent === id)
       const terminal = TUI_AGENT_CONFIG[id]
@@ -166,10 +178,19 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
       } else if (isAbsolute(command)) {
         executable = await realpath(command)
         if (id === 'opencode' && extname(executable).toLowerCase() === '.cmd') executable = await realpath(join(dirname(executable), 'node_modules/@opencode/cli/bin/opencode.exe'))
-        const result = await readAgentCliVersion({ program: executable, cwd: process.env.SWA_DATA_DIR!, env })
-        version = result.version ?? undefined
-        installed = version ? { ...available('The selected native executable returned its real CLI version', 'native-version-probe'), checked_at: new Date().toISOString(), executable, version } : unknown('The selected native executable did not prove its CLI version', 'native-version-probe')
+        probes.push({ id, executable })
       } else installed = observation('unavailable', 'Native command resolution found no installed executable', 'native-command-resolution')
+    }
+    prepared.push({ id, structured, adapterName, mode, registered, enabled, installed, executable })
+  }
+  const versions = await probeAgentVersions(probes, env)
+  for (const item of prepared) {
+    const { id, structured, adapterName, mode, registered, enabled } = item
+    let { installed, executable } = item
+    let version: string | undefined
+    if (executable) {
+      version = versions.get(id)
+      installed = version ? { ...available('The selected native executable returned its real CLI version', 'native-version-probe'), checked_at: new Date().toISOString(), executable, version } : unknown('The selected native executable did not prove its CLI version', 'native-version-probe')
     }
     const config = await configuration(id, snapshot, requestedModel)
     const proven = !!(config.model && config.provider && config.account)
@@ -191,6 +212,22 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
     details.set(id, { selection, configuration: config })
   }
   return { agents, snapshot, details }
+}
+
+// 版本探测各占一个独立子进程，串行执行时占发现耗时的大部分；保留有界并发。
+async function probeAgentVersions(items: Array<{ id: string; executable: string }>, env: Record<string, string>) {
+  const versions = new Map<string, string | undefined>()
+  let next = 0
+  const limit = Math.min(4, items.length)
+  await Promise.all(Array.from({ length: limit }, async () => {
+    while (next < items.length) {
+      const item = items[next++]
+      if (!item) return
+      const result = await readAgentCliVersion({ program: item.executable, cwd: process.env.SWA_DATA_DIR!, env })
+      versions.set(item.id, result.version ?? undefined)
+    }
+  }))
+  return versions
 }
 
 async function installedRegistrySource() {
