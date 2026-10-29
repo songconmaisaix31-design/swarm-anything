@@ -154,8 +154,9 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
       const overlay = snapshot.settings.agentDefaultEnv?.[id]
       const pathEnv = [overlay?.PATH ?? overlay?.Path ?? env.PATH ?? env.Path, ...(spec?.installDirectories({ env: sourceEnv, homePath: snapshot.home }) ?? [])].filter(Boolean).join(delimiter)
       const options = { pathEnv, homePath: snapshot.home }
-      const commands = spec ? [spec.command] : getTuiAgentDetectCommands(terminal)
-      const command = resolveStructuredAgentCommand(id, spec?.ignoreAgentCommandSetting ? {} : { agentCmdOverrides: snapshot.launch.agentCmdOverrides }, options, { command: commands.find(value => isAbsolute(resolveCliCommand(value, options))) ?? commands[0] })
+      const executionSpec = projectId ? spec : undefined
+      const commands = executionSpec ? [executionSpec.command] : getTuiAgentDetectCommands(terminal)
+      const command = resolveStructuredAgentCommand(id, executionSpec?.ignoreAgentCommandSetting ? {} : { agentCmdOverrides: snapshot.launch.agentCmdOverrides }, options, { command: commands.find(value => isAbsolute(resolveCliCommand(value, options))) ?? commands[0] })
       const unsupported = terminal.detectUnsupportedRuntimes?.includes(process.platform)
       const missingRequired = terminal.detectRequiredCommands?.some(value => !isAbsolute(resolveCliCommand(value, options)))
       if (unsupported) {

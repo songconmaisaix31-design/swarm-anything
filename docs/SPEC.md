@@ -811,7 +811,7 @@ Windows 与 Linux CI 分开记录环境、SOURCE_SHA、实际命令和结果。�
 
 ### 21.1 既有产品的旧方向与首版 CLI 边界
 
-Windows Agent 发现合并实际 Structured registry 与上游 `TUI_AGENT_CONFIG`，同一 ID 仅保留一项且优先使用 Structured 实现。每次读取当前 Windows 持久 PATH、现有设置与真实 CLI 版本；terminal 注册、安装与可执行控制分别报告，不从注册推断工具授权。版本未证明时不返回已安装成功。
+Windows Agent 发现合并实际 Structured registry 与上游 `TUI_AGENT_CONFIG`，同一 ID 仅保留一项且优先使用 Structured 实现。每次读取当前 Windows 持久 PATH、现有设置与真实 CLI 版本；发现使用 TUI 原注册命令、别名及命令覆盖，实际执行选择继续使用对应 ACP 命令和覆盖规则。terminal 注册、安装与可执行控制分别报告，不从注册推断工具授权。版本未证明时不返回已安装成功。
 
 `capabilities.roles` 返回内置 `developer`、`reviewer`、`coordinator` 的 ID、名称和职责。`worker.start` 的可选 `role` 只接受这些 ID，未知角色在原生写入前拒绝。单一角色模块为 helper 和 admission 组装同一角色正文、原输入及固定上下文；角色 ID 随原 command 保存，正文随原 Task spec 和原生输入保存。省略角色时保持原输入全文，不变更 SQLite schema、账号、权限或模型选择。
 

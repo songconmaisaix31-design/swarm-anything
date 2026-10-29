@@ -6,6 +6,8 @@
 
 写域为 `cmd/swa/main.go`、`internal/workspace/app/orca_execution.go`、`runtime/swa-orca/src/{agent-discovery,contracts,controller-helper,controller-admission,worker-roles}.ts`、`contracts/swa-cli.schema.json`、生成类型、`runtime/swa-orca/USAGE.md`、`docs/SPEC.md` 及本任务。复用两张既有 Agent 注册表、Windows PATH 读取和原版本探测；角色通过已有 command、Task spec 和原生消息持久化。
 
+独立静态核查确认唯一注册并集为45项。能力发现使用TUI注册命令/别名及命令覆盖，执行选择保持ACP规则；该补充计划由同一Swarm Reviewer接受。本机没有Antigravity实际安装时，`agy`正向探测保持未验。构建产物后继放在D盘专用交付目录，C盘的原数据库与验证记录继续保留。
+
 测试计划由 Swarm Reviewer `ctx_463eaa6bfc0d` 接受。验收包括实际注册表并集和版本、Windows 不支持状态、未知角色在写入前拒绝、缺省角色保持原输入、同库两个真实不同角色 Worker 的完整输入/结果及停止释放关闭。运行 Go CLI、完整 strict TypeScript、契约、架构、完整 Windows 构建和独立安装。SQLite schema 不变，已有任务读取与新任务并发在同一真实库核查；其他平台未运行时明确保留。验证记录位于主线 `.verification/windows-20261029/phase8/` 及本目录 `.verification/windows-dispatch-20261029/`。
 
 - 用户于 2026-10-29 明确要求使用 Swarm CLI，并批准在独立分支修复阻塞该调度的缺陷。
