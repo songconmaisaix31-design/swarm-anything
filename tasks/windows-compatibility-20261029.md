@@ -163,4 +163,26 @@ Swarm Run `run_4b49a894985d` 的同一 main Reviewer 接受上述两项计划及
 
 最后所属服务关闭再次退出 1，daemon busy，控制端仍存活。按本次创建回执逐一核对 PID、创建时间及名称后停止本次 helper 和 shell，daemon 与 OpenConsole 随之退出；该进程清理不代表原生资源记录已释放。证据为 `final7-cli/owned-process-cleanup.jsonl`，原 SQLite 与会话保留。
 
-C 盘最后可用空间约 260 MiB。自动审批审核拒绝清理本次旧 `dist/windows-permission-20261029` 构建副本，返回策略阻止；该目录未删除。新增关闭修复计划未通过独立审核，新源码及新完整安装包均未产生；已有源码、实际通过结果和剩余失败分别保留。
+此前空间不足和审批拒绝的原件保留在 `final7-cli`；后继用户明确授权清理本轮可重建副本。当前修复和结果如下。
+
+## 当前源码全量复验与 CLI 关闭
+
+本轮 main 来源为 `c9f7af7dd86ddd34731b5847b21fe0cafc9a4428`，产品和测试源码仍为 `eff620f08`、`897f5dff`。`node scripts/check.mjs` 实际运行 gofmt、vet 和 `go test -mod=readonly ./...`；前两项通过，Go 全量退出 1，因此命令后续阶段未启动。`phase3/check-current.log` 与 `.exit` 保存结果。`tests/s1` 实际通过（464.120 秒），S2、S3、S5、Workspace、Workbench HTTP 与其他通过包见原日志。此前同源前端、契约、构建和受影响 helper 结果继续有效，不将旧失败改写为通过。
+
+当前全量的具体失败：
+
+- `TestRegisteredReadBoundsAndCancellation/output` 正确拒绝超出输出限制，但实际 4.32 秒超过测试硬性 4 秒；原源码独立 `go test -mod=readonly ./internal/adapters/agents -run '^TestRegisteredReadBoundsAndCancellation$' -count=1` 通过（1.444 秒），`phase3/registered-bounds.log`。没有扩大时间限制。
+- `TestPublicListingActualWindowCursorWithUnavailableSlot` 实际观察 60/60，缺少测试要求的真实 omitted slot；没有伪造缺失项。
+- `TestNeutralWindowsActualLongRoot` 失败；Git 2.47 实际 262 字符 `-C` 返回 Filename too long，绝对 worktree 参数返回 `$GIT_DIR too big`，相对参数仍失败。没有修改全局 Git 配置或缩短测试目标。
+- SQLite 两项旧测试 `TestConcurrentObservationCannotEraseAcceptedDeliveryReceipt`、`TestLocalProjectPermissionsTokensAndNativeReceiptsSurviveSQLiteRestart` 仍与实际消息端口要求不一致；前者缺真实 native repository/controller reader/object store/authorizer，后者的模拟计数断言失败。未增加模拟依赖制造通过。
+- Attention 两项 `TestPublicTrackingSourceCapacity`、`TestActualPublicMetadataRequiresRecommendationBeforeBodySelection` 因真实 Bilibili 来源失败而未通过，HTTP 原件与实际 SQLite 保留。
+
+独立 CLI 修复为 `b918d063b50962fca462bb012e8ae8eacf78ba9b` 和 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`。前者复用严格未创建证明及历史控制端关闭、进程身份检查；后者保留配置路径并绑定规范数据库身份，普通 WAL 活动允许，选中凭据和真实文件替换仍拒绝。Swarm CLI 的 `ctx_161d7e74946b`、`ctx_f9e6714592bf` 完成计划与源码审查，OpenCode 2.0.31 / deepseek-v4-pro，原生工具关闭；完整原文在 `phase3`。
+
+CLI 最终 strict TypeScript、Go cmd/swa、47 包架构检查、完整 Windows 构建及独立安装通过；`tests/swa-cli-headless/opencode-credential-source.mjs` 的八项真实原生 SQLite 来源检查通过，`phase3/credential-final/results.json`。使用真实在线备份和自有副本，包含 WAL 内凭据值/时间/删除、同字节文件替换、稳定符号链接与配置入口重定向，来源凭据未变，未输出密钥。
+
+最终同安装 `8fc61d62` 的 `task_99c3878d8d79`、`ctx_29d61d562e6a` / `ctx_ee23ab16f08f` 均完成，两次 stop、两次 release、task result、task complete、controller close 全部退出 0；完整实际结果为 `phase6/exported-result/result.json`，1,872,478 字节，原生工具调用 0。同目录 EOF 重启实际退出 0，11 个观察到的所属进程两次缺席，`phase6/restart-eof/result.json`；Ctrl+C 外层 PowerShell 退出 1 单独保留。旧库缺原关闭证明的未知记录仍拒绝，退出 6，11 个所属进程退出，`phase3/old-recovery-eof-3/result.json`。
+
+`phase5` 首次 Worker 在 dispatch_input 遇到原生 `--version` 的 5 秒超时；failed 请求未重放，随后 release 和 controller close 成功。长源码审查的完整 journal 超过既定 12 MiB，上游 `task result` 失败，根任务未标记完成；短任务通过不能替代该失败。原生 `ctx_b0f62ae22695` 的全局正向关闭尚无独立实测结果，同库后续未知记录保持拒绝，不裁剪数据库。
+
+用户授权的旧构建/安装副本清理清单在 `phase3/cleanup-*`、`old-installs-*`、`superseded-*`，逐项核对源码、绝对路径、无重解析路径、无数据库/日志且无运行进程。原库、WAL、会话与验证原件均保留。当前完整 Windows 验收仍未通过；L1 正向和其他 E2E、非空跨日资料、Pi 正向及全部异常身份分支保持各自真实前提。PR 未合并，Release 未发布。
