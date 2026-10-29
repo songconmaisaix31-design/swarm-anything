@@ -112,7 +112,7 @@ Remove-Item Env:ASTROCYTE_TEST_PROJECT_BOARD
 
 S1 的本地浏览器读取先通过 `GET /api/v1/auth/session` 建立 HttpOnly/SameSiteStrict 会话；写入同时携带返回的 `csrf_token`（`X-CSRF-Token`）和稳定的 `Idempotency-Key`。正文不能设置 actor 或权限。服务重启后重新建立会话，调用者 ID 保持稳定，原幂等回执继续可用。`createAttentionApi` 与 [S1 类型助手](web/src/api/s1.ts) 保留原命令身份，不自动重发失败或未知命令。旧 `ASTROCYTE_AGENT_TOKEN` 不授予资料权限；人类通过项目 grant 和 `POST /local-projects/{id}/agent-token` 签发短期项目凭据，返回值只提供一次，不进入日志或浏览器持久存储。凭据只进入对应项目的上下文/原生操作，不能建立人类会话、改变设置、授权或签发令牌；每次操作查当前授权，撤销后立即拒绝新操作。此边界不提供同机操作系统进程隔离。
 
-`GET /api/v1/local-agents` 通过同一人类会话读取缓存的 CLI 清单。服务启动时仅查 PATH，并在总计 10 秒、单条命令 5 秒内运行固定 version/help；未完成的探测保持未知，刷新网页不执行 CLI。安装、配置、可启动及八项原生能力 `discover/read_context/start/resume/send/stop/observe/reconcile` 分别报告；版本/help 成功不表示模型可用。`native_adapter_registered` 仅表示后端实现了该客户端的接入协议，人类可以在已许可项目中显式 `POST /local-projects/{id}/sessions/probe` 验证空会话和停止，实际观测才更新能力。GET 和网页重载不探测、不调用模型、不推导授权；未组装能力返回 501。
+`GET /api/v1/local-agents` 通过同一人类会话读取缓存的 CLI 清单。服务启动时仅查 PATH，并在总计 10 秒、单条命令 5 秒内运行固定 version/help；探测在后台执行，HTTP 就绪不等待探测完成，未完成的探测保持未知，刷新网页不执行 CLI。安装、配置、可启动及八项原生能力 `discover/read_context/start/resume/send/stop/observe/reconcile` 分别报告；版本/help 成功不表示模型可用。`native_adapter_registered` 仅表示后端实现了该客户端的接入协议，人类可以在已许可项目中显式 `POST /local-projects/{id}/sessions/probe` 验证空会话和停止，实际观测才更新能力。GET 和网页重载不探测、不调用模型、不推导授权；未组装能力返回 501。
 
 `/tracking-sources` 绑定多个发布账号或明确收藏夹。`GET /source-collections` 只读持久化目录缓存；人类显式 `POST /source-collections/discover`（会话/CSRF/命令键）才调用公开接口或已交接的指定浏览器收藏夹，失败保留旧缓存。先同步标题/简介，再给 Agent 建议，最后由人选择固定元数据 revision、排队 summarize 正文导入。启动服务时沿持久化队列同步一次，默认最多观察100条，没有定时器或全量自动入库。普通导入复用既有提取；只有明确 `refresh: true` 才重新获取，同来源旧 A 回执不把新 B 当前版本回退。B站挑战/限流保留失败及旧清单，不能当空同步成功；抖音 `browser_selected` 仅使用主控交接的 OpenCLI 会话、稳定账号 ID 和指定收藏夹 ID，不读取无关页面、Cookie 原文或凭据，也不从 self 链接猜身份。桥未连接返回可操作错误，其他平台保持待接入。
 

@@ -212,19 +212,18 @@ func run(logger *slog.Logger) (runErr error) {
 			logger.Error("native shutdown incomplete; unconfirmed state retained", "error", err)
 		}
 	}()
-	// Discover only public CLI version/help once at startup. Total bounded time
-	// keeps existing readiness checks responsive; GET reads the resulting cache.
+	// Discover only public CLI version/help once at startup. The probe runs in the
+	// background so HTTP readiness no longer waits for up to twenty child
+	// processes; GET reads the resulting cache and unfinished probes stay unknown.
 	// No configuration, private sessions, projects or native operations are read.
 	inventory := agents.NewInventory()
 	probeCtx, cancelProbe := context.WithTimeout(ctx, 10*time.Second)
-	probeErr := inventory.RefreshCLI(probeCtx)
-	cancelProbe()
-	if ctx.Err() != nil {
-		return nil
-	}
-	if probeErr != nil {
-		logger.Warn("local CLI discovery incomplete; cached partial observations retained")
-	}
+	go func() {
+		defer cancelProbe()
+		if err := inventory.RefreshCLI(probeCtx); err != nil && ctx.Err() == nil {
+			logger.Warn("local CLI discovery incomplete; cached partial observations retained", "error", err)
+		}
+	}()
 
 	readerRoot, err := workbenchReaderRoot()
 	if err != nil {
