@@ -2,7 +2,7 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
-2026-10-29 Windows 复验以 main `5c11bbf8` 为基线，分支 `codex/windows-compatibility-20261029` 最新修复为 `897f5dff91ff267a8bcf37b68c6612a047e6c6e9`，前序产品修复 `eff620f08`。249 字符工作树、符号链接、HTTP 未知消息重开、10 项 Workbench 检查、2,586 条公开 Git 事件核对、真实 WAL 并发备份、构建和契约已有通过结果。Relay 构建隔离和四项生命周期通过，前端 174 项通过，两个 L1 套件缺少真实输入；页面导航/认知初次 82/84 通过，两个过期断言修正后均复验通过。263 字符工作目录、非空昨日资料与 Codex 正向 Send 仍受限；Codex 实际拒绝路径通过。CLI 安装 `c8bc7a67` 的同会话恢复与确定拒绝获独立 Swarm 接受。完整 Windows 验收仍未通过；准确结果、审查和服务状态见 [Windows 任务](tasks/windows-compatibility-20261029.md)。
+2026-10-29 Windows 复验以 main `5c11bbf8` 为基线，分支 `codex/windows-compatibility-20261029` 最新局部测试修复为 `4a90dc2099146f5cd2331cbba5715979906653f7`，前序产品/测试修复 `eff620f08`、`897f5dff`。输出越界、超时取消及真实 Git 隔离局部检查通过，准确提交获 Swarm 独立接受；用户要求剩余修复和审查完成后再统一全量，本批未运行全量。249 字符工作树、符号链接、HTTP 未知消息重开、10 项 Workbench 检查、2,586 条公开 Git 事件核对、真实 WAL 并发备份、构建和契约已有通过结果。Relay 构建隔离和四项生命周期通过，前端 174 项通过，两个 L1 套件缺少真实输入；页面导航/认知初次 82/84 通过，两个过期断言修正后均复验通过。263 字符工作目录、非空昨日资料与 Codex 正向 Send 仍受限；Codex 实际拒绝路径通过。CLI 安装 `c8bc7a67` 的同会话恢复与确定拒绝获独立 Swarm 接受。完整 Windows 验收仍未通过；准确结果、审查和服务状态见 [Windows 任务](tasks/windows-compatibility-20261029.md)。
 
 本轮独立 CLI 最终安装 `8fc61d623e9d057f6b4824ebfefb79bc0c704276` 已修复关闭历史未创建证明与 SQLite/WAL 普通写入误判凭据来源。Swarm 静态审查、完整 Windows 构建/安装、八项实际 SQLite 检查、最终双 Worker 全流程通过，完整结果 1,872,478 字节；同目录 EOF 重启退出 0，11 个所属进程退出，旧库未知记录拒绝退出 6。用户授权的旧副本清理完成，数据库和记录保留。当前 main 完整 Go 检查退出 1，S1/S2/S3/S5 通过，具体失败见任务。历史确定未创建记录的全局正向关闭、全部异常与完整 Windows 验收仍未通过。
 

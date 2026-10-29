@@ -16,6 +16,8 @@
 
 Swarm 任务 `task_f8bab0f3b26d`、Reviewer `ctx_a11900f5779c` 使用实际 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；计划已接受。局部命令 `go test -mod=readonly ./internal/adapters/agents -run '^(TestRegisteredReadBoundsAndCancellation|TestRegisteredGitReadIgnoresInheritedRepositoryAndFSMonitor)$' -count=1 -v` 退出 0，两个边界子用例及真实 Git 隔离检查通过，包运行 19.687 秒。`gofmt -l` 与 `git diff --check` 无输出。原件位于 `.verification/windows-20261029/phase7/registered-local/`；本批未运行全量或完整安装包构建。
 
+准确修复 `4a90dc2099146f5cd2331cbba5715979906653f7` 已普通 push，并经同一 Reviewer 接受；主 Agent 已读取完整计划与代码审查正文，PR #11 COMMENT review 为 `5695034749`。Worker 停止、释放、完整成果 JSON 导出及控制端关闭均退出 0。任务结束接口因固定要求两个 Worker 返回 `409 evidence_missing`，原请求 `7221ca37-ab1e-4ff2-9a66-b6a3a5c26273` 保留，该调度任务未标记完成。服务 Ctrl+C 后 HTTP 关闭，Job 连续两次只余 serve 自身；PowerShell 外层退出 1，不能记为正常 EOF 退出 0。本批审查记录与服务结束记录位于 `phase7/`。
+
 最新 Git for Windows v2.56.0.windows.4 的 [mingw_getcwd 源码](https://github.com/git-for-windows/git/blob/v2.56.0.windows.4/compat/mingw.c#L1638)仍使用 `MAX_PATH` 工作目录缓冲，本批未安装或修改系统 Git。263 字符目录的旧实际失败、两项旧 SQLite 原生回执测试、Bilibili 实际输入、L1/非空昨日数据和历史未创建记录的正向关闭继续保留未通过范围。
 
 2026-10-29 后续授权：用户要求继续使用 Swarm CLI 修复剩余 bug 并完成 Windows 全量复验。沿两个既有分支接续，主 Agent 单轨修改和验证；Swarm CLI 两名只读 Worker 分别审查 main 实际失败和 CLI 回收/恢复设计，原生工具继续关闭。先查明实际输入来源和失败原因，不通过删除用例、添加 skip、模拟原生协议或放宽授权取得通过。
