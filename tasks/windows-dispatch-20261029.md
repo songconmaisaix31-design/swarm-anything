@@ -18,6 +18,37 @@
 - 修复：Worker 名称只传入已有 `taskTitle`；同步严格准入比较，保持原任务、Agent、模型、输入和作用域校验。
 - 写入范围：`runtime/swa-orca/src/controller-helper.ts`、`runtime/swa-orca/src/controller-admission.ts` 和本任务记录。主 Agent 单轨完成修复、测试及提交；不修改其他工作树。
 - 验证：完整 strict TypeScript、架构检查、完整 Windows 候选构建和真实独立安装；通过真实 Swarm CLI 创建控制端、任务、分析 Worker，取得实际输出并停止、释放、获取成果和关闭。验证中发现的新错误保留原结果并继续定位。
+
+## 实际能力发现
+
+源码 `b5b2a8aa4e677c008a148c15607fd103d40ba039` 把发现与执行分开：无项目选择时使用 TUI 注册命令、别名与命令覆盖，执行选择继续使用 ACP 命令及其 `ignoreAgentCommandSetting` 规则。完整 strict TypeScript、`go test -mod=readonly ./cmd/swa`、47 包架构检查通过。
+
+候选 `dist/windows-discovery-20261029` 完整构建成功，固定 Node 24.21.0、四项复用原生模块和 28251 路径闭包。候选直接从自身目录运行，安装根由可执行文件目录取得，未修改 PATH。
+
+在 `127.0.0.1:64811` 的真实 `swa serve` 上，用只读 `observe` 授权取得项目凭据后执行 `swa capabilities --json`（`service-discovery` 私有数据根）：
+
+- `swa.capabilities.v1`，源码 `b5b2a8aa`，平台 win32，注册并集 45 项且唯一 45 项，与静态核对一致。
+- `roles` 返回 `developer`、`reviewer`、`coordinator` 三张角色卡及职责。
+- 10 项实际安装并返回真实版本：pi 1.0.1、codex 0.164.0、claude 2.1.238、grok 1.0.34、opencode 2.0.31、opencode2 2.0.31、qoder 1.1.64、kimi 2.1.1、qwen-code 0.24.6、openclaw 2026.6.11。
+- 直接执行 `codex --version`、`claude --version`、`opencode --version` 得到 `codex-cli 0.164.0`、`2.1.238 (Claude Code)`、`opencode v2.0.31`，与发现结果一致；先前记录的 codex 0.162.0 已被当前版本替换，说明每次读取的是当前 CLI 实际版本。
+- 本机已安装 Antigravity 桌面程序，但 `agy` 不在 PATH，`agy` 保持 unavailable；没有伪造该正向结果。
+
+原件为 `.verification/windows-dispatch-20261029/capabilities-b5b2a8aa.json` 与 `capabilities-summary.json`。该步骤只执行发现与版本探测，没有模型调用或原生工具授权；项目凭据仅存在于该 PowerShell 进程内，未写入文件或日志。
+
+## 实际角色卡协作
+
+同一候选 `b5b2a8aa` 与同一私有服务上，为本机公开项目 `C:\Users\DW\Documents\ChatGPT\swa-windows-fix` 建立 `read_context/observe/start/send/stop` 授权，控制端 `term_710ac36d272253389e791d958d1044bc`，根任务 `task_09c57e19f4c3`，Run `run_f1e01e4e6bb7`。
+
+两名 Worker 使用 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，输入为固定文本，工具未开放：
+
+- `ctx_661688b2da0d`，角色 `developer`，原生会话 `ses_e784703abffeGjYD2hfyiaxMPv`，`idle_outcome=succeeded`，输入 8496 / 输出 114 token，回复以 `[REVIEW_COMPLETE]` 结尾。
+- `ctx_f8d47ebb20cc`，角色 `reviewer`，原生会话 `ses_e78460bdfffe0XSNUMJczA7wNm`，`idle_outcome=succeeded`，输入 8460 / 输出 82 token，回复以 `[REVIEW_COMPLETE]` 结尾。
+
+`request show` 的持久记录包含 `command.role` 分别为 `developer`、`reviewer`，Worker spec 正文分别带有 `内置角色 developer（开发者）：` 与 `内置角色 reviewer（审查者）：` 及对应职责说明，说明角色卡随原命令与原生输入保存，未增加工具、目录或账号权限。两次 `worker stop`、两次 `worker release` 与 `controller close` 均返回 `ok:true`，控制端实际结束。
+
+真实限制：`task result` 与 `task complete` 首次调用缺少 `--task` 与 `--result-file` 参数而被拒绝，随后控制端已关闭，未取得完整成果导出；两名 Worker 的最终正文与 token 用量由各自原生 OpenCode SQLite 只读读取，原件位于 `roles-run/worker-A-request.json`、`worker-B-request.json` 与 `service-discovery/opencode/`。本次授权由本机操作者会话建立，凭据未落盘。
+
+本轮 `swa serve` 已结束，端口 64811 不再监听，无残留 `swa`/`server` 进程。
 - 运行范围：固定公开 `swarm-anything` main 源码，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；没有模型结果前不记为调用成功。
 - 旧失败请求和私有数据保留；不自动重放未知请求，不修改已安装的旧候选或其数据库。
 
