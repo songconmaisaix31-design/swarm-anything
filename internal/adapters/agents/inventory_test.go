@@ -113,6 +113,31 @@ func TestStartupDeadlinePublishesOnlyCompletedChecks(t *testing.T) {
 	}
 }
 
+func TestInventoryRecognizesVPrefixedVersion(t *testing.T) {
+	i := newInventory(func(name string) (string, error) {
+		if name == "opencode" {
+			return "/native/opencode", nil
+		}
+		return "", exec.ErrNotFound
+	}, func(context.Context, string, string) (string, error) {
+		return "opencode v2.0.31", nil
+	})
+	if err := i.RefreshCLI(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := i.Snapshot(context.Background())
+	for _, item := range items {
+		if item.ID != "opencode" {
+			continue
+		}
+		if item.Version == nil || *item.Version != "2.0.31" || item.Installed.Reason != "cli_entry_found_version_help_passed" {
+			t.Fatalf("v-prefixed version was not recognized: %+v", item)
+		}
+		return
+	}
+	t.Fatal("opencode definition missing")
+}
+
 func TestMain(m *testing.M) {
 	if os.Getenv("ASTROCYTE_NATIVE_PROCESS_TEST_HELPER") != "" {
 		nativeProcessTestHelper()

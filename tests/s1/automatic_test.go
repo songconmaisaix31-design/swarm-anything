@@ -3,7 +3,6 @@ package s1_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -26,7 +25,7 @@ import (
 )
 
 func localCommand(version int) app.CommandMeta {
-	key := rand.Text()
+	key := uuid.NewString()
 	return app.CommandMeta{SchemaVersion: 1, RequestID: key, IdempotencyKey: key, ExpectedVersion: version}
 }
 
@@ -195,6 +194,15 @@ func (s *automaticHTTP) request(method, path string, input any, status int, outp
 	}
 	defer response.Body.Close()
 	if response.StatusCode != status {
+		var failure apierrors.ErrorEnvelope
+		if json.NewDecoder(response.Body).Decode(&failure) == nil && failure.Error != nil {
+			if encoded, err := json.Marshal(failure); err == nil {
+				if err := os.WriteFile(filepath.Join(s.dir, "http-error-"+request.Header.Get("Idempotency-Key")+".json"), encoded, 0600); err != nil {
+					s.t.Fatal("save actual HTTP failure")
+				}
+			}
+			s.t.Logf("actual HTTP failure code=%s required_action=%s", failure.Error.Code, failure.Error.RequiredAction)
+		}
 		s.t.Fatalf("HTTP %s returned %d, expected %d", path, response.StatusCode, status)
 	}
 	if output != nil {
@@ -613,7 +621,7 @@ func TestAutomaticUnknownSurvivesSQLiteReopenWithoutRetry(t *testing.T) {
 	if payload.Result != nil {
 		t.Fatal("unknown result was fabricated")
 	}
-	if len(payload.Snapshots) != 1 || payload.Snapshots[0].Ref.Revision != 1 || payload.Snapshots[0].Text != oldText.Text {
+	if len(payload.Snapshots) != 1 || payload.Snapshots[0].Ref != request.InputRefs[0] || payload.Snapshots[0].ContentDigest != material.Revisions[0].ContentDigest || payload.Snapshots[0].Text != "" {
 		t.Fatal("processor input was not frozen to selected old revision")
 	}
 	if err = db.Close(); err != nil {

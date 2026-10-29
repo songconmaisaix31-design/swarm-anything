@@ -81,7 +81,9 @@ func readyOpportunityFromPublicGit(t *testing.T) (*Service, *sqlite.DB, *observe
 		}
 		return data
 	}
-	if strings.TrimSpace(string(readGit("remote", "get-url", "origin"))) != "https://github.com/songconmaisaix31-design/Astrocyte" {
+	const publicRepository = "https://github.com/songconmaisaix31-design/swarm-anything"
+	origin := strings.TrimSpace(string(readGit("remote", "get-url", "origin")))
+	if origin != publicRepository && origin != publicRepository+".git" {
 		t.Fatal("actual Git source is outside approved public repository")
 	}
 	head := strings.TrimSpace(string(readGit("rev-parse", "HEAD")))
@@ -94,7 +96,7 @@ func readyOpportunityFromPublicGit(t *testing.T) (*Service, *sqlite.DB, *observe
 		t.Fatal("retain original fixed public README locally")
 	}
 	s := NewAttentionService(sqlite.NewAttentionRepository(db), importers.NewReader([]string{filepath.Dir(file)}), objects, ServiceOptions{})
-	queued, err := s.ImportMaterial(context.Background(), human, ImportMaterialCommand{CommandMeta: meta("admission-fixed-public-git", 1), Adapter: "manual", Kind: "text", Title: "Astrocyte README.md", SourceLocator: "https://github.com/songconmaisaix31-design/Astrocyte/blob/" + head + "/README.md", LocalFileRef: file, SourceSpans: []string{"README.md at Git commit " + head}})
+	queued, err := s.ImportMaterial(context.Background(), human, ImportMaterialCommand{CommandMeta: meta("admission-fixed-public-git", 1), Adapter: "manual", Kind: "text", Title: "swarm-anything README.md", SourceLocator: publicRepository + "/blob/" + head + "/README.md", LocalFileRef: file, SourceSpans: []string{"README.md at Git commit " + head}})
 	if err != nil {
 		t.Fatal("queue explicit manual import of actual fixed public README")
 	}

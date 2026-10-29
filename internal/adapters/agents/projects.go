@@ -20,7 +20,7 @@ func scopeError(message string) error {
 // CanonicalRoot requires a chosen absolute directory, never defaults to cwd.
 func CanonicalRoot(root string) (string, error) {
 	if !filepath.IsAbs(root) || strings.TrimSpace(root) == "" {
-		return "", scopeError("an absolute project root is required")
+		return "", &apierrors.ServiceError{Code: apierrors.ValidationFailed, Message: "an absolute project root is required", RequiredAction: "select_explicit_project_scope"}
 	}
 	clean := filepath.Clean(root)
 	resolved, err := filepath.EvalSymlinks(clean)

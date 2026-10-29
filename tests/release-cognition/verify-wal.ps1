@@ -49,6 +49,13 @@ function Wait-File([string]$path, $process) {
     }
 }
 
+function Read-Progress {
+    # 直接读取真实 SQLite 已提交数量，不维护逐事件的派生进度文件。
+    $text = & $collectorBinary --mode progress --source $source
+    Check-Exit 'actual committed SQLite progress'
+    return ($text | ConvertFrom-Json)
+}
+
 try {
     Push-Location $workspace
     go build -mod=readonly -o $serverBinary ./cmd/server
@@ -103,18 +110,19 @@ try {
     $writer = Start-Process -FilePath $collectorBinary -ArgumentList $quotedArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $owned 'writer.stdout.log') -RedirectStandardError (Join-Path $owned 'writer.stderr.log')
     $processes += $writer
     Wait-File (Join-Path $writerDirectory 'writer-started.json') $writer
-    $progressPath = Join-Path $writerDirectory 'progress.json'
-    Wait-File $progressPath $writer
+    $started = Get-Content -LiteralPath (Join-Path $writerDirectory 'writer-started.json') -Raw | ConvertFrom-Json
     Start-Sleep -Milliseconds 1000
     $wal = Get-Item -LiteralPath ($source + '-wal')
     if ($wal.Length -le 0) { throw 'Actual source has no committed WAL' }
-    $before = Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
+    $before = Read-Progress
+    if ($before.recorded -le 0 -or $before.recorded -ge $started.actual_commits) { throw 'Actual writer must have a partial committed cohort before online backup' }
     $writer.Refresh()
     if ($writer.HasExited) { throw 'Writer must be active during online backup' }
     & $snapshotBinary --source $source --root $root --timeout 120s > (Join-Path $owned 'concurrent-publication.json')
     Check-Exit 'multiprocess WAL snapshot'
-    $after = Get-Content -LiteralPath $progressPath -Raw | ConvertFrom-Json
-    @{ writer_pid=$writer.Id; source_wal_bytes=$wal.Length; recorded_before=$before.recorded; recorded_after=$after.recorded; actual_total=$after.actual_commits } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $owned 'concurrent-safe.json') -Encoding utf8
+    $after = Read-Progress
+    if ($after.recorded -lt $before.recorded -or $after.recorded -gt $started.actual_commits) { throw 'Actual committed cohort moved backwards or exceeded its public source' }
+    @{ writer_pid=$writer.Id; source_wal_bytes=$wal.Length; recorded_before=$before.recorded; recorded_after=$after.recorded; actual_total=$started.actual_commits } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $owned 'concurrent-safe.json') -Encoding utf8
     $writer.WaitForExit()
     if ($writer.ExitCode -ne 0) { throw 'Actual public writer failed' }
     & $snapshotBinary --source $source --root $root --timeout 120s > (Join-Path $owned 'complete-publication.json')

@@ -27,8 +27,7 @@ import (
 )
 
 func TestWorkbenchUsesSharedSessionOriginAndErrorV1(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	local := os.Getenv("ASTROCYTE_TEST_COGNITION_LOCALAPPDATA")
 	expectedPath := os.Getenv("ASTROCYTE_TEST_COGNITION_SQL_EXPECTED_FILE")
 	output := os.Getenv("ASTROCYTE_TEST_OUTPUT_ROOT")
@@ -160,7 +159,9 @@ func TestWorkbenchUsesSharedSessionOriginAndErrorV1(t *testing.T) {
 		}
 	})
 	var queryOnly int
-	if err := originalDB.QueryRowContext(ctx, "PRAGMA query_only").Scan(&queryOnly); err != nil || queryOnly != 1 {
+	sourceContext, cancelSource := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelSource()
+	if err := originalDB.QueryRowContext(sourceContext, "PRAGMA query_only").Scan(&queryOnly); err != nil || queryOnly != 1 {
 		t.Fatal("original public SQLite connection must remain query_only", err)
 	}
 	type originalEvent struct {
@@ -168,7 +169,7 @@ func TestWorkbenchUsesSharedSessionOriginAndErrorV1(t *testing.T) {
 		origin string
 		raw    []byte
 	}
-	rows, err := originalDB.QueryContext(ctx, "SELECT id,kind,topic,data,ts,origin_key,raw_bytes FROM attention_engine_events ORDER BY ts DESC,id ASC")
+	rows, err := originalDB.QueryContext(sourceContext, "SELECT id,kind,topic,data,ts,origin_key,raw_bytes FROM attention_engine_events ORDER BY ts DESC,id ASC")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +198,7 @@ func TestWorkbenchUsesSharedSessionOriginAndErrorV1(t *testing.T) {
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		t.Fatal(err)
 	}
+	cancelSource()
 	if float64(len(expected)) != expectedTotal {
 		t.Fatal("actual public SQL population differs from its independent published expectation")
 	}
@@ -325,7 +327,9 @@ func TestWorkbenchUsesSharedSessionOriginAndErrorV1(t *testing.T) {
 					t.Fatal("actual HTTP event differs from the six original SQL fields")
 				}
 				if !resolved[event.ID] {
-					stored, err := events.GetEvent(ctx, event.ID)
+					readContext, cancelRead := context.WithTimeout(ctx, 30*time.Second)
+					stored, err := events.GetEvent(readContext, event.ID)
+					cancelRead()
 					original := expected[start+index]
 					if err != nil || stored.ID != event.ID || stored.Event == nil || stored.OriginKey != original.origin || !bytes.Equal(stored.RawBytes, original.raw) || stored.Event.Kind != event.Kind || stored.Event.Topic != event.Topic || stored.Event.Scope != event.Scope || time.UnixMilli(stored.Event.TS).UTC().Format(time.RFC3339Nano) != event.TS {
 						t.Fatal("actual event_id does not resolve through production GetEvent to its original Git receipt", err)

@@ -17,6 +17,7 @@ for (const relay of [false, true]) test(`production server keeps owned SQLite af
       assert.equal(server.localAppData, join(original, 'local-appdata'));
       assert.equal(server.relayRoot, join(server.localAppData, 'astrocyte-workbench', 'v0.2-access'));
       assert.equal(server.dataDir, join(server.relayRoot, 'app-state'));
+      await assert.rejects(access(join(original, 'profile', 'go', 'pkg', 'mod')), { code: 'ENOENT' });
     }
     let api = await humanAPI(server.apiURL);
     assert.deepEqual((await api.get('/materials')).items, []);

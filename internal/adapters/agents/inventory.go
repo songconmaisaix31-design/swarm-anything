@@ -13,7 +13,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/workspace/domain"
 )
 
-var versionPattern = regexp.MustCompile(`\b[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?\b`)
+var versionPattern = regexp.MustCompile(`\bv?([0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?)\b`)
 
 type cliDefinition struct{ id, name, command string }
 
@@ -79,6 +79,7 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 			items[n].Installed.Reason = "cli_entry_found_probe_not_run"
 		}
 	}
+	// 先取得全部已安装 CLI 的版本，再补齐 help：同一预算下版本覆盖更完整。
 	for n, def := range definitions {
 		if ctx.Err() != nil {
 			break
@@ -88,32 +89,41 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 			continue
 		}
 		items[n].Installed.Reason = "cli_entry_found_probe_incomplete"
-		passed := true
-		for _, flag := range []string{"--version", "--help"} {
-			if ctx.Err() != nil {
-				passed = false
-				break
-			}
-			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			output, err := i.probe(probeCtx, path, flag)
-			cancel()
-			if err != nil {
-				passed = false
-				items[n].Installed.Reason = "cli_entry_found_probe_failed"
-				continue
-			}
-			if flag == "--version" {
-				if version := versionPattern.FindString(output); version != "" {
-					items[n].Version = &version
-				} else {
-					passed = false
-					items[n].Installed.Reason = "cli_entry_found_version_unrecognized"
-				}
-			}
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		output, err := i.probe(probeCtx, path, "--version")
+		cancel()
+		if err != nil {
+			items[n].Installed.Reason = "cli_entry_found_probe_failed"
+			continue
 		}
-		if passed {
-			items[n].Installed.Reason = "cli_entry_found_version_help_passed"
+		if match := versionPattern.FindStringSubmatch(output); len(match) > 1 {
+			version := match[1]
+			items[n].Version = &version
+		} else {
+			items[n].Installed.Reason = "cli_entry_found_version_unrecognized"
 		}
+		checked := time.Now().UTC()
+		items[n].Installed.CheckedAt = &checked
+	}
+	for n, def := range definitions {
+		if ctx.Err() != nil {
+			break
+		}
+		if items[n].Version == nil {
+			continue
+		}
+		path, err := i.lookup(def.command)
+		if err != nil {
+			continue
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, err = i.probe(probeCtx, path, "--help")
+		cancel()
+		if err != nil {
+			items[n].Installed.Reason = "cli_entry_found_probe_failed"
+			continue
+		}
+		items[n].Installed.Reason = "cli_entry_found_version_help_passed"
 		checked := time.Now().UTC()
 		items[n].Installed.CheckedAt = &checked
 	}

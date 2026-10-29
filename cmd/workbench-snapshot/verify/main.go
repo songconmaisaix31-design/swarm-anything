@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -53,9 +52,13 @@ func git(ctx context.Context, repo string, args ...string) (string, error) {
 	b, err := cmd.Output()
 	return strings.TrimSpace(string(b)), err
 }
+func approvedPublicRepository(remote string) bool {
+	remote = strings.TrimSuffix(remote, ".git")
+	return remote == "https://github.com/songconmaisaix31-design/Astrocyte" || remote == "https://github.com/songconmaisaix31-design/swarm-anything"
+}
 func run() (finalErr error) {
 	f := flag.NewFlagSet("actual-public-cognition", flag.ContinueOnError)
-	mode := f.String("mode", "", "collect or inspect")
+	mode := f.String("mode", "", "collect, inspect or progress")
 	source := f.String("source", "", "explicit server-initialized independent SQLite")
 	repo := f.String("repository", "", "explicit public bare Git checkout")
 	ref := f.String("ref", "", "explicit actual reachable public Git ref")
@@ -77,8 +80,20 @@ func run() (finalErr error) {
 			_ = os.WriteFile(filepath.Join(*out, "verification-error.txt"), []byte(finalErr.Error()), 0600)
 		}
 	}()
-	if *source == "" || *out == "" || f.NArg() != 0 {
+	if *source == "" || (*out == "" && *mode != "progress") || f.NArg() != 0 {
 		return errors.New("explicit paths required")
+	}
+	if *mode == "progress" {
+		db, err := readonly(*source)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		var recorded int
+		if err := db.QueryRow("SELECT COUNT(*) FROM attention_engine_events").Scan(&recorded); err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]int{"recorded": recorded})
 	}
 	if err := os.MkdirAll(*out, 0700); err != nil {
 		return err
@@ -104,31 +119,19 @@ func run() (finalErr error) {
 	if err != nil {
 		return err
 	}
-	if remote != "https://github.com/songconmaisaix31-design/Astrocyte" {
+	if !approvedPublicRepository(remote) {
 		return errors.New("only approved public repository allowed")
 	}
-	ids, err := git(ctx, *repo, "rev-list", *ref)
+	commits, err := publicGitRecords(ctx, *repo, *ref)
 	if err != nil {
 		return err
 	}
 	var records []app.StoredEvent
-	for _, id := range strings.Fields(ids) {
-		stamp, e := git(ctx, *repo, "show", "-s", "--format=%ct", id)
-		if e != nil {
-			return e
-		}
-		seconds, e := strconv.ParseInt(stamp, 10, 64)
-		if e != nil {
-			return e
-		}
-		subject, e := git(ctx, *repo, "show", "-s", "--format=%s", id)
-		if e != nil {
-			return e
-		}
+	for _, commit := range commits {
 		raw, e := json.Marshal(struct {
 			events.GitLogRecord
 			PublicRepository string `json:"public_repository"`
-		}{events.GitLogRecord{Commit: id, TS: seconds * 1000, Subject: subject}, remote})
+		}{commit, remote})
 		if e != nil {
 			return e
 		}
@@ -180,11 +183,8 @@ func run() (finalErr error) {
 	if err = write(filepath.Join(*out, "writer-started.json"), map[string]any{"pid": os.Getpid(), "actual_commits": len(records), "seeded_source_times": seeded, "source": remote, "ref": *ref, "scope": *scope}); err != nil {
 		return err
 	}
-	for i, row := range records {
+	for _, row := range records {
 		if _, err = recorder.Record(ctx, []app.StoredEvent{row}); err != nil {
-			return err
-		}
-		if err = write(filepath.Join(*out, "progress.json"), map[string]any{"recorded": i + 1, "actual_commits": len(records), "pid": os.Getpid()}); err != nil {
 			return err
 		}
 		if *pace > 0 {
@@ -286,18 +286,20 @@ func inspect(ctx context.Context, source, root, out string, minimumToday int, cl
 	if err = write(filepath.Join(out, "events-six-fields.json"), safe); err != nil {
 		return err
 	}
-	publicIDs := map[string]bool{}
+	publicIDs := map[string]int64{}
+	publicRepository := ""
 	if repo != "" {
 		remote, e := git(ctx, repo, "remote", "get-url", "origin")
-		if e != nil || remote != "https://github.com/songconmaisaix31-design/Astrocyte" {
+		if e != nil || !approvedPublicRepository(remote) {
 			return errors.New("only approved actual public repository allowed")
 		}
-		ids, e := git(ctx, repo, "rev-list", ref)
+		publicRepository = remote
+		_, commits, e := publicGitMetadata(ctx, repo, ref)
 		if e != nil {
 			return e
 		}
-		for _, id := range strings.Fields(ids) {
-			publicIDs[id] = true
+		for _, commit := range commits {
+			publicIDs[commit.Commit] = commit.TS
 		}
 		if len(publicIDs) != len(safe) {
 			return errors.New("SQL event cohort differs from actual reachable public commits")
@@ -309,19 +311,18 @@ func inspect(ctx context.Context, source, root, out string, minimumToday int, cl
 		if err = db.QueryRowContext(ctx, `SELECT origin_key,json_extract(raw_bytes,'$.commit'),json_extract(raw_bytes,'$.public_repository'),json_extract(raw_bytes,'$.ts'),ts FROM attention_engine_events WHERE id=?`, event.ID).Scan(&origin, &commit, &repository, &observed, &stored); err != nil {
 			return err
 		}
-		if origin != "git:"+strings.ToLower(commit) || repository != "https://github.com/songconmaisaix31-design/Astrocyte" || observed != stored || time.UnixMilli(stored).UTC().Format(time.RFC3339Nano) != event.TS {
+		if publicRepository == "" {
+			publicRepository = repository
+		}
+		if origin != "git:"+strings.ToLower(commit) || !approvedPublicRepository(repository) || repository != publicRepository || observed != stored || time.UnixMilli(stored).UTC().Format(time.RFC3339Nano) != event.TS {
 			return errors.New("event origin differs from actual public commit")
 		}
 		if repo != "" {
-			if !publicIDs[commit] {
+			stamp, present := publicIDs[commit]
+			if !present {
 				return errors.New("SQL contains repeated or out of cohort public commit")
 			}
-			stamp, e := git(ctx, repo, "show", "-s", "--format=%ct", commit)
-			if e != nil {
-				return e
-			}
-			seconds, e := strconv.ParseInt(stamp, 10, 64)
-			if e != nil || seconds*1000 != stored {
+			if stamp != stored {
 				return errors.New("SQL event time differs from actual Git commit time")
 			}
 			delete(publicIDs, commit)
@@ -330,7 +331,7 @@ func inspect(ctx context.Context, source, root, out string, minimumToday int, cl
 	if len(publicIDs) != 0 {
 		return errors.New("actual public commits missing from SQL")
 	}
-	if err = write(filepath.Join(out, "origin-safe.json"), map[string]any{"event_ids_located": len(safe), "actual_git_origins_matched": len(safe), "source": "https://github.com/songconmaisaix31-design/Astrocyte", "source_ts_preserved": true, "public_ref": ref, "reachable_commits_sql_verified": repo != ""}); err != nil {
+	if err = write(filepath.Join(out, "origin-safe.json"), map[string]any{"event_ids_located": len(safe), "actual_git_origins_matched": len(safe), "source": publicRepository, "source_ts_preserved": true, "public_ref": ref, "reachable_commits_sql_verified": repo != ""}); err != nil {
 		return err
 	}
 	wire, err := json.Marshal(views)

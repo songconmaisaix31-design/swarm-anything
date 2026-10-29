@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -176,7 +178,25 @@ func TestWorkbenchProjectionPaginationAndShanghaiDays(t *testing.T) {
 		}
 	}
 	// 上海日界用独立时区计算，并按真实数据库的时间逐条核对。
-	day := s.clock().In(s.zone).AddDate(0, 0, -1).Format("2006-01-02")
+	days := map[string]int{}
+	for _, event := range workbenchExpectedEvents(t, db, "1=1") {
+		stamp, err := time.Parse(time.RFC3339Nano, event.TS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		days[stamp.In(s.zone).Format("2006-01-02")]++
+	}
+	eligible := []string{}
+	for day, count := range days {
+		if count >= 2 && count <= 100 && day < s.clock().In(s.zone).Format("2006-01-02") {
+			eligible = append(eligible, day)
+		}
+	}
+	if len(eligible) == 0 {
+		t.Fatal("actual Shanghai-day pagination sample unavailable")
+	}
+	sort.Strings(eligible)
+	day := eligible[len(eligible)-1]
 	start, err := time.ParseInLocation("2006-01-02", day, s.zone)
 	if err != nil {
 		t.Fatal(err)
@@ -525,8 +545,37 @@ func TestWorkbenchTokenProjectionExplicitJSONValues(t *testing.T) {
 func TestWorkbenchActualPublicOriginsAndPrivacy(t *testing.T) {
 	s := workbenchActualPublication(t)
 	db := workbenchIndependentDB(t, s)
+	repo, ref := os.Getenv("ASTROCYTE_TEST_COGNITION_REPOSITORY"), os.Getenv("ASTROCYTE_TEST_COGNITION_PUBLIC_REF")
+	if !filepath.IsAbs(repo) || ref == "" {
+		t.Fatal("explicit actual public Git repository and ref required")
+	}
+	remoteBytes, err := exec.Command("git", "-C", repo, "remote", "get-url", "origin").Output()
+	remote := strings.TrimSpace(string(remoteBytes))
+	canonical := strings.TrimSuffix(remote, ".git")
+	if err != nil || (canonical != "https://github.com/songconmaisaix31-design/Astrocyte" && canonical != "https://github.com/songconmaisaix31-design/swarm-anything") {
+		t.Fatal("actual repository is outside approved public source")
+	}
+	history, err := exec.Command("git", "-C", repo, "log", "--format=%H,%ct", ref, "--").Output()
+	if err != nil {
+		t.Fatal("actual public ref history unavailable")
+	}
+	rows, err := csv.NewReader(strings.NewReader(string(history))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commits := map[string]int64{}
+	for _, row := range rows {
+		if len(row) != 2 {
+			t.Fatal("actual Git history fields incomplete")
+		}
+		stamp, err := strconv.ParseInt(row[1], 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commits[row[0]] = stamp * 1000
+	}
 	expected := workbenchExpectedEvents(t, db, "1=1")
-	if len(expected) != 1339 {
+	if len(expected) == 0 || len(expected) != len(commits) {
 		t.Fatal("authorized immutable public replay cohort mismatch")
 	}
 	actual := []workbench.Event{}
@@ -547,9 +596,11 @@ func TestWorkbenchActualPublicOriginsAndPrivacy(t *testing.T) {
 		if err := db.QueryRow(`SELECT origin_key,json_extract(raw_bytes,'$.commit'),json_extract(raw_bytes,'$.public_repository'),json_extract(raw_bytes,'$.subject'),json_extract(raw_bytes,'$.ts'),ts FROM attention_engine_events WHERE id=?`, event.ID).Scan(&origin, &commit, &repository, &subject, &originalTS, &storedTS); err != nil {
 			t.Fatal("actual public origin lookup failed", err)
 		}
-		if origin != "git:"+commit || len(commit) != 40 || repository != "https://github.com/songconmaisaix31-design/Astrocyte" || originalTS != storedTS || event.TS != time.UnixMilli(originalTS).UTC().Format(time.RFC3339Nano) {
+		stamp, present := commits[commit]
+		if origin != "git:"+commit || len(commit) != 40 || repository != remote || !present || stamp != storedTS || originalTS != storedTS || event.TS != time.UnixMilli(originalTS).UTC().Format(time.RFC3339Nano) {
 			t.Fatal("actual public origin or source timestamp changed")
 		}
+		delete(commits, commit)
 		if len(subject) >= 8 && subject != event.Kind && subject != event.Topic && subject != event.Scope && subject != event.ID && subject != event.TS {
 			body, err := json.Marshal(event)
 			if err != nil {
@@ -572,6 +623,9 @@ func TestWorkbenchActualPublicOriginsAndPrivacy(t *testing.T) {
 		if event.Tokens == nil {
 			nullTokens++
 		}
+	}
+	if len(commits) != 0 {
+		t.Fatal("actual public commits are missing from the event cohort")
 	}
 	// Git 的整数投影不代表已观测模型 usage；null 样本数量直接按当前副本报告。
 	t.Logf("actual_public_origins=%d projected_null_tokens=%d projected_integer_tokens=%d", len(actual), nullTokens, len(actual)-nullTokens)
