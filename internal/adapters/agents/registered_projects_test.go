@@ -146,8 +146,19 @@ func TestRegisteredReadBoundsAndCancellation(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestRegisteredReadHelper$")
 			cmd.Env = append(os.Environ(), "ASTROCYTE_REGISTERED_HELPER="+test.mode)
 			start := time.Now()
-			if data, err := runRegisteredRead(ctx, cmd, test.limit); err == nil || data != nil || time.Since(start) > 4*time.Second {
+			data, err := runRegisteredRead(ctx, cmd, test.limit)
+			if err == nil || data != nil {
 				t.Fatalf("bound not enforced bytes=%d err=%v", len(data), err)
+			}
+			switch test.mode {
+			case "output":
+				if err.Error() != "read command output exceeds bound" {
+					t.Fatalf("output overflow returned another failure: %v", err)
+				}
+			case "wait":
+				if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 4*time.Second {
+					t.Fatalf("deadline cancellation was not enforced: %v", err)
+				}
 			}
 		})
 	}

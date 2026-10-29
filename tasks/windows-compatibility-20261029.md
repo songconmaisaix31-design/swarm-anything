@@ -10,6 +10,14 @@
 
 ## 执行安排
 
+2026-10-29 最新执行顺序：用户要求逐项针对 bug 修复，修复后仅执行受影响范围的局部检查；全部代码完成一轮修复与审查后，再统一执行全量测试。前序全量失败日志作为定位基线，不在每次局部修改后重复运行全量。局部失败继续在原范围修复；真实输入缺失保持未验，不修改断言或降低验收。
+
+本批局部测试修复限定 `internal/adapters/agents/registered_projects_test.go`：输出越界分支保留原 5 秒 context 和实际输出量，明确断言越界错误；取消分支明确断言 `context.DeadlineExceeded` 并保留原 4 秒终止上限。原统一 4 秒断言短于输出分支的 5 秒期限，并允许错误类型混淆。Swarm Reviewer 先审核该计划，随后只执行对应两类子用例及既有真实 Git 环境隔离检查；生产代码、生产超时和其余验收要求不变。
+
+Swarm 任务 `task_f8bab0f3b26d`、Reviewer `ctx_a11900f5779c` 使用实际 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭；计划已接受。局部命令 `go test -mod=readonly ./internal/adapters/agents -run '^(TestRegisteredReadBoundsAndCancellation|TestRegisteredGitReadIgnoresInheritedRepositoryAndFSMonitor)$' -count=1 -v` 退出 0，两个边界子用例及真实 Git 隔离检查通过，包运行 19.687 秒。`gofmt -l` 与 `git diff --check` 无输出。原件位于 `.verification/windows-20261029/phase7/registered-local/`；本批未运行全量或完整安装包构建。
+
+最新 Git for Windows v2.56.0.windows.4 的 [mingw_getcwd 源码](https://github.com/git-for-windows/git/blob/v2.56.0.windows.4/compat/mingw.c#L1638)仍使用 `MAX_PATH` 工作目录缓冲，本批未安装或修改系统 Git。263 字符目录的旧实际失败、两项旧 SQLite 原生回执测试、Bilibili 实际输入、L1/非空昨日数据和历史未创建记录的正向关闭继续保留未通过范围。
+
 2026-10-29 后续授权：用户要求继续使用 Swarm CLI 修复剩余 bug 并完成 Windows 全量复验。沿两个既有分支接续，主 Agent 单轨修改和验证；Swarm CLI 两名只读 Worker 分别审查 main 实际失败和 CLI 回收/恢复设计，原生工具继续关闭。先查明实际输入来源和失败原因，不通过删除用例、添加 skip、模拟原生协议或放宽授权取得通过。
 
 本轮先登记的写域：main 的 `internal/adapters/agents/`、`internal/adapters/importers/`、`internal/adapters/sqlite/`、`internal/workspace/app/`、`internal/attention/app/`、`cmd/server/`、`tests/s1/`、`scripts/`、受影响前端实际 HTTP 测试与此任务记录；只修改复现后有明确原因的文件。CLI 回收和恢复的改动在独立任务中登记。每批先由 Swarm Reviewer 审核测试计划，再实现并执行真实专项检查，最后重跑完整检查、构建和适用安装流程。
