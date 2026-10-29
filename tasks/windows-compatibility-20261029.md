@@ -300,3 +300,5 @@ Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod v
 观察到的限制：10 秒总预算下，若靠前的 CLI 的 `--help` 较慢（本次 pi 出现 `probe_incomplete`），后面的项会保持 `probe_not_run`，清单在该次运行内不完整。修改前阻塞式启动同样受这个预算限制，且当时也只有部分项取得版本；后台化没有降低探测预算。
 
 在同一预算内改为两遍：先用 `--version` 覆盖全部已安装 CLI，再补齐 `--help`。实测 8 个已安装项取得版本的数量从 3 个提升到 5 个，其余保持 `probe_not_run` 或 `probe_incomplete`。代价是 help 未轮到时的完成原因显示为 `probe_incomplete`，与版本已取得的状态分开表达；`probe_failed`、`version_unrecognized` 和 `version_help_passed` 语义不变。四个定向用例覆盖取消、失败、未运行与 v 前缀版本。
+
+收尾冒烟：交付二进制 `dist/astrocyte.exe` 首次可响应 0.64 秒，12 秒后 8 个已安装项全部取得真实版本（codex 0.164.0、claude 2.1.238、opencode 2.0.31、pi 1.0.1、grok 1.0.34、kimi 2.1.1、qwen 0.24.6、cursor 3.23.23）。`go test ./cmd/server` 24.3 秒与四个定向 inventory 用例通过。
