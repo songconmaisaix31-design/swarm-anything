@@ -298,3 +298,5 @@ Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod v
 后台探测暴露出第二处缺陷：`opencode --version` 输出 `opencode v2.0.31`，原有版本正则要求数字前是词边界，`v` 与 `2` 之间没有边界，导致已安装的 opencode 版本无法识别，`GET /local-agents` 显示 `cli_entry_found_version_unrecognized` 且版本为空。正则改为允许可选 `v` 前缀并用子匹配取值，版本统一为 `2.0.31`。新增回归用例 `TestInventoryRecognizesVPrefixedVersion`，四个定向用例通过；重建后实际接口返回 `opencode version=2.0.31 reason=cli_entry_found_version_help_passed`。
 
 观察到的限制：10 秒总预算下，若靠前的 CLI 的 `--help` 较慢（本次 pi 出现 `probe_incomplete`），后面的项会保持 `probe_not_run`，清单在该次运行内不完整。修改前阻塞式启动同样受这个预算限制，且当时也只有部分项取得版本；后台化没有降低探测预算。
+
+在同一预算内改为两遍：先用 `--version` 覆盖全部已安装 CLI，再补齐 `--help`。实测 8 个已安装项取得版本的数量从 3 个提升到 5 个，其余保持 `probe_not_run` 或 `probe_incomplete`。代价是 help 未轮到时的完成原因显示为 `probe_incomplete`，与版本已取得的状态分开表达；`probe_failed`、`version_unrecognized` 和 `version_help_passed` 语义不变。四个定向用例覆盖取消、失败、未运行与 v 前缀版本。
