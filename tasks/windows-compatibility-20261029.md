@@ -244,3 +244,13 @@ Go 阶段 28 个包通过，包含 `tests/s1`（327 秒）、`tests/s2`、`tests
 Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod verify`、架构、`stop-process`、示例、生成类型、`tests/s1/acceptance.test.mjs`、`tsc -b`、`eslint`、`git diff --check` 与 `node scripts/build.mjs` 均退出 0。两项修正后复验通过：`dependencies.lock.json` 缺少 `github.com/go-git/go-git/v5 v5.19.3` 造成依赖清单漂移，补齐后 `check-dependencies.mjs` 退出 0；契约通过既有 `node_modules/.bin/redocly.cmd` 退出 0，直接以 Node 调用 Redocly 时出现的 libuv 断言崩溃不属于检查入口。`vitest` 31 个文件、174 项通过，2 个 L1 文件因 `ASTROCYTE_TEST_RELAY_PUBLIC_URL` 等真实输入缺失而失败。
 
 仍未通过：真实缺失槽位、Bilibili 实际响应与两个 L1 套件的真实输入；完整验收不以本次单独通过改写为整体通过。
+
+## 主产品写入路径缺陷扫描
+
+在独立数据根上启动 `dist/astrocyte.exe`，用真实人类会话与 CSRF 执行 16 项写入与读取探针，原件在 `phase8/product-sweep2/`。
+
+发现并修复一处错误分类：注册相对路径项目根时返回 403 `scope_denied`，把输入错误报告成授权失败。`agents.CanonicalRoot` 的非绝对或空根分支改为 `validation_failed`，仍保留 `select_explicit_project_scope` 作为 `required_action`，其余不可用、非目录与驱动器根继续按范围拒绝。重新构建候选后同一请求返回 400 `validation_failed`，绝对路径返回 200，新会话不带 CSRF 仍返回 403；`go test ./internal/adapters/agents`（134.7 秒，真实 OpenCode 1.18.35 输入）与 `go test ./internal/adapters/httpapi`（61.8 秒）通过，原件 `phase8/root-check.ps1`。
+
+一次假阳性已排除：首轮扫描中 `POST /project-spaces` 不带 CSRF 返回 201。隔离复现显示 PowerShell 的 `-WebSession` 会把上一次 `-Headers` 中的 `X-CSRF-Token` 保存进会话头并在后继请求自动发送；新建且未携带过该头的会话在无 CSRF 时返回 403。服务端强制正确，没有修改授权代码。
+
+其余探针结果符合当前契约：设置更新 200、旧 revision 409 `version_conflict`、未知授权动作 400、未知 Agent 签发 404、`/local-agents` 200、`/local-projects/registered` 200（48 毫秒）；`request_id` 按 OpenAPI 为字符串，非 UUID 被接受不属于缺陷；`GET /local-projects/{id}` 没有对应路由，404 与实现一致。
