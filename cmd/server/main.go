@@ -169,7 +169,8 @@ func run(logger *slog.Logger) (runErr error) {
 	}
 	registry := agents.NewRegistry(nativeRoot)
 	projectReferences := &projectReferenceBridge{}
-	localProjects := workspaceapp.NewLocalProjectService(db, projectReferences, agents.ProjectFiles{}, registry)
+	localProjects := workspaceapp.NewLocalProjectService(db, projectReferences, agents.ProjectFiles{}, registry).
+		WithNativeMessageObjects(objectStore).WithOwnedNativeSessions(registry)
 	projectDiscovery, err := resolveProjectDiscovery()
 	if err != nil {
 		return fmt.Errorf("configure project discovery: %w", err)

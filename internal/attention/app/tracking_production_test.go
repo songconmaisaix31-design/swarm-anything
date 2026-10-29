@@ -43,7 +43,7 @@ func TestActualPartialListingFailureRetainsCursorAndBudget(t *testing.T) {
 	}
 	var chosen *SourceCollection
 	for i := range folders {
-		if folders[i].ItemCount != nil && *folders[i].ItemCount > 2 {
+		if folders[i].ItemCount != nil && *folders[i].ItemCount > 20 {
 			chosen = &folders[i]
 			break
 		}
@@ -51,10 +51,16 @@ func TestActualPartialListingFailureRetainsCursorAndBudget(t *testing.T) {
 	if chosen == nil {
 		t.Fatal("actual two-page source prerequisite unavailable")
 	}
-	position := *chosen.ItemCount - 2
-	cursor := strconv.Itoa(position/20 + 1)
-	if position%20 != 0 {
-		cursor += fmt.Sprintf(":%d", position%20)
+	// 生产收藏夹窗口固定为 20；实际页尾与下一页分别占用本次两个名额。
+	cursor := "1:19"
+	source := TrackingSource{Platform: "bilibili", SourceKind: "favorites", ExternalID: chosen.ExternalID, OwnerID: chosen.OwnerID}
+	boundary, err := reader.ReadPage(ctx, source, cursor, 2)
+	if err != nil || boundary.Observed != 1 || len(boundary.Items) != 1 || !boundary.HasMore || boundary.NextCursor == nil || *boundary.NextCursor != "2" {
+		t.Fatal("actual public page boundary prerequisite unavailable")
+	}
+	next, err := reader.ReadPage(ctx, source, *boundary.NextCursor, 1)
+	if err != nil || next.Observed != 1 || len(next.Items) != 1 {
+		t.Fatal("actual public next-page item prerequisite unavailable")
 	}
 	_, db, objects := fixture(t)
 	workCtx, interrupt := context.WithCancel(ctx)
@@ -65,7 +71,7 @@ func TestActualPartialListingFailureRetainsCursorAndBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal("bind actual public source")
 	}
-	queued, err := s.SyncTrackingSource(ctx, human, r.Source.ID, SyncTrackingSourceCommand{CommandMeta: meta("partial-sync", r.Source.Version), Cursor: cursor})
+	queued, err := s.SyncTrackingSource(ctx, human, r.Source.ID, SyncTrackingSourceCommand{CommandMeta: meta("partial-sync", r.Source.Version), Cursor: cursor, Limit: 2})
 	if err != nil || len(queued.Jobs) != 1 {
 		t.Fatal("queue actual partial source window")
 	}

@@ -184,7 +184,7 @@ func TestRelayPersistentRealHTTPReceiptsMutexAndRestart(t *testing.T) {
 	if db.RunMigrations(ctx, migrations.FS) != nil {
 		t.Fatal("app schema unavailable")
 	}
-	p := domain.LocalProject{ID: "project-a", Root: filepath.Join(root, "fixture-source"), Settings: domain.ProjectSettings{Revision: 1, ExternalModelCLI: "fixture-agent", AllowedActions: []string{"start", "send", "observe", "stop", "resume"}}}
+	p := domain.LocalProject{ID: "project-a", Root: filepath.Join(root, "fixture-source"), Settings: domain.ProjectSettings{Revision: 1, ExternalModelCLI: "fixture-agent", AllowedActions: []string{"start", "send", "observe", "stop", "resume", "reconcile"}}}
 	if db.SaveProject(ctx, p, 0) != nil {
 		t.Fatal("project seed unavailable")
 	}
@@ -304,7 +304,7 @@ func TestRelayPersistentRealHTTPReceiptsMutexAndRestart(t *testing.T) {
 	if driver.sends != 1 {
 		t.Fatal("unknown delivery retried")
 	}
-	client.request("POST", "/api/v1/relay/tasks/"+id+"/read", `{}`, "", 200)
+	client.request("POST", "/api/v1/relay/tasks/"+id+"/read", `{}`, "", 409)
 	client.request("POST", "/api/v1/relay/tasks/"+id+"/stop", `{}`, "", 200)
 	b = client.request("GET", "/api/v1/relay/tasks/"+id, "", "", 200)
 	if json.Unmarshal(b, &ready) != nil || ready.View.Terminal.Liveness != "exited" || ready.View.Task.Condition != "terminal_exited" || ready.View.Task.State != "working" {
@@ -341,7 +341,7 @@ func TestRelayPersistentRealHTTPReceiptsMutexAndRestart(t *testing.T) {
 		if r.OperationID == sendKey && r.Status == "delivery_unknown" {
 			unknown++
 		}
-		if r.Action == "read" && r.Status == "accepted" {
+		if r.Action == "read" && r.Status == "rejected" && r.Error != nil && r.Error.Code == string(apierrors.VersionConflict) {
 			read++
 		}
 		if r.Action == "stop" && r.Status == "accepted" {

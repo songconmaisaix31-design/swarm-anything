@@ -53,3 +53,60 @@ func TestNeutralWindowsActualShortRoot(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestNeutralWindowsActualLongRoot(t *testing.T) {
+	ctx := context.Background()
+	base := os.Getenv("ASTROCYTE_TEST_OUTPUT_ROOT")
+	if !filepath.IsAbs(base) {
+		t.Fatal("actual public Git verification requires an absolute output root")
+	}
+	root, err := os.MkdirTemp(base, "neutral-long-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := git(ctx, repository, "remote", "get-url", "origin")
+	if err != nil || strings.TrimSuffix(strings.TrimSpace(remote), ".git") != "https://github.com/songconmaisaix31-design/swarm-anything" {
+		t.Fatal("explicit public source repository is required", err)
+	}
+	source := filepath.Join(root, "source")
+	if _, err = git(ctx, repository, "clone", "--local", "--no-hardlinks", repository, source); err != nil {
+		t.Fatal(err)
+	}
+	head, err := git(ctx, source, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, strings.Repeat("public-path-", 8))
+	service := New(state, Options{AllowCommittedGit: true})
+	work := domain.Work{Root: source, Kind: domain.WorkKindFolder}
+	prepared, err := service.Prepare(ctx, work, domain.RelayWorkspace{ID: uuid.NewString()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.Root) < 230 || !prepared.Prepared || !sameExistingDirectory(prepared.Root, filepath.Join(state, prepared.ID)) {
+		t.Fatal("actual long worktree did not retain its owned destination")
+	}
+	actual, err := git(ctx, prepared.Root, "rev-parse", "HEAD")
+	if err != nil || actual != head {
+		t.Fatal("actual public commit changed", err)
+	}
+	if body, err := os.ReadFile(filepath.Join(prepared.Root, "README.md")); err != nil || len(body) == 0 {
+		t.Fatal("actual public README unavailable", err)
+	}
+	if _, err = service.Observe(ctx, prepared); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Prepare(ctx, work, prepared); err != nil {
+		t.Fatal(err)
+	}
+	wrong := prepared
+	wrong.Root = source
+	if _, err = service.Prepare(ctx, work, wrong); err == nil {
+		t.Fatal("unrelated source accepted as the owned worktree")
+	}
+	t.Logf("actual public HEAD=%s target_length=%d; checkout, observe, reuse and wrong-root refusal passed; evidence=%s", strings.TrimSpace(head), len(prepared.Root), root)
+}

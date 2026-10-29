@@ -145,7 +145,7 @@ func TestSelectedTextActualOwnedSourceWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source.NativeID != session.NativeID || source.Execution.ProcessID <= 0 || source.Execution.LaunchPolicy != "selected_context_tools_disabled_v1" || source.SourceStatus != "owned_metadata_pointer_observed" || source.Execution.EffectiveToolSet != "unknown" {
+	if source.NativeID != session.NativeID || source.Execution.ProcessID <= 0 || source.Execution.LaunchPolicy != "selected_context_command_tools_disabled_v1" || source.SourceStatus != "owned_metadata_pointer_observed" || source.Execution.EffectiveToolSet != "unknown" {
 		t.Fatal("actual owned source identity or launch observation mismatch")
 	}
 	if err = source.retainOriginal(); err != nil {

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -87,7 +88,26 @@ func (s *Workspaces) Prepare(ctx context.Context, work domain.Work, w domain.Rel
 		return w, err
 	}
 	branch := "relay/" + w.ID
-	if _, err = git(ctx, work.Root, "worktree", "add", "-b", branch, path, "HEAD"); err != nil {
+	target := path
+	if runtime.GOOS == "windows" {
+		sourceRoot, resolveErr := filepath.EvalSymlinks(work.Root)
+		if resolveErr != nil {
+			return w, resolveErr
+		}
+		stateRoot, resolveErr := filepath.EvalSymlinks(s.root)
+		if resolveErr != nil {
+			return w, resolveErr
+		}
+		target = filepath.Join(stateRoot, w.ID)
+		if strings.EqualFold(filepath.VolumeName(sourceRoot), filepath.VolumeName(target)) {
+			// Git 的内部 GIT_DIR 有长度限制；相对参数由既有 -C 源目录解析。
+			target, err = filepath.Rel(sourceRoot, target)
+			if err != nil || target == "." {
+				return w, failure(apierrors.ScopeDenied, "neutral workspace relative destination is invalid")
+			}
+		}
+	}
+	if _, err = git(ctx, work.Root, "worktree", "add", "-b", branch, target, "HEAD"); err != nil {
 		return w, failure(apierrors.DeliveryUnknown, "Git worktree creation could not be verified; inspect without retrying")
 	}
 	w.Root = path
@@ -154,7 +174,7 @@ func (b *bounded) Write(p []byte) (int, error) {
 func git(ctx context.Context, root string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "--no-pager", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-C", root}, args...)...)
+	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "--no-pager", "-c", "core.hooksPath=", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "core.longpaths=true", "-C", root}, args...)...)
 	command.Env = []string{}
 	for _, v := range os.Environ() {
 		key, _, _ := strings.Cut(v, "=")

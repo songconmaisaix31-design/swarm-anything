@@ -101,7 +101,7 @@ func TestRelayControlledCLIFullStateAndGitObservation(t *testing.T) {
 	defer cancel()
 	result, e := f.service.ConfirmIntent(ctx, caller(), id, confirm())
 	if e != nil {
-		t.Fatal(e)
+		t.Fatalf("confirm actual CLI: %v; context=%v", e, ctx.Err())
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
