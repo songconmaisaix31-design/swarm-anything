@@ -55,3 +55,7 @@
 `go test -mod=readonly ./cmd/swa`、完整 strict TypeScript、完整 Windows 包构建和仓库外安装均退出 0；安装闭包为 28251 项。本批记录位于 CLI 工作树 `.verification/windows-dispatch-20261029/`，实际服务与审查证据位于 main 工作树 `.verification/windows-20261029/phase2-cli/`、`final2-cli/`、`final3-cli/`。
 
 `9ba95300` 长审查任务两名 Worker 均已停止和释放；其两个后续发送请求因原生安装/配置准入未证明而保持 unknown，未重放。完整成果导出超过既定 12 MiB 上限而失败；两个实际 journal 分别为 11,605,953 和 14,122,026 字节，原始 SQLite 与已有审查正文保留，不能宣称该长任务完成了完整导出。
+
+准确 `c8bc7a67` 的 Run `run_fc462cd9ae90` 两名实际 Reviewer 完成后均已停止、释放，控制端关闭成功。`task result` 返回 `native_opencode_result_policy_changed`：只读核对确认 config/auth 文件版本、credential ID/time_updated 及选中与私有凭据值相同，而全局 OpenCode SQLite/WAL 文件版本已变化。检查只输出比较结果，没有输出凭据。现有完整来源版本比较保持，导出失败及原数据库保留，没有将该任务的完整成果标记为通过。原件为 main 的 `final3-cli/policy-change-evidence.json`、`task-result-corrected.json` 和 `controller-close.json`。
+
+准确源码的独立结论已发布为 [PR #12 COMMENT review](https://github.com/songconmaisaix31-design/swarm-anything/pull/12#pullrequestreview-5692203718)，限定接受同会话恢复和确定拒绝回收，不代表合并或完整 Windows 验收。
