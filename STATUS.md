@@ -2,9 +2,11 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
-2026-10-29 Windows 复验以 main `5c11bbf8` 为基线，分支 `codex/windows-compatibility-20261029` 修复实际 Git 测试的仓库来源地址。专项 Git/SQLite 共 19 个结果、9 项 Windows 生命周期、构建、契约、前端 lint 和架构检查通过；完整 Go 检查仍有 9 包失败、前端 3 个套件失败、依赖版本探测超时。Swarm CLI 同一安装的两名真实 OpenCode Worker 已完成只读审查、停止、释放、成果导出和控制端关闭，验证服务已退出；失败释放与中断后恢复仍未通过。具体问题、证据和独立 CLI 修复分支见 [Windows 任务](tasks/windows-compatibility-20261029.md)，不据此宣布全量 Windows 可用。
+2026-10-29 Windows 复验以 main `5c11bbf8` 为基线，分支 `codex/windows-compatibility-20261029` 最新修复为 `897f5dff91ff267a8bcf37b68c6612a047e6c6e9`，前序产品修复 `eff620f08`。249 字符工作树、符号链接、HTTP 未知消息重开、10 项 Workbench 检查、2,586 条公开 Git 事件核对、真实 WAL 并发备份、构建和契约已有通过结果。Relay 构建隔离和四项生命周期通过，前端 174 项通过，两个 L1 套件缺少真实输入；页面导航/认知初次 82/84 通过，两个过期断言修正后均复验通过。263 字符工作目录、非空昨日资料与 Codex 正向 Send 仍受限；Codex 实际拒绝路径通过。CLI 安装 `c8bc7a67` 的同会话恢复与确定拒绝获独立 Swarm 接受。完整 Windows 验收仍未通过；准确结果、审查和服务状态见 [Windows 任务](tasks/windows-compatibility-20261029.md)。
 
-当前源码893fb8852e15109ca9a99f1bd51d83ea249a37b8已普通push，参数窄修/84严格检查获5eab3922限定接受。build19、完整ZIP/普通解包88及安装复制/native/28251闭包/保护拒绝通过，汇总6保留功能未验。新89服务在64508/runtime6aec5c49真实就绪，90两次来源一致、authority为空、业务/模型0，准备91及实际helper/最终同安装双Worker继续。旧67的87e指定session/三句柄/六已观察身份退出获2197a441限定接受，原EOF6/Job不可查询/83父R pending保持。原Worker持有89 TTY32198和Job观察21806，原Orca/95ef/5187保持。
+本轮同一 `c8bc7a67` 安装双 Worker 的完整短任务通过，结果导出 3,298,102 字节；全局服务关闭缺陷未修复。后继 Swarm 审核遇到原生版本超时与来源变化，未产生审核结果，未实施新补丁。本轮所属服务、控制端及 daemon 进程已退出，64626 无监听；原生 unknown/未释放记录保留。C 盘约剩 260 MiB，完整新安装包未执行。
+
+以下为 2026-10-20 交接历史：源码893fb8852e15109ca9a99f1bd51d83ea249a37b8已普通push，参数窄修/84严格检查获5eab3922限定接受。build19、完整ZIP/普通解包88及安装复制/native/28251闭包/保护拒绝通过，汇总6保留功能未验。新89服务在64508/runtime6aec5c49真实就绪，90两次来源一致、authority为空、业务/模型0，准备91及实际helper/最终同安装双Worker继续。旧67的87e指定session/三句柄/六已观察身份退出获2197a441限定接受，原EOF6/Job不可查询/83父R pending保持。原Worker持有89 TTY32198和Job观察21806，原Orca/95ef/5187保持。
 
 draft PR #5未合并，d829/3fadb/5c750修订及72/73实际检查获限定接受。最新893实际合并源fce64fb1的Ubuntu119658661466和Windows119658661639均普通frozen成功、Go整体1；失败名称68/79与真实main50c2各平台相同，无增删。前5c Windows额外迁移失败此次未复现，原因未知保留，未开始的额外两来源复验已取消；完整CI失败。原64/69/75/83/85/86/87前置失败和恢复原件分别保留。
 

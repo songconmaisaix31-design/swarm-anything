@@ -4,11 +4,17 @@
 
 - 用户确认以远程 `main` 为准，基线为 `5c11bbf85793e991977ca6bd96dc187436aa025c`。
 - 工作分支为 `codex/windows-compatibility-20261029`，工作目录为 `C:/Users/DW/Documents/ChatGPT/swarm-anything`。
-- 用户要求使用 Swarm CLI 执行任务。已安装客户端为 `C:/Users/DW/AppData/Local/SwarmCli/candidates/893fb885-install88/swa.exe`，实际版本为 `893fb8852e15109ca9a99f1bd51d83ea249a37b8`。
+- 用户要求使用 Swarm CLI 执行任务。本批安装客户端为 `C:/Users/DW/AppData/Local/SwarmCli/candidates/c8bc7a67-windows-20261029/swa.exe`，源码为 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75`；初始 `893fb885` 与前一批 `9ba95300` 安装保留。
 - `main` 尚未包含 `cmd/swa` 和 `runtime/swa-orca`。安装客户端负责调度；不将其开发分支代码混入本次基线。
 - 本次检查 Windows 的开发检查入口、编译、启动、HTTP 和 SQLite，以及测试发现的实际路径和进程问题。原生模型调用只使用公开固定上下文并保持原生工具关闭。
 
 ## 执行安排
+
+2026-10-29 后续授权：用户要求继续使用 Swarm CLI 修复剩余 bug 并完成 Windows 全量复验。沿两个既有分支接续，主 Agent 单轨修改和验证；Swarm CLI 两名只读 Worker 分别审查 main 实际失败和 CLI 回收/恢复设计，原生工具继续关闭。先查明实际输入来源和失败原因，不通过删除用例、添加 skip、模拟原生协议或放宽授权取得通过。
+
+本轮先登记的写域：main 的 `internal/adapters/agents/`、`internal/adapters/importers/`、`internal/adapters/sqlite/`、`internal/workspace/app/`、`internal/attention/app/`、`cmd/server/`、`tests/s1/`、`scripts/`、受影响前端实际 HTTP 测试与此任务记录；只修改复现后有明确原因的文件。CLI 回收和恢复的改动在独立任务中登记。每批先由 Swarm Reviewer 审核测试计划，再实现并执行真实专项检查，最后重跑完整检查、构建和适用安装流程。
+
+验收包含原完整检查及既定真实输入，不改变缺失资料的内容断言。用户已允许开启 Windows 开发人员模式；本次已开启，并运行真实 symlink 与 junction 检查。
 
 保持一条开发轨道，主 Agent 负责基线、修复、测试和最终提交；通过 Swarm CLI 调用的分析 Worker 只接收固定公开源码和失败信息。实际 Worker 客户端和模型在成功启动后记录。当前主客户端为 Local Codex。
 
@@ -30,8 +36,14 @@
 - `internal/attention/app/admissions_service_test.go`：实际公开 Git 来源限定为 `https://github.com/songconmaisaix31-design/swarm-anything` 或其 `.git` 形式，来源链接和 README 标题使用当前规范名称。其余仓库仍拒绝。
 - 原始 main 默认检查中，13 个实际 Git/SQLite 测试结果因旧地址限制失败；使用原有测试核对准入、事务、Taste 版本、固定摘要拒绝、撤销、并发连接与 SQLite 重开。
 - 用户额外授权的 Swarm CLI 派发修复单独位于 `codex/swa-windows-dispatch-20261029`，不并入当前 main 源码基线。
+- `internal/adapters/relayworktree/workspaces.go`：Windows 使用实际规范根，在同卷 Git 工作目录下传递相对目标，并为单次 Git 命令设置 `core.longpaths=true`。249 字符真实公开工作树的创建、观察、重新打开和错根拒绝通过，没有修改全局 Git 配置。
+- `cmd/server/main.go`：为真实本地项目服务注入既有对象存储和 owned 原生会话 Reader。固定消息能够进入原生工具权限检查；Codex 正向消息仍受工具关闭能力限制，保持未通过。
+- `text_capacity_test.go`、`automatic_test.go`、`relay_runtime_http_test.go`：使用当前真实启动策略、UUID 操作身份、明确的 reconcile 权限、未知交付后的 409 拒绝回执，以及旧 revision 的固定 ref/digest，保留真实来源和重开检查。
+- `tracking_production_test.go`：部分分页取消检查实际跨越两个页面，先核对两页的真实数据；保留取消、重试身份、游标与缓存断言。
+- `workbench_test.go`：上海日期分页选择实际有数据的历史日期；来源隐私检查逐事件核对明确公开 Git ref 的全部提交及原始时间，去除过期的固定提交数量。
+- `cmd/workbench-snapshot/verify/`、`tests/release-cognition/verify-wal.ps1`：go-git 读取完整固定 SHA 的对象，并与原生命令全量核对 ID、时间和标题；使用实际 SQLite 已提交数量观察并发备份。公开仓库白名单包含规范名称，依赖明确记录于 `go.mod`、`go.sum`。
 
-## 已执行验证
+## 前一阶段验证记录
 
 | 命令 | 实际结果 |
 | --- | --- |
@@ -52,21 +64,24 @@ Go 使用 `C:/Users/DW/AppData/Local/Programs/go/bin/go.exe`。专项检查的 `
 
 | 范围与位置 | 观察与限制 |
 | --- | --- |
-| `internal/adapters/agents/native_process.go`、`opencode.go` | main 的 Windows 入口只识别 `opencode-ai` 包目录，并固定已核验的 1.18.35 协议；本机为 `@opencode/cli` 2.0.31，4 个实际原生测试在入口检查失败。支持新版本仍需完整隔离与 HTTP 协议核验，未直接删除版本保护。Swarm CLI 使用独立 ACP 适配器，其成功不代表 main 此适配器通过 |
-| `cmd/server/relay_workbench_links_test.go` | 创建实际目录 symlink 返回 Windows 1314；未修改系统权限或跳过检查 |
-| `cmd/server/relay_runtime_http_test.go` | 实际 HTTP 返回 403/`approval_required`，用例期待 200；尚未证明是权限实现或测试前置条件错误 |
-| `internal/adapters/agents/text_capacity_test.go`、`tests/s1/automatic_test.go` | 实际 Codex 来源身份/启动观察和 HTTP 探测不符合断言；未放宽来源或授权检查 |
-| `internal/adapters/sqlite/local_agents_test.go`、`local_agents_narrowing_test.go` | 旧测试的回执重试断言失败，另有缺少实际消息仓库/原控制器 Reader 的拒绝；未用虚假原生数据补齐 |
-| `internal/adapters/importers`、`internal/attention/app` | 真实公开列表获取失败及分页/中断断言失败；尚未确认上游响应变化或实现错误 |
-| `internal/workspace/app/relay_process_test.go` | 真实 CLI 启动返回 `delivery_unknown`；未启动第二个写入者，原因仍需核查 |
-| 资料与认知检查 | 缺少显式获准的公开 PDF、视频原件、DOM、认知发布物、原生回执等输入；对应 Go 及前端套件保持失败/未验 |
-| `scripts/check-dependencies.mjs` | 固定 summarize CLI 的版本加载超时原因未确认；依赖检查未通过 |
+| Codex 受限消息与 L1 | 实际生产 HTTP Send 返回 501/unsupported_capability：当前 app-server 的原生文件工具关闭能力无法确认。真实拒绝路径已验证 501、原准备与 unknown 回执、重复请求 409、权限撤销后 403/approval_required、原生停止。完整正向消息及两个前端 L1 套件没有足够真实输入 |
+| main OpenCode 新版本 | 主线已声明的 1.18.35 在私有目录安装后，四项真实 HTTP/隔离/权限检查通过；全局 2.0.31 保持原状，主线新版协议未验。Swarm CLI 的 ACP 结果独立记录 |
+| `local_agents_test.go`、`local_agents_narrowing_test.go` | 两个旧回执测试使用受控 adapter 且没有完整消息对象/owned Reader 接入，仍失败。没有增加虚假原生输入或删除验收 |
+| 公开视频来源 | Bilibili uploads 真实返回 `-352` 风控校验失败，两个 tracking 检查受阻；既有缺失 slot 用例当前得到 60 个可用条目，无法满足原 59 个的真实来源前提 |
+| 公开论文在线提取 | 完整检查中三个 arXiv/summarize 提取或版本检查在 45 秒边界超时；独立版本不匹配拒绝曾通过。三个 Crossref 查询返回真实 EOF。没有增加代理、虚假响应或放宽产品超时 |
+| Windows 工作目录长度 | 249 字符真实工作树创建、观察、重开通过；263 字符目标仍返回 Git 128，工作目录读取触发 Filename too long。未缩短失败用例或声称任意长路径受支持 |
+| 完整检查 | `eff620f` 完整 Go 检查的 7 个包失败。独立专项的成功保留其实际范围，原完整结果仍失败；后续 Workbench 全量 HTTP 与 Codex 拒绝路径已通过 |
+| Swarm 长审查任务 | 两次后续发送保持 unknown；完整成果超过既定 12 MiB 上限而导出失败。原请求、数据库和审查正文保留，旧记录未重放 |
+| Swarm 来源版本检查 | `c8bc7a67` 的一组实际导出返回 `native_opencode_result_policy_changed`，原生来源 database/WAL 版本实际变化。后继短任务在同一安装完成完整导出；严格来源检查及原失败记录保持 |
+| Swarm 长对话成果大小 | 同安装 `run_4b49a894985d` 的完整结果导出返回 `evidence_missing`，真实 main/CLI journal 分别为 22,076,306 与 2,998,138 字节，超过既定总上限 12 MiB。两个 Worker 停止/释放、控制端关闭成功；原记录保留，任务未记为完整完成 |
+| Swarm 服务关闭 | `host-entry.ts` 的全局检查将真实未创建资源的历史失败记录判为未释放，正常任务结束后服务退出 1。与控制端的严格 `not_started` 判定不一致；新增修复计划尚未取得独立审核，源码未改 |
+| Swarm 后继审核启动 | 同目录重启首次 daemon 超时，后继启动成功但两个审核 Worker 分别因原生版本探测超时和 `native_opencode_source_changed` 失败。缺少完整 `not_started` 证明，不能把失败资源记为已释放 |
 
-完整默认检查、全部原生接入和 Windows 全量功能验收仍未通过；没有创建 Release、合并 main 或修改系统配置。
+完整默认检查、全部原生接入和 Windows 全量功能验收仍未通过。开发人员模式按用户授权开启；没有创建 Release 或合并 main。
 
 ## Swarm CLI 实际审查
 
-独立修复分支当前安装来源为 `9ba9530073f5ec28443d808bb8e2aa8360a18de3`，客户端为 Swarm CLI，Worker 为 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`。公开固定上下文和原生工具关闭策略保持。
+前一批独立修复安装来源为 `9ba9530073f5ec28443d808bb8e2aa8360a18de3`，客户端为 Swarm CLI，Worker 为 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`。公开固定上下文和原生工具关闭策略保持。
 
 实际 Run `run_a0bbb93e961d` 包含 main Reviewer `ctx_5eef4ded54d1` 和 CLI Reviewer `ctx_d351167c3d58`。两份原生 SQLite 最终消息分别为 `msg_183984d4c001SlENVqvu7MNsX7`、`msg_1839b9760001MqpPQS6eYdJ1wj`，均完成且 `idle_outcome=succeeded`。只读提取最终正文，不把模型审查当作执行测试；main 修复限定接受，CLI 四项原因匹配，失败释放未接受。模型建议中的模拟测试和未经复现的 Windows shim 推断未采用。
 
@@ -75,3 +90,77 @@ Go 使用 `C:/Users/DW/AppData/Local/Programs/go/bin/go.exe`。专项检查的 `
 正常流程使用同一 `9ba95300` 安装、新私有目录 `windows-main-final-20261029` 和端口 64624 完成独立复验。实际 runtime `fc624b95-c244-4695-b3c9-aae3b6e23380`、Run `run_b25627644463`、根任务 `task_495beaccb536`；两名 Worker 为 `ctx_2a3e12835918`、`ctx_e660c4abd71a`。实际最终消息为 `msg_1851c7f78001F2t1BP5kLIXeCR`、`msg_1851e227f001CTk37OTs0a3r8z`，均已完成，工具调用数为 0。
 
 两次 `swa worker stop`、两次 `swa worker release`、`swa task result`、`swa task complete`、`swa controller close` 全部退出 0；完整原生输出和 journal 导出至 `.verification/windows-20261029/final-cli/exported-result/result.json`。控制端关闭请求 `9d3a3958-321a-4f25-a255-892da3e8dd39` 成功。随后 Ctrl+C 结束所属服务，HTTP 关闭及 Job 子进程退出被观察到，外层终端返回 1；四个已观察服务进程均已不存在，端口不再监听。该正常流程通过不改变前述失败释放和中断恢复的未通过状态。
+
+## 继续复验与修复
+
+用户要求继续使用 Swarm CLI 修复剩余问题。Run `run_380c0f90b555` 使用同一安装来源 `9ba95300`，两名只读 Reviewer 分别为 `ctx_45e9a2bae35d`（main）和 `ctx_cb496d4b4ae3`（CLI）；客户端 OpenCode 2.0.31，模型 `deepseek/deepseek-v4-pro`，固定公开上下文、工具关闭。主 Agent 保持单一实现轨道，相关源码、测试与本任务为写入范围。
+
+`internal/adapters/agents/text_capacity_test.go` 的启动策略断言使用当前 `OwnedRelayExecution` 实际输出 `selected_context_command_tools_disabled_v1`；原生 ID、PID、来源、未知工具观察、实际停止及写入失败检查保留。测试计划经 main Reviewer 独立核对生产参数比较后接受，运行原实际 Codex 检查。
+
+OpenCode 1.18.35 安装在本次忽略目录中，测试子进程 PATH 指向该真实二进制，保留主线版本保护。全局 OpenCode 2.0.31 安装保持；固定旧版的结果只覆盖主线已声明协议。
+
+`tests/s1/automatic_test.go` 的 HTTP 操作身份使用 UUID，符合原生会话接口既有校验；请求标识和幂等键仍保持相同。`cmd/server/relay_runtime_http_test.go` 的既有受控测试明确声明 `reconcile` 权限，匹配其调用事件重整的前置条件。两项测试计划经同一 main Reviewer 接受，实际 HTTP/原生检查与既有受控驱动结果分别记录。
+
+采集器写域补充：`cmd/workbench-snapshot/verify/`、`go.mod`、`go.sum`。当前公开 Git 的 2,586 条实际提交在逐条启动 Git 时触发 writer 五分钟就绪超时。Swarm Reviewer 已接受改用 go-git 读取固定 SHA 的完整对象集合，同时用 Git CSV 全集核对 ID、epoch 秒与编码；先拒绝非 SHA-1、replace、alternates、非 UTF-8，不修改事件时刻、采集数量和既定超时。该改动只用于既有公开验证入口。
+
+后续写域包含 `tests/release-cognition/verify-wal.ps1`。真实 Windows 进度文件替换收到 Access denied；读取端共享权限调整后仍复现。最终观测直接读取权威 SQLite 提交数量，保持实际 writer、WAL、备份前后计数和全量核对，前两次失败现场保留。测试计划由 `c8bc7a67` 安装的 Swarm Reviewer `ctx_a6c81139e2d0` 接受。
+
+新增依赖使用 [go-git v5 官方文档](https://pkg.go.dev/github.com/go-git/go-git/v5)所述对象读取接口；标题首段与 Git 原生命令完整输出核对，不自行解析 Git 对象格式。
+
+后续测试修复写域包含 `internal/adapters/httpapi/workbench_test.go` 和本次新增的 `tests/s1/native_message_production_test.go`。实际完整 HTTP 逐事件检查在第 96 页触发共享 30 秒 context；2586 个事件的两个 page_size 全集和逐事件原库定位保持。计划将期限绑定到各次实际操作，保留每个 HTTP 请求 5 秒和每次 SQL 操作 30 秒、Go 整体测试期限，不修改产品超时。Codex 测试计划覆盖实际 501 工具能力拒绝、原准备及未知回执、重复请求拒绝、撤销后的 403 和实际停止；完整 Codex 正向发送继续未通过。计划经 Swarm 独立审核后实施。
+
+Swarm Run `run_4b49a894985d` 的同一 main Reviewer 接受上述两项计划及精确错误码更正。Workbench 使用实际 2,586 事件通过，54.81 秒；每个事件定位、两个 page_size、原始字段、错误和离线恢复均保留。原生消息真实检查通过，71.27 秒；撤销 human 的设置动作后，`nativePermission` 返回 `approval_required`。没有开放原生工具或增加自动重发。
+
+后续写域包含 `tests/s1/server.mjs`、`tests/s1/server-lifecycle.test.mjs`。Relay 运行时隔离的 HOME/USERPROFILE 被用于 Go 构建，导致在私有 `profile/go/pkg/mod` 重新下载固定依赖并触发 120 秒 hook 超时。计划让构建保留原有工具链环境，服务继续使用原隔离环境；单独先运行 relay lifecycle，核实真实 HTTP/SQLite/重开及私有 profile 没有 Go 模块缓存，随后执行完整生命周期与 Relay 客户端检查。此原因只解释已复现的 Relay 失败，其他整组启动超时原因保持未知。
+
+同一 Swarm Reviewer 接受构建环境分离计划；实现后首次单独 Relay lifecycle 105.28 秒通过，完整生命周期四项全部通过，包含普通/Relay 数据目录、重开、原端口保持、真实端口冲突及所属进程退出。构建继续使用已声明 Go 依赖和 `-mod=readonly`，运行环境的私有目录保持。
+
+后续写域包含 `web/e2e/navigation.spec.ts`。当前素材详情使用“保存资料后可形成候选，人工准入与任务批准分别确认”，符合 SPEC §07；原“任务执行尚未实现”断言已过期。Swarm 接受核对当前完整说明的计划，原来源定位、实际资料和没有示例内容的检查保持；两个 Chromium 尺寸均使用实际 HTTP、SQLite 和公开 Git 文件。
+
+263 字符工作树的独立诊断保留在 `phase2-cli/long-root-diagnostic-*`：相对路径创建失败；`--no-checkout` 创建成功后真实 checkout 失败；命名空间工作目录仍返回 `Unable to read current working directory: Filename too long`。本机实际 Git 为 2.47.0.windows.1；[Git for Windows 的 mingw_getcwd 源码](https://github.com/git-for-windows/git/blob/main/compat/mingw.c)仍使用 MAX_PATH 大小的工作目录缓冲。没有修改系统全局长路径配置。
+
+## 本轮检查结果
+
+本轮日志均位于 `.verification/windows-20261029/phase2-cli/`。实际输入来自固定公开 Git、既有真实公开来源原件和本次独立数据库。所有检查保留原参数；没有新增 mock、skip、伪造响应或扩大工具权限。
+
+| 命令 | 结果与证据 |
+| --- | --- |
+| `node scripts/check.mjs` | `eff620f` 的 gofmt、Go vet 通过，完整 Go 测试 7 个包失败，聚合退出 1；`check-final.log`。S2、S3、S5、privacy、sleep 通过；不能把未执行的后续阶段记为通过 |
+| `go test -mod=readonly -count=1 -v ./internal/adapters/httpapi -run '^TestWorkbenchUsesSharedSessionOriginAndErrorV1$'` | 对应测试在联合专项命令中通过，2,586 个实际事件全部定位，54.81 秒；`final-targeted.log`。联合命令因当时尚未更正的 native 权限预期退出 1 |
+| `go test -mod=readonly -count=1 -v ./tests/s1 -run '^TestNativeMessageActualProductionPreparationAndToolRestriction$'` | 退出 0，71.27 秒；`native-message-final.log`，真实准备、501、unknown、重复 409、撤销 403 和 StopConfirmed 全部通过 |
+| `go test -mod=readonly -count=1 -v ./internal/adapters/sqlite -run Workbench` | 10 项 Workbench 实际检查通过；`workbench-current-final.log`，逐事件公开来源及原始时间核对保持 |
+| `tests/release-cognition/verify-wal.ps1` 的真实采集/备份流程 | 2,586 提交完整采集，WAL 并发时计数 40→44；昨日真实事件为 0，非空 closed-day 检查退出 1，`cognition-current-4`。独立 main inspector 退出 0 只覆盖实际已有数据 |
+| `node scripts/build.mjs` | 退出 0；`build-final.log`。后继修改限测试与验证 helper，产品构建来源保持 |
+| `pnpm check:contracts` | 退出 0，264 样例及生成一致性通过，13 项原有警告；`contracts-main.log` |
+| `node scripts/check-architecture.mjs` | 退出 0，43 包；`architecture-final.log` |
+| `go mod verify` | 退出 0，全部模块校验通过；`mod-final.log` |
+| `node scripts/check-dependencies.mjs` | 退出 0；`dependencies-current.log`。前两次 summarize 版本检查超时原件保留 |
+| `pnpm --dir web exec tsc -b`、`pnpm --dir web lint` | 均退出 0；`typecheck-final.log`、`lint-final.log` |
+| `node --test scripts/stop-process.test.mjs` | 2 项通过，0 失败、0 跳过；`stop-final.log` |
+| `node --test tests/s1/process-lifecycle.test.mjs` | 2 项真实输出收集和失败启动检查通过；`process-output-final.log` |
+| `node --test --test-name-pattern='relay layout=true' tests/s1/server-lifecycle.test.mjs` | 首次独立 Relay 构建/运行/重开通过，0 跳过；`relay-lifecycle-first.log` |
+| `node --test tests/s1/server-lifecycle.test.mjs` | 4 项通过，0 失败、0 跳过；`server-lifecycle-final.log` |
+| `pnpm --dir web exec vitest run --no-file-parallelism --maxWorkers=1` | 修复构建环境后 31 文件通过、2 文件失败；174 测试通过、4 因 L1 前置失败未执行，没有新增 skip。`web-after-build-fix.log`；此前 5 个启动 hook 超时未在此轮复现，但仅 Relay 的原因已明确 |
+| `pnpm --dir web exec playwright test navigation.spec.ts cognition.spec.ts --workers=1 --reporter=line --output=../.verification/windows-20261029/phase2-cli/e2e-results` | 82/84 通过；两尺寸同一过期文案断言失败，原件 `e2e-final.log`。截图、视频关闭，trace 不含截图 |
+| `pnpm --dir web exec playwright test navigation.spec.ts --grep '实际资料详情包含来源和人工批准说明' --workers=1 --reporter=line --output=../.verification/windows-20261029/phase2-cli/e2e-navigation-fixed-results` | 修正后两尺寸均通过，2/2；`e2e-navigation-fixed.log`。其余 82 项复用未变更的同条件实际结果 |
+| `pnpm --dir web exec tsc -b`、`pnpm --dir web lint`、`node --check tests/s1/server.mjs`、`node --check tests/s1/server-lifecycle.test.mjs` | 最后测试修改后全部退出 0；`typecheck-last.log`、`lint-last.log` |
+
+准确后继源码为 `897f5dff91ff267a8bcf37b68c6612a047e6c6e9`，已普通 push。Go 全量来源为前序 `eff620f08`，后继仅测试与验证 helper 更改，受影响路径执行上述实际复验。没有把原全量失败改写为通过。
+
+同一实际 Swarm Reviewer `ctx_700b5776d0db` 对准确 `897f5dff` 给出限定接受；原生消息完成且工具调用为 0。依据为固定源码差异、前述真实结果、未显示的 StopConfirmed 清理及专用 toolTemporary；未把模型审查当作亲自执行。结论已发布到 [PR #11 COMMENT review](https://github.com/songconmaisaix31-design/swarm-anything/pull/11#pullrequestreview-5692568862)，GitHub 返回的 commit_id 已核对为准确源码。该接受不代表 Windows 全量通过。
+
+旧版 `tests/s1/acceptance.test.mjs` 依赖 contract_local 人工样本，本轮没有将它作为真实来源验收执行。其余 E2E、Codex 正向 L1、非空跨日资料、Pi 正向与 CLI 全部异常分支仍须各自的真实前提；没有合并或发布。磁盘空间不足时，只清理本轮已结束检查的 12 个可重新构建的重复可执行文件，逐个核对位于本次目录且未运行；日志、SQLite、公开输入和原生会话均保留。
+
+## 本轮 Swarm 完整短任务与结束状态
+
+同一安装 `c8bc7a67` 的 `run_ac524afaae94 / task_76cfd48ec271` 使用 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，两名实际 Worker `ctx_87e5a7dda318`、`ctx_ee6145ac4244` 均完成，工具调用为 0。两次 stop、两次 release、task result、task complete、controller close 全部退出 0；完整结果含原生正文、journal 和 usage，大小 3,298,102 字节。原件为 `final6-cli/exported-result/result.json`。任务完成只表示交付范围审核完成，Windows 全量仍未通过。
+
+随后服务 Ctrl+C 返回 1。只读实际 SQLite 定位唯一未释放项 `ctx_b0f62ae22695`：failed/terminal_create，原 runtime epoch，终端句柄为空、residual_resources 为空，父子完成回执明确 `nativeCreation=not_started`，原控制端关闭成功，全局 pending 为 0。全局服务检查拒绝空 resource，控制端检查可验证确定未创建，二者不一致。原件为 `final6-cli/shutdown-unreleased.json`。服务四个实际进程全部退出。
+
+新增计划写域为独立 CLI 的 `runtime/swa-orca/src/native-methods.ts`、`host-entry.ts` 及任务记录。拟复用严格未创建证明，同时补充历史控制端准确关闭与进程退出证据；其他 pending、资源释放及身份检查保持。同目录重启会改变 runtime ID，历史 epoch 处理仍须独立审核，尚未实施代码。
+
+`final7-cli` 的首次重启 daemon 未就绪；确认所属进程不存在后再次启动成功。Swarm `run_a82f9c777cd3` 两名审核 Worker `ctx_78051cab76c1`、`ctx_cc918f6333ab` 均在 terminal_create 失败，前者实际原生版本探测超时，后者来源变化。没有生成审核结果。两个 stop 返回 alreadySettled/failed、processAction=none，公开命令仍为 operation_unknown；控制端关闭返回 worker_release_unconfirmed。未重放、删除或改写请求。
+
+最后所属服务关闭再次退出 1，daemon busy，控制端仍存活。按本次创建回执逐一核对 PID、创建时间及名称后停止本次 helper 和 shell，daemon 与 OpenConsole 随之退出；该进程清理不代表原生资源记录已释放。证据为 `final7-cli/owned-process-cleanup.jsonl`，原 SQLite 与会话保留。
+
+C 盘最后可用空间约 260 MiB。自动审批审核拒绝清理本次旧 `dist/windows-permission-20261029` 构建副本，返回策略阻止；该目录未删除。新增关闭修复计划未通过独立审核，新源码及新完整安装包均未产生；已有源码、实际通过结果和剩余失败分别保留。
