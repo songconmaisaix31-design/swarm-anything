@@ -1,5 +1,11 @@
 # SWA（Swarm Anything）
 
+> **[Anything Universe](https://github.com/songconmaisaix31-design#anything-universe)** · *Tools for agents. Room for anything.*
+>
+> Agent 组队与执行入口：面向本机异构 CLI Agent 的 Swarm CLI，持续开发中。
+>
+> 同系列：[mcpet](https://github.com/songconmaisaix31-design/mcpet) · [blockchain-anything](https://github.com/songconmaisaix31-design/blockchain-anything)
+
 SWA 提供可由现有 Agent 或终端调用的 Swarm CLI，目标是发现并调用本机真实注册的 Agent，控制多个 Worker 并获取成果。产品使用独立后台、安装目录和私有运行环境；本机 Orca 的安装、账号、配置及运行进程保持原归属。
 
 当前正在实现[首版 CLI](tasks/swa-cli-v1-20261020.md)，尚无通过验证的安装候选。最终验收须使用安装后的同一候选，运行至少两个真实 Worker，验证并发、指定停止及成果获取。实际检查和剩余限制见 [STATUS](STATUS.md)。用户要求参考 REA 的仓库格式，[来源与目录对应](docs/standards/swa-repository-format-20261021.md)记录已核内容及待确认范围。
