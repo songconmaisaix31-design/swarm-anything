@@ -9,8 +9,8 @@ const normalizedTextSchema = z.string().trim().min(1).max(32000)
 export const questionModeSchema = z.enum(['disabled', 'native'])
 export const delegationModeSchema = z.enum(['disabled', 'native'])
 export const developmentModeSchema = z.enum(['disabled', 'project'])
-export function nativeToolModes(tools: { mode: string; allowed?: readonly string[] }) {
-  return { questionMode: tools.allowed?.includes('swa_ask') ? 'native' as const : 'disabled' as const, delegationMode: tools.allowed?.includes('swa_delegate') ? 'native' as const : 'disabled' as const, developmentMode: tools.mode === 'project' ? 'project' as const : 'disabled' as const }
+export function nativeToolModes(tools: { mode: string; allowed?: readonly string[]; morph_config?: { path: string } }) {
+  return { questionMode: tools.allowed?.includes('swa_ask') ? 'native' as const : 'disabled' as const, delegationMode: tools.allowed?.includes('swa_delegate') ? 'native' as const : 'disabled' as const, developmentMode: tools.mode === 'project' ? 'project' as const : 'disabled' as const, ...(tools.mode === 'morph' ? { morphConfig: tools.morph_config?.path } : {}) }
 }
 const projectCommandSchema = z.string().min(1).refine(value => Buffer.byteLength(value, 'utf8') <= 128 * 1024 && Buffer.from(value, 'utf8').toString('utf8') === value)
 export const piProjectInputSchema = z.strictObject({ command: projectCommandSchema, timeout: z.number().positive().max(2147483.647).optional() })
@@ -60,9 +60,11 @@ export const commandSchema = z.strictObject({
   question_mode: questionModeSchema.optional(),
   delegation_mode: delegationModeSchema.optional(),
   development_mode: developmentModeSchema.optional(),
+  morph_config: z.string().min(1).optional(),
   role: roleDefinitionSchema.optional(),
   conversation: z.strictObject({ title: z.string().trim().min(1).max(200), role_id: z.string().min(1).optional() }).optional(), text: z.string().optional()
 }).superRefine((command, context) => {
+  if (command.morph_config !== undefined && (!['run.submit', 'worker.start'].includes(command.action) || command.agent !== 'pi' || command.role_id !== undefined || command.handoff_mode !== undefined || command.question_mode === 'native' || command.delegation_mode === 'native' || command.development_mode === 'project')) context.addIssue({ code: 'custom', message: 'Morph tools require an explicit Pi start without another tool mode or role' })
   if (command.export_mode !== undefined && command.action !== 'run.export') context.addIssue({ code: 'custom', path: ['export_mode'], message: 'Only run.export accepts export_mode' })
   if (command.text !== undefined) {
     const text = (command.action === 'question.answer' ? answerTextSchema : normalizedTextSchema).safeParse(command.text)
@@ -98,6 +100,7 @@ export const settingsSourceSchema = z.strictObject({
 const nativeConfigurationSourceSchema = z.strictObject({ path: z.string().min(1), version: z.string().min(1) })
 export const nativePiToolsSchema = z.discriminatedUnion('mode', [
   z.strictObject({ mode: z.literal('disabled'), native_contract: z.literal('pi-cli-1.0.1') }),
+  z.strictObject({ mode: z.literal('morph'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, morph_config: nativeConfigurationSourceSchema, morph_host_config: nativeConfigurationSourceSchema, allowed: z.tuple([z.literal('morph_list_tools'), z.literal('morph_call_tool')]) }),
   z.strictObject({ mode: z.literal('questions-only'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.tuple([z.literal('swa_ask')]) }),
   z.strictObject({ mode: z.literal('collaboration'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.union([z.tuple([z.literal('swa_delegate')]), z.tuple([z.literal('swa_ask'), z.literal('swa_delegate')])]) }),
   z.strictObject({ mode: z.literal('project'), native_contract: z.literal('pi-cli-1.0.1'), extension: nativeConfigurationSourceSchema, allowed: z.union([z.tuple([z.literal('bash')]), z.tuple([z.literal('bash'), z.literal('swa_ask')]), z.tuple([z.literal('bash'), z.literal('swa_delegate')]), z.tuple([z.literal('bash'), z.literal('swa_ask'), z.literal('swa_delegate')])]) })

@@ -11,6 +11,7 @@ import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/
 import { agentSelectionSchema, invocationSchema, nativeObject, nativeToolModes, nativeOpenCodeLaunchPolicySchema, structuredInputBindingSchema as inputBindingSchema } from './contracts'
 import { codexProtectedRoots, selectAgent } from './agent-discovery'
 import { readAgentSettings } from './agent-settings'
+import { morphEnvironment } from './morph-config'
 import { assertNativePiSnapshotCurrent, inspectNativePiPolicy, sameNativeLaunchPolicy } from './native-pi-policy'
 import { createNativeWorkerDirectory, materializePrivatePiSessionAccount, privatePiEnvironment, verifyPrivatePiSessionAccount } from './private-pi-account'
 import { getAppEnvironment } from '../../../third_party/orca-v1.4.230/src/shared/app-environment'
@@ -179,7 +180,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
     if (agent === 'pi' && account.kind === 'pi-native-api-key-per-session' && original.version === '1.0.1') {
       const settings = await readAgentSettings()
       const tools = original.native_launch.tools
-      const snapshot = await inspectNativePiPolicy({ executable: original.executable, version: original.version, sourceHome: account.source_home, projectId: selected.invocation.project.id, ...nativeToolModes(tools), provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(settings, selected.invocation.project.root) })
+      const snapshot = await inspectNativePiPolicy({ executable: original.executable, version: original.version, sourceHome: account.source_home, projectId: selected.invocation.project.id, projectRoot: selected.invocation.project.root, ...nativeToolModes(tools), provider: account.provider, modelId: account.model_target.model_id, env: process.env, protectedRoots: codexProtectedRoots(settings, selected.invocation.project.root) })
       if (!sameNativeLaunchPolicy(original.native_launch, snapshot.policy)) throw new Error('The original native account policy changed')
       return { ...selected, snapshot, kind: 'pi' as const }
     }
@@ -367,7 +368,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
       const record = runtime.openedAgentSessionRecordStore()?.getRecord(input.sessionId)
       const worker = runtime.getOrchestrationDb().getWorkerDispatch(input.dispatchId)
       if (!owner.ownerAlive() || identity?.dispatchId !== input.dispatchId || identity.agent !== input.agent || !record?.lease.ownerProcess || record.lease.claimStatus !== 'live' || record.lease.unreconciled || !worker || !['starting', 'ready'].includes(worker.state) || worker.runtime_epoch !== runtime.getRuntimeId()) throw new Error('The native Worker preamble has no current launch identity')
-      if (!['disabled', 'questions-only', 'collaboration', 'project'].includes(original.native_launch.tools.mode)) throw new Error('The native Worker preamble tool mode is unavailable')
+      if (!['disabled', 'questions-only', 'collaboration', 'project', 'morph'].includes(original.native_launch.tools.mode)) throw new Error('The native Worker preamble tool mode is unavailable')
       return original.native_launch.tools.mode
     },
     createCommandSettings: async (sessionId, agent) => {
@@ -430,6 +431,7 @@ export function installAgentLaunchAdmission(runtime: OrcaRuntimeService, owner: 
           if (!stamp?.profilePath) throw new Error('The native question runtime source is unavailable')
           stampRuntimeSourceEnv(environment, stamp)
         }
+        Object.assign(environment, morphEnvironment(selected.snapshot.policy.tools))
         return environment
       }
       if (selected.kind === 'opencode') {

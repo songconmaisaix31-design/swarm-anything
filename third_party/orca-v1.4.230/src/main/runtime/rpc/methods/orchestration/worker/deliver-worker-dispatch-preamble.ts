@@ -53,7 +53,7 @@ export async function deliverWorkerDispatchPreamble(args: {
   structuredTurnStart?: WorkerTurnStartObservation
 }> {
   const { runtime, structuredSession, terminalHandle } = args
-  let toolsMode: 'disabled' | 'questions-only' | 'collaboration' | 'project' | undefined
+  let toolsMode: 'disabled' | 'questions-only' | 'collaboration' | 'project' | 'morph' | undefined
   if (structuredSession) {
     const { identity } = structuredSession
     if (!identity.agent || identity.dispatchId !== args.dispatchId) {

@@ -7803,6 +7803,8 @@ export interface components {
              * @enum {unknown}
              */
             development_mode?: "disabled" | "project";
+            /** @description Absolute host-owned Morph descriptor path for an explicit Pi Run/Worker. Requires current project permission for morph_list_tools and morph_call_tool and the entire matching workspace; incompatible with roles, handoffs and other enabled tool modes. Descriptor and HostConfig remain outside the writable workspace. */
+            morph_config?: string;
             /** @constant */
             source?: "transcript";
             cursor?: string;
@@ -7820,7 +7822,7 @@ export interface components {
             conversation?: components["schemas"]["conversationDefinition"];
             /** @description question.answer preserves the exact nonblank text and enforces a 32000 UTF-8 byte limit at execution; existing conversation text retains its normalization. */
             text?: string;
-        } & (unknown & unknown);
+        } & (unknown & unknown & unknown);
         nativeError: {
             code: string;
             message: string;
@@ -8185,6 +8187,19 @@ export interface components {
                 mode: "disabled";
                 /** @constant */
                 native_contract: "pi-cli-1.0.1";
+            } | {
+                /** @constant */
+                mode: "morph";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+                extension: components["schemas"]["nativeConfigurationSource"];
+                morph_config: components["schemas"]["nativeConfigurationSource"];
+                morph_host_config: components["schemas"]["nativeConfigurationSource"];
+                /** @constant */
+                allowed: [
+                    "morph_list_tools",
+                    "morph_call_tool"
+                ];
             } | {
                 /** @constant */
                 mode: "questions-only";

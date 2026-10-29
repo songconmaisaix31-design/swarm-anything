@@ -39,6 +39,7 @@ type OrcaCommand struct {
 	QuestionMode       string                      `json:"question_mode,omitempty"`
 	DelegationMode     string                      `json:"delegation_mode,omitempty"`
 	DevelopmentMode    string                      `json:"development_mode,omitempty"`
+	MorphConfig        string                      `json:"morph_config,omitempty"`
 	RequestID          string                      `json:"request_id,omitempty"`
 	Workdir            string                      `json:"workdir,omitempty"`
 	SpecFile           string                      `json:"spec_file,omitempty"`
@@ -319,11 +320,13 @@ func (account *OrcaNativeLaunchAccount) UnmarshalJSON(data []byte) error {
 }
 
 type OrcaNativeLaunchTools struct {
-	Mode           string                         `json:"mode"`
-	NativeContract string                         `json:"native_contract"`
-	Extension      *OrcaNativeConfigurationSource `json:"extension,omitempty"`
-	Shell          *OrcaNativeConfigurationSource `json:"shell,omitempty"`
-	Allowed        []string                       `json:"allowed,omitempty"`
+	Mode            string                         `json:"mode"`
+	NativeContract  string                         `json:"native_contract"`
+	Extension       *OrcaNativeConfigurationSource `json:"extension,omitempty"`
+	Shell           *OrcaNativeConfigurationSource `json:"shell,omitempty"`
+	MorphConfig     *OrcaNativeConfigurationSource `json:"morph_config,omitempty"`
+	MorphHostConfig *OrcaNativeConfigurationSource `json:"morph_host_config,omitempty"`
+	Allowed         []string                       `json:"allowed,omitempty"`
 }
 
 type OrcaNativeLaunchPolicy struct {
@@ -451,11 +454,11 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		"handoff.notify":  "controller task_id dispatch_id input_file request_id",
 		"question.answer": "controller run_id task_id dispatch_id question_id input_file text request_id",
 		"question.resume": "controller run_id task_id dispatch_id question_id request_id",
-		"run.submit":      "workdir spec_file input_file agent model name question_mode delegation_mode development_mode request_id role_id revision conversation_id", "run.show": "controller run_id task_id", "run.export": "controller run_id task_id output_dir export_mode",
+		"run.submit":      "workdir spec_file input_file agent model name question_mode delegation_mode development_mode morph_config request_id role_id revision conversation_id", "run.show": "controller run_id task_id", "run.export": "controller run_id task_id output_dir export_mode",
 		"controller.open": "workdir request_id", "controller.show": "controller", "controller.close": "controller request_id", "controller.recover": "controller request_id",
 		"task.create": "controller spec_file request_id", "task.show": "controller task_id", "task.list": "controller",
 		"task.complete": "controller task_id result_file request_id", "task.result": "controller task_id output_dir",
-		"worker.start": "controller task_id name agent model input_file question_mode delegation_mode development_mode request_id parent_task_id handoff_mode reply_mode completion_criteria role_id revision", "worker.list": "controller task_id",
+		"worker.start": "controller task_id name agent model input_file question_mode delegation_mode development_mode morph_config request_id parent_task_id handoff_mode reply_mode completion_criteria role_id revision", "worker.list": "controller task_id",
 		"worker.show": "controller dispatch_id", "worker.read": "controller dispatch_id source cursor limit",
 		"worker.send": "controller dispatch_id input_file request_id", "worker.stop": "controller dispatch_id request_id",
 		"worker.release": "controller dispatch_id request_id", "request.show": "controller request_id",
@@ -497,6 +500,14 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 	}
 	if c.DevelopmentMode == "project" && (c.Agent != "" && c.Agent != "pi" && c.Agent != "opencode" || c.HandoffMode == "consult") {
 		return projectError(apierrors.UnsupportedCapability, "project development requires Pi or OpenCode work; consult keeps its disabled-tool policy")
+	}
+	if c.MorphConfig != "" {
+		if !filepath.IsAbs(c.MorphConfig) || filepath.Clean(c.MorphConfig) != c.MorphConfig || strings.ContainsAny(c.MorphConfig, "\x00\r\n") {
+			return projectError(apierrors.ValidationFailed, "morph_config requires a canonical absolute descriptor path")
+		}
+		if c.Agent != "pi" || c.RoleID != "" || c.HandoffMode != "" || c.QuestionMode == "native" || c.DelegationMode == "native" || c.DevelopmentMode == "project" {
+			return projectError(apierrors.UnsupportedCapability, "Morph tools require explicit Pi selection without roles, consult or other native tools")
+		}
 	}
 	if mutation || c.Action == "request.show" {
 		id, err := uuid.Parse(c.RequestID)
@@ -615,8 +626,11 @@ func validateOrcaQuestionSelection(command OrcaCommand, selection OrcaAgentSelec
 	if command.HandoffMode == "consult" && mode != "disabled" {
 		return projectError(apierrors.UnsupportedCapability, "consult retains its disabled-tool policy")
 	}
-	if mode != "disabled" && mode != "questions-only" && mode != "collaboration" && mode != "project" {
+	if mode != "disabled" && mode != "questions-only" && mode != "collaboration" && mode != "project" && mode != "morph" {
 		return projectError(apierrors.EvidenceMissing, "native selection has an unsupported tool mode")
+	}
+	if (mode == "morph") != (command.MorphConfig != "") || mode == "morph" && (selection.NativeLaunch.Tools.MorphConfig == nil || selection.NativeLaunch.Tools.MorphConfig.Path != command.MorphConfig) {
+		return projectError(apierrors.EvidenceMissing, "native selection changed the requested Morph configuration")
 	}
 	// 角色默认由原生端核验；每个显式模式独立核对，不能因另一项缺省而跳过。
 	if (command.QuestionMode != "" || command.RoleID == "") && questionEnabled != (command.QuestionMode == "native") {
@@ -767,6 +781,22 @@ func (s *OrcaExecutionService) authorizeOrcaDelegation(ctx context.Context, call
 			return projectError(apierrors.ContextStale, "native delegation project approval changed")
 		}
 		if err := ValidateProjectActionScope(current, ProjectActionScope{ProjectID: project.ID, SettingsRevision: project.Settings.Revision, Action: action, Tools: []string{"swa_delegate"}, ExternalTargets: targets}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *OrcaExecutionService) authorizeOrcaMorphTools(ctx context.Context, caller domain.Caller, project domain.LocalProject, targets ...string) error {
+	for _, action := range []string{"start", "send"} {
+		current, err := s.authorize(ctx, caller, project.ID, action, nil, "")
+		if err != nil {
+			return err
+		}
+		if current.Settings.Revision != project.Settings.Revision || current.Root != project.Root {
+			return projectError(apierrors.ContextStale, "Morph tool project approval changed")
+		}
+		if err := ValidateProjectActionScope(current, ProjectActionScope{ProjectID: project.ID, SettingsRevision: project.Settings.Revision, Action: action, Roots: []string{project.Root}, Tools: []string{"morph_list_tools", "morph_call_tool"}, ExternalTargets: targets}); err != nil {
 			return err
 		}
 	}
@@ -935,6 +965,11 @@ func (s *OrcaExecutionService) executeOrcaCommand(ctx context.Context, caller do
 				return reply, err
 			}
 		}
+		if selection.NativeLaunch.Tools.Mode == "morph" {
+			if err := s.authorizeOrcaMorphTools(ctx, caller, current, selection.ExternalTarget); err != nil {
+				return reply, err
+			}
+		}
 		if selection.NativeLaunch.Tools.Mode == "project" {
 			if _, err := s.authorizeOrcaProjectTools(ctx, caller, current, selection.ExternalTarget); err != nil {
 				return reply, err
@@ -1084,6 +1119,9 @@ func validateOrcaNativeLaunch(selection OrcaAgentSelection, projectID string) er
 	policy := selection.NativeLaunch
 	account := policy.Account
 	target := account.ModelTarget
+	if policy.Tools.Mode != "morph" && (policy.Tools.MorphConfig != nil || policy.Tools.MorphHostConfig != nil) {
+		return projectError(apierrors.EvidenceMissing, "only Morph tools can carry their fixed host configuration")
+	}
 	if policy.Tools.Mode == "disabled" && (policy.Tools.Extension != nil || policy.Tools.Shell != nil || len(policy.Tools.Allowed) != 0) {
 		return projectError(apierrors.EvidenceMissing, "disabled native tools cannot carry an extension or allowed tools")
 	}
@@ -1122,8 +1160,18 @@ func validateOrcaNativeLaunch(selection OrcaAgentSelection, projectID string) er
 		return nil
 	}
 	endpoint, err := url.Parse(target.BaseURL)
-	if policy.Schema != "swa.native-launch.v1" || !slices.Contains([]string{"disabled", "questions-only", "collaboration", "project"}, policy.Tools.Mode) || policy.Tools.Shell != nil || policy.Tools.NativeContract != "pi-cli-1.0.1" || selection.AgentID != "pi" || selection.ExternalTarget != "pi" || selection.Version != "1.0.1" || selection.ExecutionMode != "structured" || account.Kind != "pi-native-api-key-per-session" || account.Provider == "" || account.Provider != selection.Provider || target.ModelID == "" || selection.Model != account.Provider+"/"+target.ModelID || !slices.Contains([]string{"openai-responses", "openai-completions", "azure-openai-responses"}, target.API) || err != nil || endpoint.Host == "" || (endpoint.Scheme != "https" && endpoint.Scheme != "http") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+	if policy.Schema != "swa.native-launch.v1" || !slices.Contains([]string{"disabled", "questions-only", "collaboration", "project", "morph"}, policy.Tools.Mode) || policy.Tools.Shell != nil || policy.Tools.NativeContract != "pi-cli-1.0.1" || selection.AgentID != "pi" || selection.ExternalTarget != "pi" || selection.Version != "1.0.1" || selection.ExecutionMode != "structured" || account.Kind != "pi-native-api-key-per-session" || account.Provider == "" || account.Provider != selection.Provider || target.ModelID == "" || selection.Model != account.Provider+"/"+target.ModelID || !slices.Contains([]string{"openai-responses", "openai-completions", "azure-openai-responses"}, target.API) || err != nil || endpoint.Host == "" || (endpoint.Scheme != "https" && endpoint.Scheme != "http") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
 		return projectError(apierrors.EvidenceMissing, "the selected native account and tool policy are unverified")
+	}
+	if policy.Tools.Mode == "morph" {
+		if !fixedOrcaToolSource(policy.Tools.Extension, "pi-morph-extension.mjs") || !slices.Equal(policy.Tools.Allowed, []string{"morph_list_tools", "morph_call_tool"}) {
+			return projectError(apierrors.EvidenceMissing, "Morph tools require the fixed extension and exact tool set")
+		}
+		for _, source := range []*OrcaNativeConfigurationSource{policy.Tools.MorphConfig, policy.Tools.MorphHostConfig} {
+			if source == nil || !filepath.IsAbs(source.Path) || filepath.Clean(source.Path) != source.Path || strings.ContainsAny(source.Path, "\x00\r\n") || source.Version == "" {
+				return projectError(apierrors.EvidenceMissing, "Morph tools require both fixed configuration sources")
+			}
+		}
 	}
 	if policy.Tools.Mode == "questions-only" {
 		extension := policy.Tools.Extension
@@ -1230,6 +1278,11 @@ func (s *OrcaExecutionService) AdmitOrcaDelivery(ctx context.Context, invocation
 	}
 	if sessionObservation {
 		if err := s.authorizeOrcaSessionObservation(ctx, caller, project, selection.ExternalTarget); err != nil {
+			return result, err
+		}
+	}
+	if selection.NativeLaunch.Tools.Mode == "morph" {
+		if err := s.authorizeOrcaMorphTools(ctx, caller, project, selection.ExternalTarget); err != nil {
 			return result, err
 		}
 	}
@@ -1342,6 +1395,11 @@ func (s *OrcaExecutionService) AdmitOrcaDelivery(ctx context.Context, invocation
 	}
 	if sessionObservation {
 		if err := s.authorizeOrcaSessionObservation(ctx, caller, current, selection.ExternalTarget); err != nil {
+			return result, err
+		}
+	}
+	if selection.NativeLaunch.Tools.Mode == "morph" {
+		if err := s.authorizeOrcaMorphTools(ctx, caller, current, selection.ExternalTarget); err != nil {
 			return result, err
 		}
 	}

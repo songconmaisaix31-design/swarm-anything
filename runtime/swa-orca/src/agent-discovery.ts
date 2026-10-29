@@ -186,7 +186,7 @@ function discoveryEnvironment(): Record<string, string> {
   return env
 }
 
-async function inspectAgents(runtime: OrcaRuntimeService, requirements?: CapabilityRequirements, onlyAgent?: string, requestedModel?: string, projectId?: string, projectRoot?: string, questionMode: 'disabled' | 'native' = 'disabled', delegationMode: 'disabled' | 'native' = 'disabled', developmentMode: 'disabled' | 'project' = 'disabled') {
+async function inspectAgents(runtime: OrcaRuntimeService, requirements?: CapabilityRequirements, onlyAgent?: string, requestedModel?: string, projectId?: string, projectRoot?: string, questionMode: 'disabled' | 'native' = 'disabled', delegationMode: 'disabled' | 'native' = 'disabled', developmentMode: 'disabled' | 'project' = 'disabled', morphConfig?: string) {
   const snapshot = await readAgentSettings()
   await runtime.ensureStructuredAgentSessionHost({ prewarmModelCatalog: false })
   const host = getStructuredAgentSessionHost()
@@ -245,12 +245,13 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
     agents.push({ id, adapter: adapterName, execution_mode: 'structured' as const, registered, enabled, installed, configured, launchable: supported ? unknown('No actual Agent handshake was performed', 'native-session', 'session') : unsupported, authenticated: unknown('A configured account source does not prove authentication or model access', 'native-authentication-unobserved', 'session'), declared_features: features.declared_features, model_catalog: modelCatalogObservation({ model: config?.model, provider: config?.provider }), control: { ...control, delegation, development }, ...(requirements ? { requirements } : {}) })
     let selection: AgentSelection | undefined
     if (projectId && enabled.status === 'available' && executable && version && proven && config) {
+      if (morphConfig && (id !== 'pi' || questionMode === 'native' || delegationMode === 'native' || developmentMode === 'project')) throw new OrchestrationError('unsupported_capability', 'Morph tools require only the fixed Pi bridge')
       if ((questionMode === 'native' || delegationMode === 'native') && id !== 'pi') throw new OrchestrationError('unsupported_capability', 'Native Run tools require the actual Pi extension contract')
       if (developmentMode === 'project' && (!['pi', 'opencode'].includes(id) || !projectTools.available)) throw new OrchestrationError('unsupported_capability', projectTools.reason)
       if (id !== 'pi' && id !== 'opencode' && id !== 'codex' && id !== 'claude' || !('sourceHome' in config) || !config.sourceHome || !config.model) throw new OrchestrationError('unsupported_capability', 'The selected native Agent account and disabled-tool policy have no reviewed contract')
       if (snapshot.settings.agentDefaultArgs?.[id]?.trim()) throw new OrchestrationError('unsupported_capability', 'The selected native Agent extra arguments have not been approved')
       const native = id === 'pi'
-        ? await inspectNativePiPolicy({ executable, version, sourceHome: config.sourceHome, projectId, questionMode, delegationMode, developmentMode, ...parsePiModelOptionId(config.model), env: process.env, protectedRoots: codexProtectedRoots(snapshot, projectRoot!) })
+        ? await inspectNativePiPolicy({ executable, version, sourceHome: config.sourceHome, projectId, questionMode, delegationMode, developmentMode, morphConfig, projectRoot, ...parsePiModelOptionId(config.model), env: process.env, protectedRoots: codexProtectedRoots(snapshot, projectRoot!) })
         : id === 'opencode' ? await inspectNativeOpenCodePolicy({ executable, version, sourceHome: config.sourceHome, projectId, privateRoot: join(await realpath(process.env.SWA_DATA_DIR!), 'opencode', projectId), env: process.env, protectedRoots: codexProtectedRoots(snapshot, projectRoot!), ...(developmentMode === 'project' ? { tools: { mode: 'project', native_contract: 'opencode-cli-2.0.31', allowed: ['shell'], shell: await nativeConfigurationSource(join(z.string().min(1).parse(process.env.SWA_INSTALL_ROOT), 'runtime/project-shell')) } } : {}) })
           : id === 'codex' ? await inspectNativeCodexPolicy({ executable, version, sourceHome: config.sourceHome, projectId, privateRoot: join(await realpath(process.env.SWA_DATA_DIR!), 'codex', projectId), catalogPath: join(await realpath(process.env.SWA_INSTALL_ROOT!), 'runtime/codex-policy/models.json'), env: process.env, protectedRoots: codexProtectedRoots(snapshot, projectRoot!) })
             : await inspectNativeClaudePolicy({ executable, version, sourceHome: config.sourceHome, projectId, privateRoot: join(await realpath(process.env.SWA_DATA_DIR!), 'claude', projectId), env: process.env, protectedRoots: codexProtectedRoots(snapshot, projectRoot!) })
@@ -309,8 +310,8 @@ export async function discoverAgents(runtime: OrcaRuntimeService, requirements: 
   return result
 }
 
-export async function selectAgent(runtime: OrcaRuntimeService, projectId: string, agent: string, model: string, projectRoot?: string, questionMode: 'disabled' | 'native' = 'disabled', delegationMode: 'disabled' | 'native' = 'disabled', developmentMode: 'disabled' | 'project' = 'disabled') {
-  const { details } = await inspectAgents(runtime, undefined, agent, model, projectId, projectRoot, questionMode, delegationMode, developmentMode)
+export async function selectAgent(runtime: OrcaRuntimeService, projectId: string, agent: string, model: string, projectRoot?: string, questionMode: 'disabled' | 'native' = 'disabled', delegationMode: 'disabled' | 'native' = 'disabled', developmentMode: 'disabled' | 'project' = 'disabled', morphConfig?: string) {
+  const { details } = await inspectAgents(runtime, undefined, agent, model, projectId, projectRoot, questionMode, delegationMode, developmentMode, morphConfig)
   const item = details.get(agent)
   if (!item?.selection) throw new OrchestrationError('agent_unconfigured', 'The selected native Agent lacks proven installation or configuration')
   return agentSelectionSchema.parse({ ...item.selection, model })
