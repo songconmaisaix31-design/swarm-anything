@@ -1,5 +1,7 @@
 # SWA 主线接续
 
+2026-10-29 用户选择 main 并指定使用 Swarm CLI，额外批准独立 CLI 修复。当前 Windows 工作分支为 `codex/windows-compatibility-20261029`，基线 `5c11bbf8`；CLI 修复为 `codex/swa-windows-dispatch-20261029`，安装来源 `9ba95300`。本次实际结果、未通过项和恢复限制统一见 [Windows 复验任务](tasks/windows-compatibility-20261029.md)。接续时保留原私有数据库和未知请求，不按下面历史 PID 操作进程。
+
 当前源码893fb8852e15109ca9a99f1bd51d83ea249a37b8已普通push，控制端command/env窄修及84严格检查获5eab3922限定接受。build19、412666860字节ZIP/普通解包和安装88的复制/native/28251闭包/保护拒绝通过，安装汇总6保留功能未验。独立服务89在64508/runtime6aec5c49就绪，6224/33976/55368及三Medium、五库核查0，原Worker TTY32198和只读Job观察21806保持；90两次真实来源一致，authority为空、业务与模型0，既定新准备91和实际helper/T13继续。87e原生指定session清理0、三句柄退出及六已观察身份两次缺席获2197a441限定接受，旧67 EOF6/Job不可查询/83父R pending保留。原95ef/5187和本机Orca保持，最终双Worker尚未通过。
 
 主控已建立[draft PR #5](https://github.com/songconmaisaix31-design/swarm-anything/pull/5)，当前head893fb885，尚未合并。d829脚本策略、3fadb迁移测试前提、5c750故障消费者来源/路径规范化均已限定接受，72普通frozen及73真实迁移检查0。最新893实际合并源fce64fb1的Ubuntu119658661466/Windows119658661639均普通frozen成功、Go整体1；失败名称分别68/79，与真实main50c2各平台基线相同，无增删。5c750前次Windows额外迁移失败未复现、原因未知保留；尚未开始的两来源额外复验已取消，完整CI失败。原始日志位于根.verification/swa-cli-v1-control，详细范围见首版任务。
