@@ -8,7 +8,10 @@ import { getStructuredAgentSessionHost } from '../../../third_party/orca-v1.4.23
 import { resolveStructuredAgentCommand } from '../../../third_party/orca-v1.4.230/src/main/native-chat/structured-agent-command-resolution'
 import { readAgentCliVersion } from '../../../third_party/orca-v1.4.230/src/main/agent-cli-version-probe'
 import { ACP_LAUNCH_SPECS } from '../../../third_party/orca-v1.4.230/src/main/acp/acp-launch-specs'
-import { isTuiAgent } from '../../../third_party/orca-v1.4.230/src/shared/tui-agent-config'
+import { isTuiAgent, TUI_AGENT_CONFIG, getTuiAgentDetectCommands } from '../../../third_party/orca-v1.4.230/src/shared/tui-agent-config'
+import { resolveCliCommand } from '../../../third_party/orca-v1.4.230/src/shared/node-cli-command-resolution'
+import { mergePersistedWindowsPathAsync } from '../../../third_party/orca-v1.4.230/src/main/pty/windows-environment-path'
+import { builtinWorkerRoles } from './worker-roles'
 import { normalizeCodexRuntimeSelection } from '../../../third_party/orca-v1.4.230/src/main/codex-accounts/runtime-selection'
 import { normalizeClaudeRuntimeSelection } from '../../../third_party/orca-v1.4.230/src/main/claude-accounts/runtime-selection'
 import { OrchestrationError } from '../../../third_party/orca-v1.4.230/src/main/runtime/orchestration/orchestration-error'
@@ -16,7 +19,7 @@ import { readAgentSettings, type AgentSettingsSnapshot } from './agent-settings'
 import { parsePiModelOptionId } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-options'
 import { agentCapabilitiesSchema, agentSelectionSchema, registeredAgentSchema, type AgentSelection, type CapabilityRequirements } from './contracts'
 import { inspectNativePiPolicy } from './native-pi-policy'
-import { inspectNativeOpenCodePolicy, readOpenCodeCredential } from './native-opencode-policy'
+import { inspectNativeOpenCodePolicy, readOpenCodeCredential, readOpenCodeDatabaseIdentity } from './native-opencode-policy'
 import { parse as parseJSONC, type ParseError } from 'jsonc-parser'
 
 type Observation = { status: 'available' | 'unavailable' | 'unknown'; reason: string; source: string; checked_at?: string }
@@ -100,8 +103,7 @@ async function configuration(agent: string, snapshot: AgentSettingsSnapshot, req
     const file = join(sourceHome, '.local/share/opencode/opencode.db')
     let databaseVersion = 'absent', databaseKeyMatches = false
     try {
-      const info = await stat(file, { bigint: true })
-      databaseVersion = `${info.dev}:${info.ino}:${info.mtimeNs}:${info.size}`
+      databaseVersion = readOpenCodeDatabaseIdentity(file).version
       const credential = readOpenCodeCredential(file)
       databaseKeyMatches = credential.key === entry?.key
       databaseVersion += `;${credential.id};${credential.updatedAt}`
@@ -111,12 +113,13 @@ async function configuration(agent: string, snapshot: AgentSettingsSnapshot, req
   return { model: undefined, provider: undefined, account: undefined, version: 'native-configuration-unobserved' }
 }
 
-function discoveryEnvironment(): Record<string, string> {
+async function discoveryEnvironment(): Promise<Record<string, string>> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined && /^(?:PATH|PATHEXT|COMSPEC|SYSTEMROOT|WINDIR|TEMP|TMP|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|LANG|LC_ALL|LC_CTYPE)$/i.test(key)) env[key] = value
   }
   // 原 home 只参与命令解析；version 子进程继续使用私有 HOME。
+  await mergePersistedWindowsPathAsync(env, { forceRefresh: true, startedAfter: Date.now() })
   return env
 }
 
@@ -126,45 +129,62 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
   const host = getStructuredAgentSessionHost()
   if (!host) throw new Error('The actual product structured Agent registry is unavailable')
   const disabled = new Set<string>(snapshot.launch.disabledTuiAgents)
+  const env = await discoveryEnvironment()
   const agents = []
   const details = new Map<string, { selection: AgentSelection | undefined; configuration: Awaited<ReturnType<typeof configuration>> }>()
-  for (const { definition, adapter } of host.deps.agents.registrations()) {
-    const id = definition.agent
+  const registrations = new Map(host.deps.agents.registrations().map(({ definition, adapter }) => [definition.agent as string, adapter.constructor.name]))
+  const ids = new Set([...registrations.keys(), ...Object.keys(TUI_AGENT_CONFIG)])
+  for (const id of ids) {
     if (onlyAgent !== undefined && id !== onlyAgent) continue
-    const adapterName = adapter.constructor.name
-    const registered = available('The real native adapter passed StructuredAgentRegistry validation', `StructuredAgentRegistry:${adapterName}`)
+    const structured = registrations.has(id)
+    const adapterName = registrations.get(id) ?? 'TuiAgentLauncher'
+    const mode = structured ? 'structured' as const : 'terminal' as const
+    const registered = structured
+      ? available('The real native adapter passed StructuredAgentRegistry validation', `StructuredAgentRegistry:${adapterName}`)
+      : available('The native terminal Agent definition is registered', 'TUI_AGENT_CONFIG')
     const enabled = observation(disabled.has(id) ? 'unavailable' : 'available', disabled.has(id) ? 'Disabled in the selected native settings' : 'Enabled in the selected native settings', 'native-settings')
     let installed: Observation & { executable?: string; version?: string } = unknown('No absolute native command has been resolved', 'native-command-resolution')
     let executable: string | undefined, version: string | undefined
     if (isTuiAgent(id)) {
       const spec = ACP_LAUNCH_SPECS.find(item => item.agent === id)
-      const env = discoveryEnvironment()
+      const terminal = TUI_AGENT_CONFIG[id]
       const sourceEnv: Record<string, string> = { ...env, HOME: snapshot.home, USERPROFILE: snapshot.home }
       if (process.env.SWA_DISCOVERY_APPDATA) sourceEnv.APPDATA = process.env.SWA_DISCOVERY_APPDATA
       if (process.env.SWA_DISCOVERY_LOCALAPPDATA) sourceEnv.LOCALAPPDATA = process.env.SWA_DISCOVERY_LOCALAPPDATA
       const overlay = snapshot.settings.agentDefaultEnv?.[id]
       const pathEnv = [overlay?.PATH ?? overlay?.Path ?? env.PATH ?? env.Path, ...(spec?.installDirectories({ env: sourceEnv, homePath: snapshot.home }) ?? [])].filter(Boolean).join(delimiter)
-      const command = resolveStructuredAgentCommand(id, spec?.ignoreAgentCommandSetting ? {} : { agentCmdOverrides: snapshot.launch.agentCmdOverrides }, { pathEnv, homePath: snapshot.home }, { command: spec?.command ?? id })
-      if (isAbsolute(command)) {
+      const options = { pathEnv, homePath: snapshot.home }
+      const executionSpec = projectId ? spec : undefined
+      const commands = executionSpec ? [executionSpec.command] : getTuiAgentDetectCommands(terminal)
+      const command = resolveStructuredAgentCommand(id, executionSpec?.ignoreAgentCommandSetting ? {} : { agentCmdOverrides: snapshot.launch.agentCmdOverrides }, options, { command: commands.find(value => isAbsolute(resolveCliCommand(value, options))) ?? commands[0] })
+      const unsupported = terminal.detectUnsupportedRuntimes?.includes(process.platform)
+      const missingRequired = terminal.detectRequiredCommands?.some(value => !isAbsolute(resolveCliCommand(value, options)))
+      if (unsupported) {
+        installed = observation('unavailable', 'The native Agent definition does not support this platform', 'TUI_AGENT_CONFIG')
+      } else if (missingRequired) {
+        installed = observation('unavailable', 'A required native command is not installed', 'TUI_AGENT_CONFIG')
+      } else if (isAbsolute(command)) {
         executable = await realpath(command)
         if (id === 'opencode' && extname(executable).toLowerCase() === '.cmd') executable = await realpath(join(dirname(executable), 'node_modules/@opencode/cli/bin/opencode.exe'))
         const result = await readAgentCliVersion({ program: executable, cwd: process.env.SWA_DATA_DIR!, env })
         version = result.version ?? undefined
-        installed = version ? { ...available('The selected native executable returned its real CLI version', 'native-version-probe'), executable, version } : unknown('The selected native executable did not prove its CLI version', 'native-version-probe')
+        installed = version ? { ...available('The selected native executable returned its real CLI version', 'native-version-probe'), checked_at: new Date().toISOString(), executable, version } : unknown('The selected native executable did not prove its CLI version', 'native-version-probe')
       } else installed = observation('unavailable', 'Native command resolution found no installed executable', 'native-command-resolution')
     }
     const config = await configuration(id, snapshot, requestedModel)
     const proven = !!(config.model && config.provider && config.account)
     const configured = { ...(proven ? available('Native configuration and the explicit selection supply model, provider and an account source', 'native-configuration') : unknown('The observed native defaults do not supply every model, provider and account field', 'native-configuration')), model: config.model, provider: config.provider, account_source: config.account }
-    const declared = available('The real adapter implements this structured operation; no live handshake is claimed', `adapter-declaration:${adapterName}`)
+    const declared = structured
+      ? available('The real adapter implements this structured operation; no live handshake is claimed', `adapter-declaration:${adapterName}`)
+      : observation('unavailable', 'This terminal Agent has no approved native execution policy', 'native-policy')
     const control = { start: declared, send: declared, read: unknown('No live session or complete transcript was observed', 'native-session'), stop: declared, resume: unknown('No native recovery handshake was observed', 'native-session'), tools: unknown('The selected Agent tool policy requires its own verified native contract', 'native-policy') }
-    agents.push({ id, adapter: adapterName, execution_mode: 'structured' as const, registered, enabled, installed, configured, launchable: unknown('No actual Agent handshake was performed', 'native-session'), control, ...(requirements ? { requirements } : {}) })
+    agents.push({ id, adapter: adapterName, execution_mode: mode, registered, enabled, installed, configured, launchable: unknown('No actual Agent handshake was performed', 'native-session'), control, ...(requirements ? { requirements } : {}) })
     let selection: AgentSelection | undefined
     if (projectId && enabled.status === 'available' && executable && version && proven) {
       if ((id !== 'pi' && id !== 'opencode') || !('sourceHome' in config) || !config.sourceHome || !config.model) throw new OrchestrationError('unsupported_capability', 'The selected native Agent account and disabled-tool policy have no reviewed contract')
       if (snapshot.settings.agentDefaultArgs?.[id]?.trim()) throw new OrchestrationError('unsupported_capability', 'The selected native Agent extra arguments have not been approved')
       const native = id === 'pi'
-        ? await inspectNativePiPolicy({ executable, version, sourceHome: config.sourceHome, projectId, ...parsePiModelOptionId(config.model), env: discoveryEnvironment() })
+        ? await inspectNativePiPolicy({ executable, version, sourceHome: config.sourceHome, projectId, ...parsePiModelOptionId(config.model), env })
         : await inspectNativeOpenCodePolicy({ executable, version, sourceHome: config.sourceHome, projectId, privateRoot: join(await realpath(process.env.SWA_DATA_DIR!), 'opencode', projectId) })
       selection = agentSelectionSchema.parse({ agent_id: id, adapter: adapterName, execution_mode: 'structured', executable, version, model: config.model, provider: native.policy.account.provider, external_target: id, settings_source: snapshot.source, settings_revision: snapshot.revision, configuration_version: `${snapshot.version};${config.version};${JSON.stringify(native.sources)}`, native_launch: native.policy })
     }
@@ -196,7 +216,7 @@ export async function registeredAgent(runtime: OrcaRuntimeService, agent: string
 
 export async function discoverAgents(runtime: OrcaRuntimeService, requirements: CapabilityRequirements) {
   const { agents, snapshot } = await inspectAgents(runtime, requirements)
-  const result = agentCapabilitiesSchema.parse({ schema: 'swa.capabilities.v1', ...await installedRegistrySource(), discovery: { host: 'local', platform: process.platform, observed_at: new Date().toISOString(), settings_source: snapshot.source }, agents })
+  const result = agentCapabilitiesSchema.parse({ schema: 'swa.capabilities.v1', ...await installedRegistrySource(), discovery: { host: 'local', platform: process.platform, observed_at: new Date().toISOString(), settings_source: snapshot.source }, agents, roles: builtinWorkerRoles.map(({ id, name, description }) => ({ id, name, description })) })
   return result
 }
 

@@ -30,6 +30,10 @@ $swa = Join-Path $installRoot 'swa.exe'
 
 ## 项目授权与调用身份
 
+`swa capabilities --json` 每次合并 Structured 与 terminal 注册定义，刷新 Windows PATH 并探测当前 CLI 版本。结果分别报告注册、安装、配置和执行能力。`roles` 提供 `developer`（开发者）、`reviewer`（审查者）、`coordinator`（协调者）的职责。
+
+使用 `swa worker start ... --role developer` 或 `--role reviewer` 为同一任务的 Worker 选择角色。角色正文随任务输入保存，不增加权限。省略 `--role` 保持原有输入；未知角色在创建 Worker 前拒绝。完整调用示例见下文。
+
 命令端需要该私有HTTP服务中已经登记的真实项目ID和当前human批准的项目Agent token。原Orca的token、终端`--from`、进程PID及本机开发Agent身份均不能代替项目批准。新数据根没有预置Grant，服务启动不会发行token。
 
 以下步骤由用户本人在另一个普通PowerShell窗口逐段执行，服务窗口保持运行。只使用本次安装服务的实际端口；请求没有`Authorization`头。`GET /api/v1/auth/session`在没有网页资产时仍可用，真实cookie只保存在本窗口的`$swaHumanSession`中，CSRF来自实际响应。Agent不得代执行这些步骤或自动取得human会话。

@@ -213,7 +213,12 @@ export const SWA_METHODS = [
       const selected = await resolveSelection(context.runtime, invocation.project.id, c)
       if (!invocation.selection || !isDeepStrictEqual(selected, invocation.selection)) return fail('request_mismatch', 'The exact selected Agent configuration changed before native execution')
     }
-    if (c.action === 'worker.start') await admitWorkerResources()
+    if (c.action === 'worker.start') {
+      if (c.agent !== 'pi' && c.agent !== 'opencode') return fail('unsupported_capability', 'The selected Agent has no approved structured launch policy')
+      const support = await context.runtime.getStructuredAgentSessionCreateSupport(`id:${owner.worktree_id}`, c.agent)
+      if (!support.supported) return fail('unsupported_capability', 'The selected workspace cannot launch the approved structured Agent')
+      await admitWorkerResources()
+    }
     const requestId = reserve(context, invocation, { project_id: invocation.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: invocation.selection, child_request: `${c.request_id}/native`, stage: 'helper-input' })
     return effect(async () => ({ project_id: invocation.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: invocation.selection, invocation: { ...invocation, scope }, child_request: `${requestId}/native`, native: (await helperCall(context.runtime, c.controller!, requestId, c.action, { ...invocation, scope })).result }))
   } }),
@@ -368,7 +373,75 @@ async function resolveSelection(runtime: OrcaRuntimeService, project: string, co
 function requireReleased(runtime: OrcaRuntimeService, scope: Scope) {
   if (!scope.run_id) return
   const resources = runtime.getOrchestrationDb().listWorkerTerminalResources({ runId: scope.run_id, limit: 100 })
-  if (resources.some(row => !row.resource || row.resource.release_state !== 'released')) fail('worker_release_unconfirmed', 'All exact Worker resources must be archived and released')
+  if (resources.some(row => row.resource ? row.resource.release_state !== 'released' : !confirmedUnstartedWorker(runtime, scope, row.dispatchId))) fail('worker_release_unconfirmed', 'All exact Worker resources must be archived and released')
+}
+
+export async function requireAllWorkerResourcesReleased(runtime: OrcaRuntimeService) {
+  const db = runtime.getOrchestrationDb(), resources = db.listWorkerTerminalResources()
+  for (const row of resources) {
+    if (row.resource) {
+      if (row.resource.release_state !== 'released') fail('worker_release_unconfirmed', 'The exact Worker resource remains unreleased')
+      continue
+    }
+    const parents = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts
+      WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND state='completed' AND json_valid(receipt)=1
+      AND json_extract(receipt, '$.action')='worker.start' AND json_extract(receipt, '$.native.dispatchId')=?`).all(authority(runtime), row.dispatchId))
+    if (parents.length !== 1) fail('worker_release_unconfirmed', 'The exact unstarted Worker receipt is unavailable')
+    const parent = z.object({ project_id: z.string().min(1), controller: z.string().min(1), run_id: z.string().min(1), root_task_id: z.string().min(1) }).parse(JSON.parse(parents[0]!.receipt))
+    const { owner, scope } = controllerScope(runtime, parent.project_id, parent.controller, { history: true })
+    const worker = db.getWorkerDispatch(row.dispatchId)
+    if (!worker || !worker.runtime_epoch || row.runId !== scope.run_id || row.parentTaskId !== scope.root_task_id ||
+        parent.run_id !== scope.run_id || parent.root_task_id !== scope.root_task_id) fail('worker_release_unconfirmed', 'The unstarted Worker task identity differs')
+    const closes = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts
+      WHERE caller_fingerprint=? AND method='swa.controllerClose' AND state='completed' AND json_valid(receipt)=1
+      AND json_extract(receipt, '$.controller')=?`).all(authority(runtime), scope.controller))
+    if (closes.length !== 1) fail('worker_release_unconfirmed', 'The original controller close is unavailable')
+    const closed = nativeObject(JSON.parse(closes[0]!.receipt))
+    if (closed.project_id !== scope.project_id || closed.controller !== scope.controller ||
+        !isDeepStrictEqual(closed.binding, owner.binding) || !isDeepStrictEqual(closed.process, owner.process) ||
+        !isDeepStrictEqual(closed.helper, owner.helper) || nativeObject(closed.close).ptyKilled !== true) {
+      fail('worker_release_unconfirmed', 'The original controller close identity differs')
+    }
+    await observeControllerExited(runtime, owner)
+    // 历史 epoch 仅在准确控制端关闭及原进程退出均已确认后使用。
+    if (!confirmedUnstartedWorker(runtime, scope, row.dispatchId, worker.runtime_epoch)) fail('worker_release_unconfirmed', 'The exact Worker creation remains unconfirmed')
+  }
+  if (!isDeepStrictEqual(resources, db.listWorkerTerminalResources())) fail('worker_release_unconfirmed', 'The Worker resource inventory changed during shutdown')
+}
+
+function confirmedUnstartedWorker(runtime: OrcaRuntimeService, scope: Scope, dispatchId: string, expectedRuntimeEpoch = runtime.getRuntimeId()): boolean {
+  const db = runtime.getOrchestrationDb(), worker = db.getWorkerDispatch(dispatchId), dispatch = db.getDispatchContextById(dispatchId)
+  if (!worker || !dispatch || worker.state !== 'failed' || worker.stage !== 'terminal_create' || worker.runtime_epoch !== expectedRuntimeEpoch ||
+      dispatch.status !== 'failed' || dispatch.run_id !== scope.run_id || dispatch.assignee_handle || dispatch.assignee_pane_key ||
+      dispatch.assignee_orca_session_id || dispatch.process_incarnation || worker.agent_terminal_handle ||
+      db.getWorkerTerminalResourceByOwner(dispatchId) || db.getWorkerTerminalResourceFormerlyOwnedBy(dispatchId)) return false
+  const effects = z.array(z.union([
+    z.strictObject({ kind: z.literal('worktree'), action: z.literal('reused'), id: z.string() }),
+    z.strictObject({ kind: z.literal('setup'), action: z.literal('not_applicable'), state: z.literal('not_applicable') })
+  ])).safeParse(JSON.parse(worker.effects))
+  if (!effects.success || effects.data.length !== 2 || effects.data.filter(effect => effect.kind === 'worktree').length !== 1 ||
+      effects.data.filter(effect => effect.kind === 'setup').length !== 1 || !worker.worktree_id ||
+      effects.data.some(effect => effect.kind === 'worktree' && effect.id !== worker.worktree_id) ||
+      !isDeepStrictEqual(JSON.parse(worker.residual_resources), [])) return false
+  const parents = z.array(z.object({ receipt: z.string() })).parse(db.db.prepare(`SELECT receipt FROM mutation_receipts
+    WHERE caller_fingerprint=? AND method='swa.controllerDeliver' AND state='completed' AND json_valid(receipt)=1
+    AND json_extract(receipt, '$.controller')=? AND json_extract(receipt, '$.run_id')=?
+    AND json_extract(receipt, '$.root_task_id')=? AND json_extract(receipt, '$.action')='worker.start'
+    AND json_extract(receipt, '$.native.dispatchId')=?`).all(authority(runtime), scope.controller, scope.run_id, scope.root_task_id, dispatchId))
+  if (parents.length !== 1) return false
+  const parent = nativeObject(JSON.parse(parents[0]!.receipt)), child = db.getMutationReceipt(authority(runtime), z.string().parse(parent.child_request))
+  if (!child || child.method !== 'orchestration.workerStart' || child.state !== 'completed' || !child.receipt) return false
+  const original = nativeObject(JSON.parse(child.receipt)), mirrored = nativeObject(parent.native)
+  if (original.dispatchId !== dispatchId || original.runId !== scope.run_id || original.taskId !== dispatch.task_id ||
+      original.state !== 'failed' || original.stage !== worker.stage || original.nativeCreation !== 'not_started' ||
+      !isDeepStrictEqual(mirrored, original) || !isDeepStrictEqual(original.effects, effects.data) ||
+      !isDeepStrictEqual(original.residualResources, [])) return false
+  const pending = z.object({ count: z.number().int() }).parse(db.db.prepare(`SELECT COUNT(*) AS count FROM mutation_receipts
+    WHERE state='pending' AND json_valid(receipt)=1 AND (
+      (json_extract(receipt, '$.runId')=? AND json_extract(receipt, '$.dispatchId')=?) OR
+      (json_extract(receipt, '$.run_id')=? AND json_extract(receipt, '$.action') IN ('worker.start','worker.send','worker.stop','worker.release'))
+    )`).get(scope.run_id, dispatchId, scope.run_id))
+  return pending.count === 0
 }
 
 // 准入与 checkpoint 在同一个原生事务中完成，未知请求继续占用原生 receipt。

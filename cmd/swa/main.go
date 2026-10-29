@@ -29,7 +29,7 @@ swa controller open --project P --workdir W --request-id UUID --json
 swa controller show|close|recover --controller C [--request-id UUID] --json
 swa task create --controller C --spec-file F --request-id UUID --json
 swa task show|list|complete|result --controller C [--task T] [--result-file F|--output-dir O] [--request-id UUID] --json
-swa worker start --controller C --task T --name A --agent AGENT --model PROVIDER/MODEL --input-file F --request-id UUID --json
+swa worker start --controller C --task T --name A --agent AGENT --model PROVIDER/MODEL [--role developer|reviewer|coordinator] --input-file F --request-id UUID --json
 swa worker show|list|read|send|stop|release --controller C [--task T|--dispatch X] [--source transcript --limit 100 --cursor K] [--input-file F] [--request-id UUID] --json
 swa request show --controller C|--project P --request-id UUID --json
 
@@ -90,6 +90,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.StringVar(&command.Name, "name", "", "Worker 名称")
 	flags.StringVar(&command.Agent, "agent", "", "已批准的 Agent")
 	flags.StringVar(&command.Model, "model", "", "已批准的 provider/model")
+	flags.StringVar(&command.Role, "role", "", "内置角色 ID，见 capabilities.roles")
 	flags.StringVar(&command.Source, "source", "", "明确原件来源")
 	flags.StringVar(&command.Cursor, "cursor", "", "原来源 cursor")
 	defaultLimit := 0

@@ -73,27 +73,43 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	job := &serviceJob{ownership: serviceJobOwnership{Name: `Local\SWAService` + uuid.NewString(), ServePID: uint32(os.Getpid()), ServeCreatedAtMS: created, DataRoot: data, InstallRoot: install, SourceRevision: revision}}
+	var sessionID uint32
+	if err := windows.ProcessIdToSessionId(uint32(os.Getpid()), &sessionID); err != nil {
+		return nil, err
+	}
+	job := &serviceJob{ownership: serviceJobOwnership{Name: `Local\SWAService` + uuid.NewString(), ServePID: uint32(os.Getpid()), ServeCreatedAtMS: created, WindowsSessionID: sessionID, DataRoot: data, InstallRoot: install, SourceRevision: revision}}
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		return nil, err
 	}
 	if prior != nil {
-		job.ownership.Name = prior.ServiceJob.Name
-		job.adopted = prior.ServiceJob
-		if err := serviceProcessExited(prior.ServiceJob.ServePID, prior.ServiceJob.ServeCreatedAtMS); err != nil {
+		owner := prior.ServiceJob
+		if owner.WindowsSessionID != 0 && owner.WindowsSessionID != sessionID {
+			return nil, errServiceOwnershipUnknown
+		}
+		if err := serviceProcessExited(owner.ServePID, owner.ServeCreatedAtMS, owner.WindowsSessionID); err != nil {
 			return nil, errors.Join(errServiceOwnershipUnknown, err)
 		}
-		name, err := windows.UTF16PtrFromString(job.ownership.Name)
+		name, err := windows.UTF16PtrFromString(owner.Name)
 		if err != nil {
 			return nil, err
 		}
 		opened, _, callErr := windows.NewLazySystemDLL("kernel32.dll").NewProc("OpenJobObjectW").Call(uintptr(windows.READ_CONTROL|0x0004|0x0001), 0, uintptr(unsafe.Pointer(name)))
 		if opened == 0 {
-			return nil, errors.Join(errServiceOwnershipUnknown, callErr)
+			// 同一 Local 命名空间中的 Job 已销毁，且两个原始身份均已退出，才建立新一代。
+			if !errors.Is(callErr, windows.ERROR_FILE_NOT_FOUND) || owner.WindowsSessionID == 0 {
+				return nil, errors.Join(errServiceOwnershipUnknown, callErr)
+			}
+			if err := serviceProcessExited(owner.DaemonPID, owner.DaemonCreatedAtMS, owner.WindowsSessionID); err != nil {
+				return nil, errors.Join(errServiceOwnershipUnknown, err)
+			}
+		} else {
+			job.ownership.Name = owner.Name
+			job.adopted = owner
+			job.handle = windows.Handle(opened)
 		}
-		job.handle = windows.Handle(opened)
-	} else {
+	}
+	if job.handle == 0 {
 		acl := "O:" + user.User.Sid.String() + "D:P(A;;0x1f003f;;;" + user.User.Sid.String() + ")(A;;0x1f003f;;;SY)"
 		descriptor, err := windows.SecurityDescriptorFromString(acl)
 		if err != nil {
@@ -113,8 +129,8 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 	if err := job.security(user.User.Sid); err != nil {
 		return nil, errors.Join(errServiceOwnershipUnknown, err, job.close())
 	}
-	if prior != nil {
-		if err := job.verifyDaemon(*prior.ServiceJob); err != nil {
+	if job.adopted != nil {
+		if err := job.verifyDaemon(*job.adopted); err != nil {
 			return nil, errors.Join(errServiceOwnershipUnknown, err, job.close())
 		}
 		if err := job.rejectOtherServe(install); err != nil {
@@ -126,7 +142,7 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 		return nil, errors.Join(err, job.close())
 	}
 	active, err := job.active()
-	if err != nil || prior == nil && active != 1 || prior != nil && active < 2 {
+	if err != nil || job.adopted == nil && active != 1 || job.adopted != nil && active < 2 {
 		return nil, errors.Join(fmt.Errorf("serve Job 初始成员不确定: active=%d", active), err, job.close())
 	}
 	return job, nil
@@ -140,15 +156,20 @@ func serviceProcessCreated(process windows.Handle) (uint64, error) {
 	return ticks(created)/10000 - 11644473600000, nil
 }
 
-func serviceProcessExited(pid uint32, expected uint64) (result error) {
+func serviceProcessExited(pid uint32, expected uint64, expectedSession uint32) (result error) {
 	process, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+		// 系统已不存在此 PID；仅仍存在的 PID 才能核对创建时间和 Session。
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	defer func() { result = errors.Join(result, windows.CloseHandle(process)) }()
+	var sessionID uint32
+	if err := windows.ProcessIdToSessionId(pid, &sessionID); err != nil || expectedSession != 0 && sessionID != expectedSession {
+		return errors.Join(errServiceOwnershipUnknown, err)
+	}
 	created, err := serviceProcessCreated(process)
 	if err != nil || created != expected {
 		return errors.Join(errors.New("原 serve 创建身份发生变化"), err)
@@ -214,6 +235,10 @@ func (job *serviceJob) verifyDaemon(actual serviceJobOwnership) (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, windows.CloseHandle(process)) }()
+	var sessionID uint32
+	if err := windows.ProcessIdToSessionId(actual.DaemonPID, &sessionID); err != nil || sessionID != job.ownership.WindowsSessionID || actual.WindowsSessionID != 0 && actual.WindowsSessionID != sessionID {
+		return errors.Join(errServiceOwnershipUnknown, err)
+	}
 	created, err := serviceProcessCreated(process)
 	if err != nil || created != actual.DaemonCreatedAtMS {
 		return errors.Join(errServiceOwnershipUnknown, err)

@@ -1,11 +1,12 @@
 import { lstatSync, readFileSync, realpathSync, statSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { assertOpenCodeCredentialCurrent } from './native-opencode-credential'
 
 const pluginId = 'swa.opencode.policy'
 const expectedIds = ['opencode.provider.opencode', 'opencode.config.policy', 'opencode.agent', 'opencode.models.dev', 'opencode.config.agent', 'opencode.config.compaction', pluginId].sort()
 const modelSchema = z.object({ id: z.literal('deepseek-v4-pro'), providerID: z.literal('deepseek') })
-const optionsSchema = z.strictObject({ root: z.string().min(1), correlation: z.string().regex(/^[a-f0-9]{64}$/), source: z.string().min(1), sources: z.array(z.strictObject({ path: z.string(), version: z.string() })).min(1), absent_sources: z.array(z.string()) })
+const optionsSchema = z.strictObject({ root: z.string().min(1), correlation: z.string().regex(/^[a-f0-9]{64}$/), source: z.string().min(1), sources: z.array(z.strictObject({ path: z.string(), version: z.string() })).min(1), absent_sources: z.array(z.string()), credential_source: z.strictObject({ path: z.string().min(1), version: z.string().min(1), id: z.string().min(1), updated_at: z.number().int().nonnegative() }) })
 const inventorySchema = z.array(z.object({ id: z.string(), state: z.object({ status: z.literal('active') }) }))
 type Context = {
   options: unknown
@@ -41,6 +42,8 @@ export default {
         catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue; throw error }
         throw new Error('swa_opencode_source_appeared')
       }
+      const credential = options.credential_source
+      assertOpenCodeCredentialCurrent(credential, credential.id, credential.updated_at, key)
     }
     async function inventory() {
       filesCurrent()

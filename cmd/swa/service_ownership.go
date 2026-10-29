@@ -22,6 +22,7 @@ type serviceJobOwnership struct {
 	Name              string `json:"name"`
 	ServePID          uint32 `json:"serve_pid"`
 	ServeCreatedAtMS  uint64 `json:"serve_created_at_ms"`
+	WindowsSessionID  uint32 `json:"windows_session_id,omitempty"`
 	DataRoot          string `json:"data_root"`
 	InstallRoot       string `json:"install_root"`
 	SourceRevision    string `json:"source_revision"`

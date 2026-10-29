@@ -2,6 +2,8 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
+2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 最终安装源码为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`，包含关闭历史未创建证明与 OpenCode 稳定凭据来源修复。strict TypeScript、Go cmd/swa、47 包架构检查、完整 Windows 构建/独立安装、八项实际 SQLite 检查通过。最终同安装双 Worker 全流程成功，完整结果 1,872,478 字节；同目录 EOF 重启退出 0，11 个观察到的所属进程全部退出。旧库未知记录拒绝退出 6，数据保留。长审查结果超过 12 MiB，5 秒版本探测曾失败；历史确定未创建记录的全局正向关闭、Pi 及全部异常资源分支仍未完整实测。完整 Windows 验收未通过，准确结果见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
+
 ## 当前主线与 M0
 
 | 项目 | 当前事实 |

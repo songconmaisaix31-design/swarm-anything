@@ -1,5 +1,7 @@
 # SWA 主线接续
 
+2026-10-29 独立 Windows CLI 分支为 `codex/swa-windows-dispatch-20261029`，最终安装源码为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`。已修复全局关闭的历史未创建证明检查，以及 OpenCode 凭据来源被普通 WAL 写入误判的问题。独立 Swarm 审查、完整构建/安装、八项真实 SQLite 检查、最终双 Worker 全流程通过。同目录重启后 EOF 退出 0，11 个观察到的所属进程全部退出；旧库未知记录继续拒绝并退出 6。用户授权清理本轮旧构建副本，数据库与验证记录保留。完整 Windows 验收仍未通过：历史确定未创建记录的全局正向关闭尚缺独立实际结果，5 秒版本探测与 12 MiB 长结果限制仍存在。下一步依 [Windows 派发任务](tasks/windows-dispatch-20261029.md) 的真实未验范围继续，不据旧 PID 操作进程。
+
 先读 [STATUS](STATUS.md)、[AGENTS](AGENTS.md)、[代码规范](docs/CODING.md) 和[资源限制](docs/RESOURCES.md)，再读 [META_PLAN](docs/META_PLAN.md)、[总任务](tasks/swa-mainline-20261020.md)、[M0](tasks/swa-m0-20261020.md)、具体规格与[用户决定](docs/QUESTIONS.md)。开发者从 [CONTRIBUTING](CONTRIBUTING.md) 进入，完整导航见[文档目录](docs/README.md)。
 
 用户以 re.md v2.1 重构主线。M0 从产品 `32ab1eec808a5848aabad40f11133735a1214e55` 接续，仅整合文档；主控独有决定、研究、实验入口和归档来自准确 `cf22f118193d5dcc3f2d2ec436bd4f06e9a22c9b`。程序来源 S、已恢复服务和 M1 实际结果统一见 STATUS。处理运行服务前重新核对真实 PID、路径、创建时间、所属终端和唯一监听，遵守原库保全及授权。
