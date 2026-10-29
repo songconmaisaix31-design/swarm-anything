@@ -1,6 +1,6 @@
 # SWA 主线接续
 
-2026-10-29 用户批准的独立 Windows CLI 修复位于 `codex/swa-windows-dispatch-20261029`，基线 `893fb885`，当前已验证安装源码为 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75`。同会话服务恢复、活跃服务拒绝、启动前确定失败回收和正常双 Worker 短任务完整流程已有实际通过结果。全局关闭仍错误拒绝历史确定未创建的记录；后继 Swarm 审核因原生版本探测超时及来源变化失败，新关闭补丁未实施。此前导出的来源变化和 12 MiB 上限失败保持。最后本轮服务、控制端及 daemon 进程均退出、64626 无监听，原生 unknown/未释放记录保留。C 盘约剩 260 MiB，下一步先恢复实际审核条件并修复关闭缺陷；完整状态见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。不据旧 PID 操作进程。
+2026-10-29 独立 Windows CLI 分支为 `codex/swa-windows-dispatch-20261029`，最终安装源码为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`。已修复全局关闭的历史未创建证明检查，以及 OpenCode 凭据来源被普通 WAL 写入误判的问题。独立 Swarm 审查、完整构建/安装、八项真实 SQLite 检查、最终双 Worker 全流程通过。同目录重启后 EOF 退出 0，11 个观察到的所属进程全部退出；旧库未知记录继续拒绝并退出 6。用户授权清理本轮旧构建副本，数据库与验证记录保留。完整 Windows 验收仍未通过：历史确定未创建记录的全局正向关闭尚缺独立实际结果，5 秒版本探测与 12 MiB 长结果限制仍存在。下一步依 [Windows 派发任务](tasks/windows-dispatch-20261029.md) 的真实未验范围继续，不据旧 PID 操作进程。
 
 先读 [STATUS](STATUS.md)、[AGENTS](AGENTS.md)、[代码规范](docs/CODING.md) 和[资源限制](docs/RESOURCES.md)，再读 [META_PLAN](docs/META_PLAN.md)、[总任务](tasks/swa-mainline-20261020.md)、[M0](tasks/swa-m0-20261020.md)、具体规格与[用户决定](docs/QUESTIONS.md)。开发者从 [CONTRIBUTING](CONTRIBUTING.md) 进入，完整导航见[文档目录](docs/README.md)。
 

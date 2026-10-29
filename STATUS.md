@@ -2,7 +2,7 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
-2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 从 `893fb885` 修复已有工作树参数、Structured 模型预检、私有 host 路由和受限权限模式；安装源码 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75` 通过 Go、strict TypeScript、完整 Windows 构建/安装、同会话恢复、活跃第二服务拒绝和确定未启动 Worker 的回收检查。同一安装双 Worker 短任务的停止、释放、3,298,102 字节完整结果、任务完成及控制端关闭全部成功。全局服务关闭仍有历史空资源判定缺陷；新增计划因 Swarm 原生版本探测超时和来源变化未取得审核，新补丁未实施。此前来源变化与 12 MiB 上限导出失败保留。最后本轮所属进程均退出、64626 无监听，原生 unknown/未释放记录保持；C 盘约剩 260 MiB。准确验证、Commit 和剩余范围见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
+2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 最终安装源码为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`，包含关闭历史未创建证明与 OpenCode 稳定凭据来源修复。strict TypeScript、Go cmd/swa、47 包架构检查、完整 Windows 构建/独立安装、八项实际 SQLite 检查通过。最终同安装双 Worker 全流程成功，完整结果 1,872,478 字节；同目录 EOF 重启退出 0，11 个观察到的所属进程全部退出。旧库未知记录拒绝退出 6，数据保留。长审查结果超过 12 MiB，5 秒版本探测曾失败；历史确定未创建记录的全局正向关闭、Pi 及全部异常资源分支仍未完整实测。完整 Windows 验收未通过，准确结果见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
 
 ## 当前主线与 M0
 

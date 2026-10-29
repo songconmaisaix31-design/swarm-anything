@@ -64,7 +64,7 @@
 
 独立短任务 `task_76cfd48ec271 / run_ac524afaae94` 两名实际 Worker `ctx_87e5a7dda318`、`ctx_ee6145ac4244` 均完成，工具调用为 0。使用同一 `c8bc7a67` 安装和 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`；两次 stop、两次 release、task result、task complete、controller close 全部退出 0。完整原生正文、journal、usage 导出为 3,298,102 字节，证据位于 main 的 `final6-cli/exported-result/result.json`。长对话上限与原来源变化失败保持独立记录，完整 Windows 验收仍未通过。
 
-## 服务关闭剩余缺陷与审核阻塞
+## 前序关闭失败与审核记录
 
 正常短任务后 Ctrl+C 退出 1，`host-entry.ts` 全局检查报告 Worker 资源未释放。实际 SQLite 只有 `ctx_b0f62ae22695` 为空 resource；failed/terminal_create、原 epoch、无终端句柄、无残留，父子完成回执明确 `nativeCreation=not_started`，原控制端关闭成功，全局 pending 为 0。全局关闭拒绝任何空 resource，与 `native-methods.ts` 控制端关闭严格验证未创建证明的行为不一致。四个服务进程已全部退出，未修改数据库。
 
@@ -74,7 +74,7 @@
 
 两个失败 Worker 的 stop 返回 alreadySettled/failed 和 processAction=none，公开结果为 operation_unknown；controller close 返回 worker_release_unconfirmed。服务退出时报告资源未释放及 daemon busy。按本次回执核对 PID/创建时间/名称后，清理本次 helper 和 shell，daemon、OpenConsole 随之退出。原请求、SQLite、会话和原生未释放状态保留；进程退出不能代替释放确认。实际证据位于 main 的 `final7-cli/`。
 
-C 盘约剩 260 MiB；自动审批拒绝删除本次旧构建副本，目录保持。新增修复计划未审、新源码与新安装包均未产生。当前已安装源码仍为 `c8bc7a67`；本批实际正常链通过、历史异常和关闭问题未通过。
+此前空间不足及审批拒绝记录保留在 `final7-cli`。后继用户明确授权清理本轮可重建副本，当前修复和结果见下节及最终记录。
 
 ## 后继修复计划
 
@@ -89,3 +89,27 @@ Swarm 新目录 `windows-phase3-20261029` 中，`ctx_161d7e74946b` 接受关闭�
 来源实现保留真实 SQLite `readOnly`、`query_only` 和事务读取，选中凭据逐次比较，数据库使用 canonical path、dev、ino、birthtime 标识。调用端配置版本及插件检查同步使用该身份，数据库/WAL 普通写入不作为认证变化。数据库版本字段没有迁移或备份消费者；旧政策记录保持原内容。配置、auth、EXE、package 和插件仍使用完整文件版本；私有 session 内容一致性和 12 MiB 上限保持。实际 `node:sqlite` 插件加载必须通过原生 OpenCode 2.0.31 检查，未通过时直接失败。
 
 新增真实验证入口 `tests/swa-cli-headless/opencode-credential-source.mjs` 使用本轮实际公开任务的原生 SQLite 在线备份，仅在自有副本中执行 WAL/checkpoint、选中凭据破坏、删除、文件替换和符号链接重定向；原凭据保持，输出不含密钥。单独比较真实数据库及 WAL/SHM 在只读检查前后的字节，验证读取没有改写来源。不使用人工构造的协议或会话记录。
+
+## 最终源码及实际验证
+
+关闭及稳定凭据修复为 `b918d063b50962fca462bb012e8ae8eacf78ba9b`；配置入口重定向修复为 `8fc61d623e9d057f6b4824ebfefb79bc0c704276`。后者保留配置路径，在 version 中绑定规范目标、dev、ino 和 birthtime。最终安装位于 `C:/Users/DW/AppData/Local/SwarmCli/candidates/8fc61d62-windows-20261029`，PATH 未修改。
+
+Swarm Reviewer `ctx_161d7e74946b` 静态接受关闭实现，`ctx_f9e6714592bf` 指出配置符号链接入口丢失后接受准确修正；两者原生工具均关闭。代码审查不代表模型亲自执行检查。计划和审查正文位于 main 的 `phase3/`。两名 Reviewer 均停止、释放，控制端关闭；长审查完整 journal 超过 12 MiB，task result 退出 6，根任务没有标记完成，原件保留。
+
+| 命令 / 实际流程 | 结果及原件 |
+| --- | --- |
+| `go test -mod=readonly ./cmd/swa` | 退出 0；`phase3-go.log` |
+| `node runtime/swa-orca/node_modules/typescript/bin/tsc -p runtime/swa-orca/tsconfig.json` | 完整 strict 退出 0；`credential-final-strict.log` |
+| `node scripts/check-architecture.mjs` | 47 包通过 |
+| `node scripts/build-swa-package.mjs --output ... --node-inputs ... --native-source ... --native-work ... --native-evidence ...` | b918d063、8fc61d62 两次完整构建退出 0，固定 Node 24.21.0、四项已核对原生输入及 28251 路径闭包；`build-closure.log`、`build-credential.log` |
+| `scripts/install-swa.ps1 -PackageRoot ... -InstallRoot ... -ProtectedRoots ...` | 两次独立安装成功；`install-closure.log`、`install-credential.log` |
+| `node tests/swa-cli-headless/opencode-credential-source.mjs --candidate ... --source <本轮真实原生库> --output ...` | 最终八项通过；`credential-final.log`。主数据库字节不变的 WAL 凭据值/时间/删除均被识别，普通 WAL/checkpoint 允许，配置链接改向与同字节文件替换拒绝，原来源凭据未变 |
+| 最终安装的真实双 Worker | `task_99c3878d8d79`，`ctx_29d61d562e6a`、`ctx_ee23ab16f08f`，OpenCode 2.0.31 / deepseek-v4-pro，两条原生消息均完成、工具调用 0；两次 stop、两次 release、task result、task complete、controller close 全部退出 0；main `phase6/exported-result/result.json` 为 1,872,478 字节 |
+| 同目录正常关闭及重启 | b918d063 与最终 8fc61d62 的 EOF 均退出 0，每次观察到的 11 个所属进程均两次缺席；`phase4/restart-eof/result.json`、`phase6/restart-eof/result.json`。Ctrl+C 的外层 PowerShell 返回 1，单独记录，不写为退出 0 |
+| 旧库未知记录拒绝 | 最终 8fc61d62 载入 `windows-recovery-20261029` 后拒绝缺少原控制端关闭的记录，实际退出 6，11 个所属进程退出；`phase3/old-recovery-eof-3/result.json`。前两次观察脚本未完成，原件保留 |
+
+本次 `phase5` 首次输入阶段的原生 `--version` 探测实际超过 5 秒，未证明安装而拒绝；`ctx_0bd2bdfdd568` 保留 failed/dispatch_input。stop 返回 alreadySettled/failed，随后 release 实际成功，控制端关闭成功。没有扩大超时、重放原请求或删除失败状态。新独立固定输入任务的通过结果如表。
+
+清理范围仅为本轮可重建的旧 dist 和候选安装，均核对准确源码、绝对目标、无重解析路径、无数据库/日志及无运行进程。原 SQLite、WAL、会话和验证记录保留；main `phase3/cleanup-*`、`old-installs-*`、`superseded-*` 保存清单。保留原始原生构建输入与当前候选。
+
+真实剩余限制：历史 `ctx_b0f62ae22695` 的严格未创建证明已纳入关闭代码，但同库还含后续未知记录，未获得只含该实际记录的全局正向关闭结果；不裁剪或伪造数据库。全部异常身份、Pi 正向与完整 Windows 验收保持未通过。未合并 PR，未发布 Release。
