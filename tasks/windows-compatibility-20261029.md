@@ -294,3 +294,7 @@ Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod v
 后台探测期间 `native-sessions` 与原生进程管理未受影响；`local-agents` 首次读取返回未完成观察，符合 README 的“未完成的探测保持未知”。README 已补充“探测在后台执行，HTTP 就绪不等待探测完成”。
 
 验证：`go test ./cmd/server`（20.9 秒）与 `node --test tests/s1/acceptance.test.mjs`（29.6 秒，0 失败）通过；候选为 `phase8/astrocyte-async.exe`，原件 `phase8/async-startup/`。
+
+后台探测暴露出第二处缺陷：`opencode --version` 输出 `opencode v2.0.31`，原有版本正则要求数字前是词边界，`v` 与 `2` 之间没有边界，导致已安装的 opencode 版本无法识别，`GET /local-agents` 显示 `cli_entry_found_version_unrecognized` 且版本为空。正则改为允许可选 `v` 前缀并用子匹配取值，版本统一为 `2.0.31`。新增回归用例 `TestInventoryRecognizesVPrefixedVersion`，四个定向用例通过；重建后实际接口返回 `opencode version=2.0.31 reason=cli_entry_found_version_help_passed`。
+
+观察到的限制：10 秒总预算下，若靠前的 CLI 的 `--help` 较慢（本次 pi 出现 `probe_incomplete`），后面的项会保持 `probe_not_run`，清单在该次运行内不完整。修改前阻塞式启动同样受这个预算限制，且当时也只有部分项取得版本；后台化没有降低探测预算。

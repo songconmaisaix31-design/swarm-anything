@@ -13,7 +13,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/workspace/domain"
 )
 
-var versionPattern = regexp.MustCompile(`\b[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?\b`)
+var versionPattern = regexp.MustCompile(`\bv?([0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?)\b`)
 
 type cliDefinition struct{ id, name, command string }
 
@@ -103,7 +103,8 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 				continue
 			}
 			if flag == "--version" {
-				if version := versionPattern.FindString(output); version != "" {
+				if match := versionPattern.FindStringSubmatch(output); len(match) > 1 {
+					version := match[1]
 					items[n].Version = &version
 				} else {
 					passed = false
