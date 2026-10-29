@@ -356,6 +356,54 @@ export const strictPiProjectRawSchema = z.union([
   strictPiCollaborationRawSchema
 ])
 
+export const piMorphListDescription = 'List the tools of this Worker\'s approved Morphogenesis research host. Tool names, arguments and current permissions come from this host.'
+export const piMorphCallDescription = 'Call one tool of this Worker\'s approved Morphogenesis research host. Preserve lease tokens and follow the tool contract. An unknown result must not be repeated; inspect existing evidence instead.'
+export const piMorphListParameters = { type: 'object', properties: {}, additionalProperties: false }
+export const piMorphCallParameters = { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, arguments: { type: 'object' } }, required: ['name', 'arguments'], additionalProperties: false }
+export const strictPiMorphListParamsSchema = z.strictObject({})
+export const strictPiMorphCallParamsSchema = z.strictObject({ name: z.string().min(1).max(200), arguments: z.record(z.string(), z.json()) }).refine(value => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 256 * 1024)
+const morphToolName = z.enum(['morph_list_tools', 'morph_call_tool'])
+export const strictPiMorphOriginSchema = z.strictObject({ native_session_id: z.uuidv7(), assistant_entry_id: z.string().min(1).max(64), tool_call_id: z.string().min(1).max(512) })
+export const strictPiMorphResultSchema = z.discriminatedUnion('state', [
+  z.strictObject({ schema: z.literal('swa.native-morph.v1'), operation: morphToolName, origin: strictPiMorphOriginSchema, state: z.literal('completed'), mcp_result: z.record(z.string(), z.json()) }),
+  z.strictObject({ schema: z.literal('swa.native-morph.v1'), operation: morphToolName, origin: strictPiMorphOriginSchema, state: z.literal('unknown'), reason: z.literal('connection_unconfirmed'), required_action: z.literal('Inspect existing Morphogenesis evidence; do not repeat this operation') })
+])
+const morphResult = z.strictObject({ content: z.array(strictText), details: strictPiMorphResultSchema, isError: z.boolean().optional() })
+const morphToolCall = z.discriminatedUnion('name', [
+  z.strictObject({ type: z.literal('toolCall'), id: z.string().min(1).max(512), name: z.literal('morph_list_tools'), arguments: strictPiMorphListParamsSchema, thoughtSignature: z.string().optional() }),
+  z.strictObject({ type: z.literal('toolCall'), id: z.string().min(1).max(512), name: z.literal('morph_call_tool'), arguments: strictPiMorphCallParamsSchema, thoughtSignature: z.string().optional() })
+])
+const morphToolResult = z.union([
+  z.strictObject({ role: z.literal('toolResult'), toolCallId: z.string().min(1), toolName: morphToolName, ...morphResult.omit({ isError: true }).shape, isError: z.boolean(), timestamp: amount }),
+  z.strictObject({ role: z.literal('toolResult'), toolCallId: z.string().min(1), toolName: morphToolName, ...questionErrorResult.shape, isError: z.literal(true), timestamp: amount })
+])
+const morphAssistant = z.strictObject({ ...collaborationAssistant.shape, content: z.array(z.union([strictText, strictThinking, morphToolCall])) }).superRefine((message, ctx) => {
+  if (message.stopReason === 'aborted' ? message.errorMessage !== 'Request aborted' && message.errorMessage !== 'Request was aborted' : message.stopReason !== 'error' && message.errorMessage !== undefined) ctx.addIssue({ code: 'custom', message: 'native_pi_error_unreviewed' })
+})
+const morphSystem = strictSystem.extend({ toolsAdded: z.array(z.union([
+  z.strictObject({ name: z.literal('morph_list_tools'), description: z.literal(piMorphListDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piMorphListParameters)) }),
+  z.strictObject({ name: z.literal('morph_call_tool'), description: z.literal(piMorphCallDescription), parameters: z.unknown().refine(value => isDeepStrictEqual(value, piMorphCallParameters)) })
+])).max(2).optional() })
+export const strictPiMorphMessageSchema = z.union([strictUser, morphSystem, morphAssistant, morphToolResult])
+export type StrictPiMorphMessage = z.infer<typeof strictPiMorphMessageSchema>
+export const strictPiMorphNativeEntrySchema = z.discriminatedUnion('type', [
+  z.strictObject({ ...entryCommon, type: z.literal('message'), message: strictPiMorphMessageSchema }),
+  ...strictPiNativeEntrySchema.options.filter(option => option.shape.type.value !== 'message')
+])
+export const strictPiMorphRawSchema = z.union([
+  z.strictObject({ type: z.literal('message_start'), message: strictPiMorphMessageSchema }), z.strictObject({ type: z.literal('message_end'), message: strictPiMorphMessageSchema }),
+  z.strictObject({ type: z.literal('message_update'), usage: strictPiUsageSchema, assistantMessageEvent: z.union([strictDelta, z.strictObject({ type: z.literal('toolcall_start'), contentIndex: count, id: z.string(), toolName: z.enum(['', 'morph_list_tools', 'morph_call_tool']) }), z.strictObject({ type: z.literal('toolcall_delta'), contentIndex: count, delta: z.string() }), z.strictObject({ type: z.literal('toolcall_end'), contentIndex: count, toolCall: morphToolCall })]) }),
+  z.strictObject({ type: z.literal('turn_end'), message: strictPiMorphMessageSchema, toolResults: z.array(morphToolResult) }),
+  z.strictObject({ type: z.literal('agent_end'), messages: z.array(strictPiMorphMessageSchema), willRetry: z.literal(false) }),
+  z.strictObject({ type: z.literal('tool_execution_start'), toolCallId: z.string().min(1).max(512), toolName: z.literal('morph_list_tools'), args: strictPiMorphListParamsSchema }),
+  z.strictObject({ type: z.literal('tool_execution_start'), toolCallId: z.string().min(1).max(512), toolName: z.literal('morph_call_tool'), args: strictPiMorphCallParamsSchema }),
+  z.strictObject({ type: z.literal('tool_execution_end'), toolCallId: z.string().min(1).max(512), toolName: morphToolName, result: morphResult, isError: z.boolean() }),
+  z.strictObject({ type: z.literal('tool_execution_end'), toolCallId: z.string().min(1).max(512), toolName: morphToolName, result: questionErrorResult, isError: z.literal(true) }),
+  z.strictObject({ type: z.literal('entry_appended'), entry: strictPiMorphNativeEntrySchema }),
+  response('get_session_stats', strictStats.extend({ toolCalls: count, toolResults: count })),
+  strictPiRawSchema
+])
+
 export const strictPiOutboundSchema = z.union([
   z.strictObject({ type: z.literal('prompt'), id: z.string().min(1), message: z.string().min(1), images: z.tuple([]).optional(), streamingBehavior: z.enum(['steer', 'followUp']).optional() }),
   ...(['abort', 'get_state', 'get_available_models', 'get_available_thinking_levels', 'get_last_assistant_text', 'get_session_stats'] as const).map(type => z.strictObject({ type: z.literal(type), id: z.string().min(1) })),

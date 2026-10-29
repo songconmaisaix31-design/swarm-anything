@@ -122,7 +122,7 @@ export async function buildSWARuntime(output) {
     for (const input of Object.keys(result.metafile.inputs)) inputs.add(input)
     await writeFile(join(output, name + '.mjs.metafile.json'), JSON.stringify(result.metafile, null, 2) + '\n', { flag: 'wx' })
   }
-  for (const extensionName of ['pi-question-extension', 'pi-collaboration-extension', 'pi-project-extension']) {
+  for (const extensionName of ['pi-question-extension', 'pi-collaboration-extension', 'pi-project-extension', 'pi-morph-extension']) {
   const questionExtension = await build({ ...common, entryPoints: [join(runtime, 'src', extensionName + '.ts')], outfile: join(output, extensionName + '.mjs'), format: 'esm',
     banner: { js: 'import { createRequire as swaCreateRequire } from "node:module"; const require = swaCreateRequire(import.meta.url);' },
     define: { 'process.env.NODE_ENV': '"production"' }, external: [...common.external, '@earendil-works/pi-ai', '@earendil-works/pi-coding-agent'] })

@@ -9,6 +9,7 @@ import { allowedModelCLIs, selectDefaultModelCLI } from './modelCLIPermission';
 import styles from '../../components/FormControls.module.css';
 
 const lines = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean);
+const morphResearchTools = ['morph_list_tools', 'morph_call_tool'];
 
 const actions = { discover: '发现会话', read_context: '读取上下文', start: '启动', resume: '原生接续', send: '发送输入', stop: '停止', observe: '观察与日志', reconcile: '核对结果' };
 export function ProjectSettingsForm({ project, agents, disabled, onChanged, swaOnly = false, knownAgents = [] }: { project: components['schemas']['LocalProjectV1']; agents?: ReadApiState<components['schemas']['LocalAgentListV1']>; disabled: boolean; onChanged: () => void; swaOnly?: boolean; knownAgents?: string[] }) {
@@ -47,6 +48,7 @@ export function ProjectSettingsForm({ project, agents, disabled, onChanged, swaO
       <p className={styles.note}>允许 Agent 按上述范围控制任务。访问授权在下方单独管理；启用此项不会启动任务。</p>
       {swaOnly && <><label><input type="checkbox" style={{ width: 'auto' }} checked={settings.allowed_tools.includes('swa_delegate')} onChange={event => setSettings({ ...settings, allowed_tools: event.target.checked ? [...settings.allowed_tools, 'swa_delegate'] : settings.allowed_tools.filter(tool => tool !== 'swa_delegate') })} /> 允许 Agent 按角色自主委派子任务</label><p className={styles.note}>此许可只开放 swa_delegate，仍需启用 Agent 控制、启动和发送。每个新 Run 或 Worker 还须明确选择委派模式；文件和命令工具不会因此开放。</p></>}
       {swaOnly && <><label><input type="checkbox" style={{ width: 'auto' }} checked={settings.allowed_tools.includes('project_shell')} onChange={event => setSettings({ ...settings, allowed_tools: event.target.checked ? [...settings.allowed_tools, 'project_shell'] : settings.allowed_tools.filter(tool => tool !== 'project_shell') })} /> 允许在获准项目路径执行开发命令（读取、修改、运行检查）</label><p className={styles.note}>此许可开放 Linux 隔离项目命令，命令无网络；需填写上方允许的项目路径，并启用目录、Agent 控制、启动、发送和读取上下文许可。只有支持此能力的 Agent 可选择开发模式，consult 咨询任务保持工具关闭。撤权会拒绝下一条调用，取消已准入命令请停止对应 Worker。</p></>}
+      {swaOnly && <><label><input type="checkbox" style={{ width: 'auto' }} checked={morphResearchTools.every(tool => settings.allowed_tools.includes(tool))} onChange={event => setSettings({ ...settings, allowed_tools: event.target.checked ? [...new Set([...settings.allowed_tools, ...morphResearchTools])] : settings.allowed_tools.filter(tool => !morphResearchTools.includes(tool)) })} /> 允许 Morphogenesis 研究工具</label><p className={styles.note}>仅支持 Pi，启动时需绑定固定 HostConfig。要结束当前研究调用，请停止对应 Worker。</p></>}
     </fieldset><CommandState {...command} /><button className="ac-button" type="submit" disabled={disabled || command.pending || changed}>保存此项目许可</button>
   </form></details>;
 }

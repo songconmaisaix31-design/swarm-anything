@@ -1266,6 +1266,16 @@ Agent 能力分别标记 declaration/configuration/probe/session/result 证据�
 
 <!-- PAGEBREAK -->
 
+### 21.6 Morphogenesis 工具桥
+
+Pi Worker 可以显式使用 `--morph-config <绝对路径>` 连接一个 Morphogenesis stdio MCP。配置为 `{python, cwd, host_config}`，三项均为绝对路径；`cwd` 是 Morphogenesis 安装或源码目录，`host_config` 固定该 Worker 的身份、任务范围和研究运行配置。宿主在会话启动时绑定配置，模型参数不能更换配置或身份。配置保存在任务不可写的位置。
+
+固定扩展提供 `morph_list_tools {}` 和 `morph_call_tool {name, arguments}`。前者返回现有 MCP 工具定义，后者通过同一 stdio 连接转发一次调用并保留 MCP 错误结果。模型自行发现、选择和认领任务；桥不分配任务、不新增账本。连接超时或断开后不自动重发；会话结束关闭所属 MCP 子进程，外部实验状态仍由 Morphogenesis 查询。
+
+此模式仅支持 Pi，与 question、delegation、development 模式互斥。项目权限须允许 `morph_list_tools`、`morph_call_tool` 和对应工作目录；HostConfig.workspace 必须与 SWA 项目根一致。CLI、启动准入、原生工具消息和结果导出使用同一配置。Morphogenesis 研究预算沿用 HostConfig 语义，SWA 模型调用仍按 SWA 项目授权计量。
+
+交付验证包括真实 stdio 工具调用、两身份竞争认领、释放后旧 token 拒绝、进程关闭及原生结果导出；有可用模型账号时再运行 Pi 的实际工具调用会话。实施与结果见 [工具桥任务](../tasks/swa-morph-bridge-20261029.md)。
+
 # 附录 A　版本化消息示例
 
 下面字段是平台契约，不是第三方原始返回值。ID 和 digest 均为示例；实际文件中的字段约束见同包 JSON Schema。

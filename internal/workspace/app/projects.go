@@ -196,7 +196,7 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 	}
 	seenTools := map[string]bool{}
 	for _, tool := range cmd.Settings.AllowedTools {
-		if tool != "swa_delegate" && tool != "project_shell" || seenTools[tool] {
+		if tool != "swa_delegate" && tool != "project_shell" && tool != "morph_list_tools" && tool != "morph_call_tool" || seenTools[tool] {
 			return p, projectError(apierrors.UnsupportedCapability, "project tools must be unique supported capabilities")
 		}
 		seenTools[tool] = true

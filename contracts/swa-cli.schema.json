@@ -72,6 +72,7 @@
         "question_mode": { "enum": ["disabled", "native"], "description": "Explicit new Run/Worker question mode. Native requires the fixed Pi questions-only contract; omitted retains the selected role default or disabled." },
         "delegation_mode": { "enum": ["disabled", "native"], "description": "Explicit new Run/Worker delegation mode. Native requires Pi and current project permission for swa_delegate; omitted retains the selected role default or disabled." },
         "development_mode": { "enum": ["disabled", "project"], "description": "Explicit new Run/Worker development mode. Project requires Pi or OpenCode, working Linux bubblewrap isolation and current project_shell directory permission; omitted retains the selected role default or disabled." },
+        "morph_config": { "type": "string", "minLength": 1, "description": "Absolute host-owned Morph descriptor path for an explicit Pi Run/Worker. Requires current project permission for morph_list_tools and morph_call_tool and the entire matching workspace; incompatible with roles, handoffs and other enabled tool modes. Descriptor and HostConfig remain outside the writable workspace." },
         "source": { "const": "transcript" },
         "cursor": { "type": "string", "minLength": 1 },
         "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
@@ -83,7 +84,10 @@
         "role": {"$ref": "#/$defs/roleDefinition"}, "conversation": {"$ref": "#/$defs/conversationDefinition"},
         "text": {"type": "string", "minLength": 1, "maxLength": 32000, "description": "question.answer preserves the exact nonblank text and enforces a 32000 UTF-8 byte limit at execution; existing conversation text retains its normalization."}
       },
-      "allOf": [{"if": {"properties": {"action": {"const": "question.answer"}}, "required": ["action"]}, "then": {
+      "allOf": [{"if": {"required": ["morph_config"]}, "then": {
+        "required": ["agent"], "properties": {"action": {"enum": ["run.submit", "worker.start"]}, "agent": {"const": "pi"}, "question_mode": {"const": "disabled"}, "delegation_mode": {"const": "disabled"}, "development_mode": {"const": "disabled"}},
+        "not": {"anyOf": [{"required": ["role_id"]}, {"required": ["handoff_mode"]}]}
+      }}, {"if": {"properties": {"action": {"const": "question.answer"}}, "required": ["action"]}, "then": {
         "properties": {"controller": {}, "run_id": {}, "task_id": {}, "dispatch_id": {}, "question_id": {}, "request_id": {}},
         "required": ["controller", "run_id", "task_id", "dispatch_id", "question_id", "request_id"],
         "oneOf": [{"properties": {"input_file": {}}, "required": ["input_file"]}, {"properties": {"text": {}}, "required": ["text"]}]
@@ -264,6 +268,7 @@
         },
         "tools": {"oneOf": [
           {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "pi-cli-1.0.1"}}},
+          {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract", "extension", "morph_config", "morph_host_config", "allowed"], "properties": {"mode": {"const": "morph"}, "native_contract": {"const": "pi-cli-1.0.1"}, "extension": {"$ref": "#/$defs/nativeConfigurationSource"}, "morph_config": {"$ref": "#/$defs/nativeConfigurationSource"}, "morph_host_config": {"$ref": "#/$defs/nativeConfigurationSource"}, "allowed": {"const": ["morph_list_tools", "morph_call_tool"]}}},
           {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract", "extension", "allowed"], "properties": {"mode": {"const": "questions-only"}, "native_contract": {"const": "pi-cli-1.0.1"}, "extension": {"$ref": "#/$defs/nativeConfigurationSource"}, "allowed": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"const": "swa_ask"}}}},
           {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract", "extension", "allowed"], "properties": {"mode": {"const": "collaboration"}, "native_contract": {"const": "pi-cli-1.0.1"}, "extension": {"$ref": "#/$defs/nativeConfigurationSource"}, "allowed": {"anyOf": [{"const": ["swa_delegate"]}, {"const": ["swa_ask", "swa_delegate"]}]}}},
           {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract", "extension", "allowed"], "properties": {"mode": {"const": "project"}, "native_contract": {"const": "pi-cli-1.0.1"}, "extension": {"$ref": "#/$defs/nativeConfigurationSource"}, "allowed": {"anyOf": [{"const": ["bash"]}, {"const": ["bash", "swa_ask"]}, {"const": ["bash", "swa_delegate"]}, {"const": ["bash", "swa_ask", "swa_delegate"]}]}}}

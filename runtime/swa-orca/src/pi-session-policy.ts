@@ -9,9 +9,10 @@ import type { AgentSessionRecord } from '../../../third_party/orca-v1.4.230/src/
 import { agentSessionRuntimeIncarnation } from '../../../third_party/orca-v1.4.230/src/main/runtime/agent-session-runtime-attribution'
 import type { SwaPiSessionPolicy, SwaProviderJobLauncher, PiPolicyConnection, PiWriteContext, PiObservedProjection, ProviderProcessLaunch } from '../../../third_party/orca-v1.4.230/src/main/provider-process/provider-process-launch'
 import type { SwaProviderProcessTree } from '../../../third_party/orca-v1.4.230/src/main/provider-process/swa-provider-process-tree'
-import { parseStrictPiJson, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, strictPiCollaborationRawSchema, strictPiProjectRawSchema, strictPiStateSchema, type StrictPiProjectMessage as StrictPiQuestionMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { parseStrictPiJson, strictPiOutboundSchema, strictPiRawSchema, strictPiQuestionRawSchema, strictPiCollaborationRawSchema, strictPiProjectRawSchema, strictPiMorphRawSchema, strictPiStateSchema, type StrictPiProjectMessage, type StrictPiMorphMessage } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
+import { morphEnvironment, morphBackendEnvironment } from './morph-config'
 import { structuredInputBindingSchema } from './contracts'
-import { assertNativePiSnapshotCurrent, inspectPrivatePiModelMetadata, nativeConfigurationSource, readNativePiFile, type NativePiPerSessionSnapshot } from './native-pi-policy'
+import { assertNativePiSnapshotCurrent, inspectPrivatePiModelMetadata, nativePiToolSources, nativeConfigurationSource, readNativePiFile, type NativePiPerSessionSnapshot } from './native-pi-policy'
 import { acquirePrivatePiSettingsGuardSync, privatePiEnvironment, verifyPrivatePiSessionAccount } from './private-pi-account'
 import { requireNativeCodexPrivatePath } from './native-codex-policy'
 import { createPosixPrivateFile } from './private-posix-security'
@@ -31,6 +32,7 @@ const maximum = 12 * 1024 * 1024
 const samePath = (a: string, b: string) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
 const identity = (path: string) => { const info = lstatSync(path, { bigint: true }); return `${info.dev}:${info.ino}:${info.birthtimeNs}` }
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
+type StrictPiQuestionMessage = StrictPiProjectMessage | StrictPiMorphMessage
 type Binding = z.infer<typeof structuredInputBindingSchema>
 const inputBodySchema = SendBodyStructure.omit({ kind: true }).extend({ kind: z.literal('message'), from: z.unknown().optional() })
 const localFailureSchema = z.strictObject({ stage: z.enum(['source', 'approval', 'settings', 'write', 'protocol', 'stdout', 'custody', 'persistence']),
@@ -49,6 +51,7 @@ export function assertPiAcquiredRecord(input: {
 
 export function validatePiExport(snapshot: NativePiPerSessionSnapshot, text: string, env: Readonly<Record<string, string>> = {}) {
   const secrets = Object.values(snapshot.auth).map(value => value.key)
+  if (snapshot.policy.tools.mode === 'morph') secrets.push(...Object.values(morphBackendEnvironment(snapshot.policy.tools.morph_config.path, env)))
   for (const key of ['ORCA_AGENT_SESSION_SPAWN_TOKEN', 'ORCA_TERMINAL_HANDLE']) if (env[key]) secrets.push(env[key]!)
   for (const [key, value] of Object.entries(env)) {
     if (!/^(?:https?|all)_proxy$/i.test(key)) continue
@@ -129,6 +132,7 @@ export async function createPiSessionPolicy(input: {
   approval()
   const privateSources = await Promise.all(['auth.json', ...(snapshot.models === null ? [] : ['models.json'])].map(name => nativeConfigurationSource(join(home, name))))
   const env = privatePiEnvironment(home, input.expectedEnvironment)
+  Object.assign(env, morphEnvironment(snapshot.policy.tools, input.expectedEnvironment))
   if (snapshot.policy.tools.mode !== 'disabled') {
     const stamp = getRuntimeSourceStamp({ getRuntimeId: () => input.runtimeEpoch }, getAppEnvironment().getPath('userData'))
     if (!stamp?.profilePath || !isDeepStrictEqual(readRuntimeSourceStamp(input.expectedEnvironment), stamp)) throw new Error('native_question_runtime_source_changed')
@@ -297,7 +301,7 @@ export async function createPiSessionPolicy(input: {
       await connection.request('get_available_models'); assertCurrent()
       if (available === undefined) fail('available_models_missing')
       trace('policy_ready', { native_contract: 'pi-cli-1.0.1', session_id: actual.sessionId, session_file: actual.sessionFile, acquisition_generation: generation,
-        provider: account.provider, model: account.model_target, tools: snapshot.policy.tools.mode, sources: [...snapshot.sources.pinnedFiles, ...privateSources, ...(snapshot.policy.tools.mode !== 'disabled' ? [snapshot.policy.tools.extension] : [])], settings: acquireSettingsObservation() }, true)
+        provider: account.provider, model: account.model_target, tools: snapshot.policy.tools.mode, sources: [...snapshot.sources.pinnedFiles, ...privateSources, ...nativePiToolSources(snapshot.policy.tools)], settings: acquireSettingsObservation() }, true)
       return actual
     },
     async verifyCurrent(connection: PiPolicyConnection) {
@@ -361,7 +365,7 @@ export async function createPiSessionPolicy(input: {
       if (!processIdentity || !generation) { custody(); if (!generation) fail('preowner_native_record') }
       if (Buffer.byteLength(line) > 8 * 1024 * 1024 || !isDeepStrictEqual(parseStrictPiJson(line), value)) fail('raw_line_unverifiable')
       validatePiExport(snapshot, line, childEnvironment)
-      const parsed = (snapshot.policy.tools.mode === 'project' ? strictPiProjectRawSchema : snapshot.policy.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : snapshot.policy.tools.mode === 'questions-only' ? strictPiQuestionRawSchema : strictPiRawSchema).safeParse(value)
+      const parsed = (snapshot.policy.tools.mode === 'morph' ? strictPiMorphRawSchema : snapshot.policy.tools.mode === 'project' ? strictPiProjectRawSchema : snapshot.policy.tools.mode === 'collaboration' ? strictPiCollaborationRawSchema : snapshot.policy.tools.mode === 'questions-only' ? strictPiQuestionRawSchema : strictPiRawSchema).safeParse(value)
       if (!parsed.success) fail('raw_dto_unreviewed')
       const frame = parsed.data
       if (frame.type === 'response') {

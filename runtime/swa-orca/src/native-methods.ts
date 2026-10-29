@@ -467,7 +467,7 @@ export async function resolveSelection(runtime: OrcaRuntimeService, project: str
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision, conversation_id: command.conversation_id })
     await runtime.ensureStructuredAgentSessionHost({ prewarmModelCatalog: false })
     const selected = assignedAgent(command, project, references.role_snapshot)
-    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled')
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled', command.morph_config)
   }
   if (!command.controller) return fail('invalid_argument', 'An exact controller is required for the native account source boundary')
   const { owner, scope } = controllerScope(runtime, project, command.controller)
@@ -483,7 +483,7 @@ export async function resolveSelection(runtime: OrcaRuntimeService, project: str
   if (command.action === 'worker.start') {
     const references = resolveCollaborationReferences(runtime.getOrchestrationDb(), project, { role_id: command.role_id, role_revision: command.revision })
     const selected = assignedAgent(command, project, references.role_snapshot)
-    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled')
+    return selectAgent(runtime, project, selected.agent, selected.model, projectRoot, command.question_mode ?? references.role_snapshot?.question_mode ?? 'disabled', command.delegation_mode ?? references.role_snapshot?.delegation_mode ?? 'disabled', command.development_mode ?? references.role_snapshot?.development_mode ?? 'disabled', command.morph_config)
   }
   if (!['worker.send', 'question.answer', 'question.resume'].includes(command.action) || !command.controller || !command.dispatch_id) return fail('invalid_argument', 'Only a start or an exact existing Worker input resolves a model selection')
   validateTaskAction(runtime, { command }, scope)
@@ -499,7 +499,7 @@ export async function resolveSelection(runtime: OrcaRuntimeService, project: str
   const record = dispatch?.assignee_orca_session_id && runtime.openedAgentSessionRecordStore()?.getRecord(dispatch.assignee_orca_session_id)
   if (!record || record.provider !== original.agent_id || record.options?.model !== original.model) return fail('worker_identity_changed', 'The actual Worker session does not match its original Agent selection')
   const tools = original.native_launch.tools
-  const current = await selectAgent(runtime, project, original.agent_id, original.model, projectRoot, tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_ask') ? 'native' : 'disabled', tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_delegate') ? 'native' : 'disabled', tools.mode === 'project' ? 'project' : 'disabled')
+  const current = await selectAgent(runtime, project, original.agent_id, original.model, projectRoot, tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_ask') ? 'native' : 'disabled', tools.mode !== 'disabled' && tools.allowed.some(name => name === 'swa_delegate') ? 'native' : 'disabled', tools.mode === 'project' ? 'project' : 'disabled', tools.mode === 'morph' ? tools.morph_config.path : undefined)
   if (!isDeepStrictEqual(original, current)) return fail('request_mismatch', 'The original Worker Agent source changed; preserve the original selection')
   return original
 }

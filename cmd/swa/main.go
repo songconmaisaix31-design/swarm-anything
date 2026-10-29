@@ -26,7 +26,7 @@ import (
 
 const usage = `swa serve --data-dir D --port N --protected-roots R [--agent-profile P] [--web-dir INSTALL/web] --json
 swa status|capabilities --json
-swa run --project P --workdir W --spec-file F --input-file I --request-id UUID [--agent A --model M] [--role ID --role-revision N] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] [--name lead] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
+swa run --project P --workdir W --spec-file F --input-file I --request-id UUID [--agent A --model M] [--role ID --role-revision N] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] [--morph-config ABS] [--name lead] [--conversation ID] [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa wait --controller C --task T --run R [--timeout 30m] [--on-input exit|wait] [--strict] [--export O] --json
 swa export --controller C --task T --run R --output-dir O [--audit] --json
 swa question answer --controller C --run R --task T --dispatch D --question Q --input-file F --request-id UUID --json
@@ -35,7 +35,7 @@ swa controller open --project P --workdir W --request-id UUID --json
 swa controller show|close|recover --controller C [--request-id UUID] --json
 swa task create --controller C --spec-file F --request-id UUID --json
 swa task show|list|complete|result --controller C [--task T] [--result-file F|--output-dir O] [--request-id UUID] --json
-swa worker start --controller C --task T --name NAME --input-file F --request-id UUID [--agent AGENT --model PROVIDER/MODEL] [--role ID --role-revision N] [--parent-task T --completion-criterion TEXT ...] [--handoff-mode work|consult] [--reply-mode poll|resume] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] --json
+swa worker start --controller C --task T --name NAME --input-file F --request-id UUID [--agent AGENT --model PROVIDER/MODEL] [--role ID --role-revision N] [--parent-task T --completion-criterion TEXT ...] [--handoff-mode work|consult] [--reply-mode poll|resume] [--question-mode disabled|native] [--delegation-mode disabled|native] [--development-mode disabled|project] [--morph-config ABS] --json
 swa worker show|list|read|send|stop|release --controller C [--task T|--dispatch X] [--source transcript --limit 100 --cursor K] [--input-file F] [--request-id UUID] --json
 swa request show --controller C|--project P --request-id UUID --json
 swa role create --project P --role-file F --request-id UUID --json
@@ -56,6 +56,7 @@ run 默认等待同一 Run 的全部递归任务；wait 只读重连，--strict 
 question-mode 默认关闭；native 仅为实际 Pi 开放固定 swa_ask 问答工具。question resume 只在原问题已答且原 Worker 需要显式继续时使用，不接受自定义输入。
 delegation-mode 默认关闭；native 仅为 Pi 开放项目明确许可的 swa_delegate，省略时继承角色默认值。它与 question-mode 独立。
 development-mode 默认关闭；project 仅在当前项目批准 project_shell 与对应目录后开放受限开发命令，省略时继承角色默认值；consult 不允许 project。
+morph-config 仅为显式选择的 Pi 加载固定 Morph 工具桥；使用宿主配置的绝对路径，不接受角色、consult 或其他已启用的原生工具模式。
 run/wait 的超时和 Ctrl-C 仅结束当前等待；stderr 显示进度和原 Run 重连命令。
 普通查询/控制的 Ctrl-C 只取消当前 CLI 等待，不停止 Worker；serve 的 Ctrl-C/所属 stdin 结束会关闭本次所属服务。
 安装及完整调用说明见安装目录 USAGE.md；使用独立目录，保持 serve 所属 stdin 开启。
@@ -138,6 +139,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags.StringVar(&command.QuestionMode, "question-mode", "", "disabled 或 native；只在启动时选择")
 	flags.StringVar(&command.DelegationMode, "delegation-mode", "", "disabled 或 native；只在启动时选择")
 	flags.StringVar(&command.DevelopmentMode, "development-mode", "", "disabled 或 project；只在启动时选择")
+	flags.StringVar(&command.MorphConfig, "morph-config", "", "Pi Worker 的绝对 Morph 桥配置路径")
 	flags.StringVar(&command.Source, "source", "", "明确原件来源")
 	flags.StringVar(&command.Cursor, "cursor", "", "原来源 cursor")
 	defaultLimit := 0

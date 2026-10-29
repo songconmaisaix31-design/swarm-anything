@@ -150,6 +150,11 @@ func (s *OrcaExecutionService) submitOrcaRun(ctx context.Context, caller domain.
 			return reply, err
 		}
 	}
+	if selection.NativeLaunch.Tools.Mode == "morph" {
+		if err := s.authorizeOrcaMorphTools(ctx, caller, current, selection.ExternalTarget); err != nil {
+			return reply, err
+		}
+	}
 	if selection.NativeLaunch.Tools.Mode == "project" {
 		if _, err := s.authorizeOrcaProjectTools(ctx, caller, current, selection.ExternalTarget); err != nil {
 			return reply, err
@@ -165,7 +170,7 @@ func (s *OrcaExecutionService) submitOrcaRun(ctx context.Context, caller domain.
 	stages := []OrcaCommand{
 		{Action: "controller.open", ProjectID: p.ID, Workdir: root, RequestID: command.RequestID},
 		{Action: "task.create", ProjectID: p.ID, SpecFile: command.SpecFile, RequestID: taskRequest},
-		{Action: "worker.start", ProjectID: p.ID, Name: command.Name, Agent: command.Agent, Model: command.Model, QuestionMode: command.QuestionMode, DelegationMode: command.DelegationMode, DevelopmentMode: command.DevelopmentMode, InputFile: command.InputFile, RequestID: workerRequest, RoleID: command.RoleID, Revision: command.Revision},
+		{Action: "worker.start", ProjectID: p.ID, Name: command.Name, Agent: command.Agent, Model: command.Model, QuestionMode: command.QuestionMode, DelegationMode: command.DelegationMode, DevelopmentMode: command.DevelopmentMode, MorphConfig: command.MorphConfig, InputFile: command.InputFile, RequestID: workerRequest, RoleID: command.RoleID, Revision: command.Revision},
 	}
 	identity := OrcaEnvelope{RequestID: command.RequestID}
 	for i := range stages {

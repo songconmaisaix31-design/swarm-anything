@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { nativePiLaunchPolicySchema, nativePiPerSessionLaunchPolicySchema, type NativeLaunchPolicy } from './contracts'
 import { requireNativeCodexPrivatePath } from './native-codex-policy'
 import officialSources from './pi-official-sources.json'
+import { inspectMorphConfig } from './morph-config'
 import { parseStrictPiJson, strictPiModelSchema, type StrictPiModel } from '../../../third_party/orca-v1.4.230/src/main/pi/rpc-protocol'
 
 const objectSchema = z.record(z.string(), z.unknown())
@@ -233,7 +234,7 @@ function reviewedModel(value: Record<string, unknown>, fields: ReadonlySet<strin
 }
 
 // 只调用真实安装CLI的只读配置、原composer和catalog，不调用认证解析、刷新或模型请求。
-export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { executable: string; version: string; projectId: string; provider: string; modelId: string; questionMode?: 'disabled' | 'native'; delegationMode?: 'disabled' | 'native'; developmentMode?: 'disabled' | 'project' }) {
+export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { executable: string; version: string; projectId: string; provider: string; modelId: string; questionMode?: 'disabled' | 'native'; delegationMode?: 'disabled' | 'native'; developmentMode?: 'disabled' | 'project'; morphConfig?: string; projectRoot?: string }) {
   if (!z.uuid().safeParse(input.projectId).success || input.projectId !== input.projectId.toLowerCase()) throw new Error('native_project_identity_unverifiable')
   const sourceHome = await requireNativePiSourceHome(input)
   const dataRoot = await realpath(z.string().min(1).parse(process.env.SWA_DATA_DIR))
@@ -304,7 +305,11 @@ export async function inspectNativePiPolicy(input: NativePiSourceHomeInput & { e
     const handler = apiRegistry.getApiProvider(target.data.api)
     if (handler?.api !== target.data.api || typeof handler.stream !== 'function' || typeof handler.streamSimple !== 'function') throw new Error('native_model_api_unreviewed')
   }
-  const tools = input.developmentMode === 'project'
+  if (input.morphConfig && (!input.projectRoot || input.questionMode === 'native' || input.delegationMode === 'native' || input.developmentMode === 'project')) throw new Error('morph_tool_mode_conflict')
+  const morph = input.morphConfig ? inspectMorphConfig(input.morphConfig, input.projectRoot!) : undefined
+  const tools = morph
+    ? { mode: 'morph', native_contract: 'pi-cli-1.0.1', allowed: ['morph_list_tools', 'morph_call_tool'], morph_config: morph.source, morph_host_config: morph.hostSource, extension: await nativeConfigurationSource(join(z.string().min(1).parse(input.env.SWA_INSTALL_ROOT), 'runtime', 'pi-morph-extension.mjs')) }
+    : input.developmentMode === 'project'
     ? { mode: 'project', native_contract: 'pi-cli-1.0.1', allowed: ['bash', ...(input.questionMode === 'native' ? ['swa_ask'] : []), ...(input.delegationMode === 'native' ? ['swa_delegate'] : [])], extension: await nativeConfigurationSource(join(z.string().min(1).parse(input.env.SWA_INSTALL_ROOT), 'runtime', 'pi-project-extension.mjs')) }
     : input.delegationMode === 'native'
     ? { mode: 'collaboration', native_contract: 'pi-cli-1.0.1', allowed: input.questionMode === 'native' ? ['swa_ask', 'swa_delegate'] : ['swa_delegate'], extension: await nativeConfigurationSource(join(z.string().min(1).parse(input.env.SWA_INSTALL_ROOT), 'runtime', 'pi-collaboration-extension.mjs')) }
@@ -360,11 +365,15 @@ export async function inspectPrivatePiModelMetadata(input: { sources: NativePiSo
 }
 export function sameNativeLaunchPolicy(left: NativeLaunchPolicy, right: NativeLaunchPolicy) { return isDeepStrictEqual(left, right) }
 
+export function nativePiToolSources(tools: z.infer<typeof nativePiPerSessionLaunchPolicySchema>['tools']) {
+  return tools.mode === 'disabled' ? [] : [tools.extension, ...(tools.mode === 'morph' ? [tools.morph_config, tools.morph_host_config] : [])]
+}
+
 export function assertNativePiSnapshotCurrent(snapshot: NativePiPolicySnapshot) {
   const sources = snapshot.sources, account = snapshot.policy.account
   if (!samePath(assertNativePiSourceHome(snapshot.sourceInput), account.source_home)) throw new Error('native_pi_source_home_changed')
   assertNativePiSourcesCurrent(sources)
-  for (const source of [account.auth_source, account.models_source, snapshot.settingsSource, ...(snapshot.policy.tools.mode !== 'disabled' ? [snapshot.policy.tools.extension] : [])]) {
+  for (const source of [account.auth_source, account.models_source, snapshot.settingsSource, ...nativePiToolSources(snapshot.policy.tools)]) {
     if (!source) continue
     const path = realpathSync.native(source.path), info = statSync(path, { bigint: true })
     const version = `${info.dev}:${info.ino}:${info.birthtimeNs}:${info.mtimeNs}:${info.size}`

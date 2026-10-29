@@ -1,5 +1,9 @@
 # 接管说明
 
+2026-10-29 工具桥后继：先读 [Morphogenesis 工具桥任务](tasks/swa-morph-bridge-20261029.md) 和 SPEC §21.6。分支 `codex/morph-tool-bridge-20261029`，基于下方 PR #10 的 `733ee08f`；新增 Pi 固定研究工具和对应项目授权入口。源码和真实 stdio 调用已验证，下一步完成同一源码的构建安装检查。原生模型会话需配置独立账号及实际项目权限；运行中停止研究工具调用应停止对应 Worker。
+
+---
+
 先读 [STATUS](STATUS.md) 和[本轮任务](tasks/swa-role-delegation-20261027.md)。当前分支 `codex/heterogeneous-agent-20261027`，基线 `ecec4d72`；交付入口为[角色与异构 Agent PR #10](https://github.com/songconmaisaix31-design/swarm-anything/pull/10)，上游为 #6→#7→#8→#9。
 
 用户要求角色默认实际启动、Agent 自主委派、明确项目权限下的真实开发、能力发现与浏览器重连，以及依赖链整合。Windows 验证已明确暂留空。Linux 阶跃星辰与不限预算沿既有授权；项目开发工具的新授权以 QUESTIONS 和本轮任务为准，未授权用户作品不开放。
