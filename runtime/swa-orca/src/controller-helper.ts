@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { RuntimeClient } from '../../../third_party/orca-v1.4.230/src/cli/runtime/client'
 import { helperInput, nativeObject, nativeError, type Invocation } from './contracts'
+import { workerSpec } from './worker-roles'
 
 const controller = process.env.ORCA_TERMINAL_HANDLE
 const data = process.env.ORCA_USER_DATA
@@ -38,7 +39,7 @@ async function execute(action: string, requestId: string, invocation?: Invocatio
       return call('orchestration.workerStart', {
         from: controller, run, parent: invocation.scope.root_task_id, worktree: 'current',
         taskTitle: c.name, agent: invocation.selection.agent_id, model: invocation.selection.model, timeoutMs: 90_000,
-        spec: `${invocation.input.text}\n\n固定公开上下文：\n${JSON.stringify(invocation.scope.context)}`
+        spec: workerSpec(invocation)
       }, `${requestId}/native`)
     }
     case 'worker.stop': return call('orchestration.workerStop', { dispatch: c.dispatch_id }, `${requestId}/native`)

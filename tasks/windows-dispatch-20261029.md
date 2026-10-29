@@ -1,5 +1,13 @@
 # Windows Swarm CLI 派发修复
 
+## 当前 Agent 发现与角色卡功能
+
+本轮从 `fd8c3ae8e8a2c22c3fb78407d8e121c99e85520f` 接续。用户要求发现本地全部注册 Agent、即时取得实际 CLI 版本，并通过内置角色卡进行多 Agent 协作。保持单轨开发；主客户端 Local Codex，独立 Swarm Reviewer 使用 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，固定公开输入与关闭工具。
+
+写域为 `cmd/swa/main.go`、`internal/workspace/app/orca_execution.go`、`runtime/swa-orca/src/{agent-discovery,contracts,controller-helper,controller-admission,worker-roles}.ts`、`contracts/swa-cli.schema.json`、生成类型、`runtime/swa-orca/USAGE.md`、`docs/SPEC.md` 及本任务。复用两张既有 Agent 注册表、Windows PATH 读取和原版本探测；角色通过已有 command、Task spec 和原生消息持久化。
+
+测试计划由 Swarm Reviewer `ctx_463eaa6bfc0d` 接受。验收包括实际注册表并集和版本、Windows 不支持状态、未知角色在写入前拒绝、缺省角色保持原输入、同库两个真实不同角色 Worker 的完整输入/结果及停止释放关闭。运行 Go CLI、完整 strict TypeScript、契约、架构、完整 Windows 构建和独立安装。SQLite schema 不变，已有任务读取与新任务并发在同一真实库核查；其他平台未运行时明确保留。验证记录位于主线 `.verification/windows-20261029/phase8/` 及本目录 `.verification/windows-dispatch-20261029/`。
+
 - 用户于 2026-10-29 明确要求使用 Swarm CLI，并批准在独立分支修复阻塞该调度的缺陷。
 - 基线：已安装版本 `893fb8852e15109ca9a99f1bd51d83ea249a37b8`。
 - 分支：`codex/swa-windows-dispatch-20261029`；工作目录：`C:/Users/DW/Documents/ChatGPT/swa-windows-fix`。

@@ -35,6 +35,7 @@ type OrcaCommand struct {
 	Name       string `json:"name,omitempty"`
 	Agent      string `json:"agent,omitempty"`
 	Model      string `json:"model,omitempty"`
+	Role       string `json:"role,omitempty"`
 	Source     string `json:"source,omitempty"`
 	Cursor     string `json:"cursor,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
@@ -314,7 +315,7 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 		"controller.open": "workdir request_id", "controller.show": "controller", "controller.close": "controller request_id", "controller.recover": "controller request_id",
 		"task.create": "controller spec_file request_id", "task.show": "controller task_id", "task.list": "controller",
 		"task.complete": "controller task_id result_file request_id", "task.result": "controller task_id output_dir",
-		"worker.start": "controller task_id name agent model input_file request_id", "worker.list": "controller task_id",
+		"worker.start": "controller task_id name agent model role input_file request_id", "worker.list": "controller task_id",
 		"worker.show": "controller dispatch_id", "worker.read": "controller dispatch_id source cursor limit",
 		"worker.send": "controller dispatch_id input_file request_id", "worker.stop": "controller dispatch_id request_id",
 		"worker.release": "controller dispatch_id request_id", "request.show": "controller request_id",
@@ -370,6 +371,9 @@ func ValidateOrcaCommand(c OrcaCommand) error {
 	}
 	if c.Action == "worker.start" && (strings.TrimSpace(c.Agent) == "" || strings.TrimSpace(c.Model) == "" || c.Name == "" || c.InputFile == "") {
 		return projectError(apierrors.ValidationFailed, "worker start requires an explicit Agent, model, name and input file")
+	}
+	if c.Role != "" && !slices.Contains([]string{"developer", "reviewer", "coordinator"}, c.Role) {
+		return projectError(apierrors.ValidationFailed, "unknown built-in Worker role")
 	}
 	if c.Action == "worker.send" && c.InputFile == "" {
 		return projectError(apierrors.ValidationFailed, "input_file is required")

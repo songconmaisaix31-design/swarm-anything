@@ -6,6 +6,7 @@ export const commandSchema = z.strictObject({
   dispatch_id: z.string().optional(), request_id: z.string().optional(), workdir: z.string().optional(),
   spec_file: z.string().optional(), input_file: z.string().optional(), result_file: z.string().optional(),
   output_dir: z.string().optional(), name: z.string().optional(), agent: z.string().optional(), model: z.string().optional(),
+  role: z.enum(['developer', 'reviewer', 'coordinator']).optional(),
   source: z.string().optional(), cursor: z.string().optional(), limit: z.number().int().optional()
 })
 export const contextSchema = z.looseObject({
@@ -79,8 +80,9 @@ export const agentCapabilitiesSchema = z.strictObject({
   schema: z.literal('swa.capabilities.v1'), source_revision: z.string().regex(/^[a-f0-9]{40}$/),
   registry: z.strictObject({ orca_version: z.literal('1.4.230'), artifact_sha256: z.string().regex(/^[a-f0-9]{64}$/) }),
   discovery: z.strictObject({ host: z.literal('local'), platform: z.string(), observed_at: z.string(), settings_source: settingsSourceSchema }),
+  roles: z.array(z.strictObject({ id: z.string().min(1), name: z.string().min(1), description: z.string().min(1) })).optional(),
   agents: z.array(z.strictObject({
-    id: z.string().min(1), adapter: z.string().min(1), execution_mode: z.literal('structured'),
+    id: z.string().min(1), adapter: z.string().min(1), execution_mode: z.enum(['structured', 'terminal']),
     registered: observationSchema, enabled: observationSchema,
     installed: observationSchema.extend({ executable: z.string().optional(), version: z.string().optional() }),
     configured: observationSchema.extend({ model: z.string().optional(), provider: z.string().optional(), account_source: z.string().optional() }),

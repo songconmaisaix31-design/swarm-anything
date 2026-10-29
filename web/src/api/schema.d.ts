@@ -7759,6 +7759,8 @@ export interface components {
             name?: string;
             agent?: string;
             model?: string;
+            /** @enum {unknown} */
+            role?: "developer" | "reviewer" | "coordinator";
             /** @constant */
             source?: "transcript";
             cursor?: string;
@@ -7868,6 +7870,11 @@ export interface components {
             allow_agent_control: boolean;
         };
         capabilities: {
+            roles?: {
+                id: string;
+                name: string;
+                description: string;
+            }[];
             /** @constant */
             schema: "swa.capabilities.v1";
             source_revision: string;
@@ -7886,8 +7893,8 @@ export interface components {
             agents: {
                 id: string;
                 adapter: string;
-                /** @constant */
-                execution_mode: "structured";
+                /** @enum {unknown} */
+                execution_mode: "structured" | "terminal";
                 registered: components["schemas"]["observation"];
                 enabled: components["schemas"]["observation"];
                 installed: components["schemas"]["installedObservation"];
