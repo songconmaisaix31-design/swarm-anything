@@ -97,13 +97,14 @@ func TestRelayControlledCLIFullStateAndGitObservation(t *testing.T) {
 		_ = lifecycle.Shutdown(shutdown)
 	})
 	id := f.intent()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	result, e := f.service.ConfirmIntent(ctx, caller(), id, confirm())
 	if e != nil {
 		t.Fatalf("confirm actual CLI: %v; context=%v", e, ctx.Err())
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	// Windows 上受控进程启动与首次就绪在并发包运行时超过 5 秒；保留有界等待。
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		if e = lifecycle.ObserveOwned(ctx); e != nil {
 			v, _ := f.service.GetTask(context.Background(), caller(), id)

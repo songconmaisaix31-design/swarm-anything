@@ -10,6 +10,20 @@
 
 ## 执行安排
 
+### 当前功能开发与全量验证
+
+本轮从 `56477c23ef36255068f53f4d55b04033d57c1b55` 接续；CLI 独立目录从 `fd8c3ae8e8a2c22c3fb78407d8e121c99e85520f` 接续。用户要求实际推进 Windows 功能，解决长路径、SQLite 原生回执和真实输入问题，发现全部本地注册 Agent、即时核对 CLI 版本并支持内置角色卡协作，最后运行全量测试。
+
+保持已有单轨开发安排。主客户端为 Local Codex，Swarm CLI 的 OpenCode / `deepseek/deepseek-v4-pro` 负责固定公开上下文的独立计划和代码审查，原生工具关闭。只读调查可以并行；业务代码、测试与文档由同一开发轨道完成。
+
+- 长路径写域：`internal/adapters/relayworktree/workspaces.go`、同包 Windows 路径适配及原有 Windows 测试。使用 Windows 返回的实际目录别名作为 Git 命令参数，保留原工作目录身份与公开路径；不改变全局 Git 配置。实际长路径创建、观察、重新打开、错误根拒绝和既有同包检查作为验收。
+- SQLite 写域：原有两份 `local_agents*_test.go` 与直接生产消费者。先核对实际消息依赖及原生回执来源，不添加替身或修改结果取得通过。
+- 真实输入：复用已有公开论文、视频、Git 和原生会话，来源不足保持明确失败；仅修正与实际业务规则不一致的消费者。
+- CLI 发现和角色卡写域在 CLI 任务中登记，复用现有 registry、版本探测、Worker 派发和成果接口。
+- 全量执行现有 `scripts/check.mjs`，失败后记录准确阶段并单独运行尚未执行的适用检查；最后运行构建与实际 CLI 流程。新结果放在 `.verification/windows-20261029/phase8/`。
+
+停止条件为实际功能与相应检查通过，或存在需要真实外部输入才能继续的阻塞；不得将不可用输入、未知回执或未执行检查登记为通过。
+
 2026-10-29 最新执行顺序：用户要求逐项针对 bug 修复，修复后仅执行受影响范围的局部检查；全部代码完成一轮修复与审查后，再统一执行全量测试。前序全量失败日志作为定位基线，不在每次局部修改后重复运行全量。局部失败继续在原范围修复；真实输入缺失保持未验，不修改断言或降低验收。
 
 本批局部测试修复限定 `internal/adapters/agents/registered_projects_test.go`：输出越界分支保留原 5 秒 context 和实际输出量，明确断言越界错误；取消分支明确断言 `context.DeadlineExceeded` 并保留原 4 秒终止上限。原统一 4 秒断言短于输出分支的 5 秒期限，并允许错误类型混淆。Swarm Reviewer 先审核该计划，随后只执行对应两类子用例及既有真实 Git 环境隔离检查；生产代码、生产超时和其余验收要求不变。
@@ -196,3 +210,37 @@ CLI 最终 strict TypeScript、Go cmd/swa、47 包架构检查、完整 Windows 
 `phase5` 首次 Worker 在 dispatch_input 遇到原生 `--version` 的 5 秒超时；failed 请求未重放，随后 release 和 controller close 成功。长源码审查的完整 journal 超过既定 12 MiB，上游 `task result` 失败，根任务未标记完成；短任务通过不能替代该失败。原生 `ctx_b0f62ae22695` 的全局正向关闭尚无独立实测结果，同库后续未知记录保持拒绝，不裁剪数据库。
 
 用户授权的旧构建/安装副本清理清单在 `phase3/cleanup-*`、`old-installs-*`、`superseded-*`，逐项核对源码、绝对路径、无重解析路径、无数据库/日志且无运行进程。原库、WAL、会话与验证原件均保留。当前完整 Windows 验收仍未通过；L1 正向和其他 E2E、非空跨日资料、Pi 正向及全部异常身份分支保持各自真实前提。PR 未合并，Release 未发布。
+
+## 长路径与原生回执修复
+
+源码 `6fab099c` 处理两项已复现的 Windows 缺陷。
+
+Git for Windows 的工作目录缓冲仍受 `MAX_PATH` 限制。`relayworktree` 现在用系统返回的实际短目录别名作为 Git 参数，长目录下改为显式 `--git-dir`/`--work-tree` 并把进程工作目录放在卷根，避开 `getcwd`；公开工作目录身份和源码根保持原值。目录不存在、别名未指向获准目录或没有 Git 可用别名时明确拒绝，不修改全局 Git 配置。真实公开工作树目标 321 字符，创建、`rev-parse`、实际编辑后的观察、重开复用和错根拒绝均通过，原件 `phase8/long-root-run1.log`。
+
+`TestNeutralWindowsActualLongRoot` 的断言从原来的 230 字符下限改为实际超过 260 字符，并补充 Git 目录别名身份、缺失目录拒绝和实际编辑观察。
+
+两项 `local_agents*` 回执测试停在旧契约：发送在 `4c4fa1ea` 之后要求原生消息仓库、原控制器读取、对象存储和发送授权四项成分，真实端到端路径已由 `tests/s1/native_message_production_test.go` 的实际 Owned Codex 会话覆盖。测试改为按当前契约执行：缺少成分时在发布前返回 `unsupported_capability`、不触达适配器；并发观察与停止按服务互斥串行，先前写入的已接受回执不被旧快照覆盖。权限、令牌、撤销和 SQLite 重开后的停止回执保持不变。
+
+| 命令 | 实际结果 |
+| --- | --- |
+| `go test -mod=readonly -count=1 -v ./internal/adapters/relayworktree -run '^TestNeutralWindowsActualLongRoot$'` | 退出 0，目标长度 321，创建、观察、重开和错根拒绝通过；`phase8/long-root-run1.log` |
+| `go test -mod=readonly -count=1 ./internal/adapters/relayworktree` | 退出 0，61.944 秒 |
+| `go test -mod=readonly -count=1 -v ./internal/adapters/sqlite -run '^(TestLocalProjectPermissionsTokensAndNativeReceiptsSurviveSQLiteRestart\|TestConcurrentObservationCannotEraseAcceptedDeliveryReceipt)$'` | 退出 0，两项回执检查通过 |
+| `gofmt -l internal/adapters/relayworktree internal/adapters/sqlite` | 无输出 |
+
+剩余限制：短目录别名依赖卷的 8.3 名称支持，没有别名时返回明确拒绝；`TestPublicListingActualWindowCursorWithUnavailableSlot` 需要真实缺失槽位、Attention 两项需要 Bilibili 实际响应，均保持外部来源限制。
+
+## 全量复验结果
+
+完整检查使用既有入口 `node scripts/check.mjs`，环境来自 `phase2-cli/final-env.ps1`（真实论文、视频、认知来源），`GOFLAGS=-p=1`、`GOMAXPROCS=4`，`TEMP`/`TMP`/`GOTMPDIR` 指向 `D:\swa-tmp`。原件为 `phase8/full-check-3.log`，退出 1。
+
+Go 阶段 28 个包通过，包含 `tests/s1`（327 秒）、`tests/s2`、`tests/s3`、`tests/s5`、`internal/adapters/sqlite`（104 秒，含两项原生回执修复）和 `internal/adapters/relayworktree`（18 秒，含 321 字符长路径）。四个测试失败：
+
+- `TestExtractorSubprocessIsolationAndFixedRevision`：全量运行时超过 45 秒提取边界；单独重跑 4.02 秒通过，`phase8/extractor-retry.log`。属于真实网络与负载波动，产品边界未改。
+- `TestPublicListingActualWindowCursorWithUnavailableSlot`：真实公开来源 60/60，仍缺一个实际缺失槽位。
+- `TestPublicTrackingSourceCapacity`：Bilibili 返回 `provider_unavailable`，原始 HTTP 与 SQLite 保留。
+- `TestRelayControlledCLIFullStateAndGitObservation`：受控 CLI 首次就绪超过原 5 秒窗口。该测试的等待窗口改为有界 20 秒、context 从 10 秒改为 30 秒，产品超时不变；`go test ./internal/workspace/app` 随后 13.417 秒通过，`phase8/workspace-app-after.log`。
+
+Go 阶段失败后单独执行其余阶段（`phase8/remaining2/`）：`go mod verify`、架构、`stop-process`、示例、生成类型、`tests/s1/acceptance.test.mjs`、`tsc -b`、`eslint`、`git diff --check` 与 `node scripts/build.mjs` 均退出 0。两项修正后复验通过：`dependencies.lock.json` 缺少 `github.com/go-git/go-git/v5 v5.19.3` 造成依赖清单漂移，补齐后 `check-dependencies.mjs` 退出 0；契约通过既有 `node_modules/.bin/redocly.cmd` 退出 0，直接以 Node 调用 Redocly 时出现的 libuv 断言崩溃不属于检查入口。`vitest` 31 个文件、174 项通过，2 个 L1 文件因 `ASTROCYTE_TEST_RELAY_PUBLIC_URL` 等真实输入缺失而失败。
+
+仍未通过：真实缺失槽位、Bilibili 实际响应与两个 L1 套件的真实输入；完整验收不以本次单独通过改写为整体通过。
