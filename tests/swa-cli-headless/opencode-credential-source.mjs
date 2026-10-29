@@ -54,12 +54,15 @@ try {
     const row = await create('credential-' + kind)
     const writer = new DatabaseSync(row.path)
     try {
+      writer.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0')
+      const databaseBefore = await readFile(row.path)
       if (kind === 'value') {
         const value = JSON.parse(original.value)
         value.key = value.key.slice(0, -1)
         writer.prepare('UPDATE credential SET value=? WHERE id=?').run(JSON.stringify(value), actual.id)
       } else if (kind === 'timestamp') writer.prepare('UPDATE credential SET time_updated=time_updated+1 WHERE id=?').run(actual.id)
       else writer.prepare('DELETE FROM credential WHERE id=?').run(actual.id)
+      assert.ok(databaseBefore.equals(await readFile(row.path)), 'Credential mutation must remain in the real WAL')
       assert.throws(() => check(row), /native_opencode_credential_(selection_changed|missing)/)
       observations.push({ name: 'actual_owned_credential_' + kind, outcome: 'rejected' })
     } finally { writer.close() }
@@ -73,9 +76,16 @@ try {
 
   const linked = await create('linked'), link = join(owned, 'stable-link.db')
   await symlink(linked.path, link, 'file')
-  assert.deepEqual(readOpenCodeDatabaseIdentity(link), linked.identity)
-  check(linked)
+  const linkIdentity = readOpenCodeDatabaseIdentity(link)
+  assert.equal(linkIdentity.version, linked.identity.version)
+  assert.equal(linkIdentity.path, link)
+  const linkedSelection = { ...linked, identity: linkIdentity }
+  check(linkedSelection)
   const redirected = await create('redirected-target')
+  await rename(link, link + '.preserved')
+  await symlink(redirected.path, link, 'file')
+  assert.throws(() => check(linkedSelection), /native_opencode_database_identity_changed/)
+  observations.push({ name: 'configured_symlink_retarget', outcome: 'rejected' })
   await rename(linked.path, linked.path + '.preserved')
   await symlink(redirected.path, linked.path, 'file')
   assert.throws(() => check(linked), /native_opencode_database_identity_changed/)

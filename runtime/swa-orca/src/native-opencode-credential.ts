@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
+import { resolve } from 'node:path'
 import { z } from 'zod'
 
 const nativeKey = z.strictObject({ type: z.literal('key'), key: z.string().min(1) })
@@ -7,7 +8,8 @@ const nativeKey = z.strictObject({ type: z.literal('key'), key: z.string().min(1
 export function readOpenCodeDatabaseIdentity(file: string) {
   const path = realpathSync(file), info = statSync(path, { bigint: true })
   if (!info.isFile() || info.ino <= 0n || info.birthtimeNs <= 0n) throw new Error('native_opencode_database_identity_unavailable')
-  return { path, version: `${info.dev}:${info.ino}:${info.birthtimeNs}` }
+  // 保留配置入口，版本同时绑定其规范目标，后续重定向必须被发现。
+  return { path: resolve(file), version: JSON.stringify([path, String(info.dev), String(info.ino), String(info.birthtimeNs)]) }
 }
 
 export function readOpenCodeCredential(database: string) {
