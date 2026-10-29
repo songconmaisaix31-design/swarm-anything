@@ -42,8 +42,12 @@
 
 ## 未通过范围
 
-- `runtime/swa-orca/src/native-methods.ts` 的 `requireReleased` 要求每条 Worker 记录具有 released resource；原生失败 Worker 从未取得 resource 时，`worker.release` 返回 `no_owned_resource`，正常关闭仍被拒绝。尚未修复，不能直接将无资源记录当作已释放。
+2026-10-29 后续授权：用户要求继续修复剩余 bug，保持当前分支。下一批写域为 `runtime/swa-orca/src/native-methods.ts`、必要的同模块回执/生命周期消费者、`cmd/swa` 的服务 Job 所属逻辑、对应真实验证脚本和本任务记录。先由 Swarm CLI Reviewer 核对测试计划；只允许依据持久原生状态证明启动前失败或实际进程退出，不以空 resource、过期 PID 或缺少 Job 句柄单独认定安全。正常、失败、活跃拒绝、未知保留及实际服务重启均须验证。
+
+- 无资源失败 Worker 的关闭检查现要求原生创建入口给出明确 `not_started`，并核对同 runtime、失败阶段、空所属资源、复用 worktree、原生与外层持久回执和在途请求。旧记录缺失此证明时继续拒绝；安装后的真实拒绝回执验证尚未完成。
 - 前置校验与磁盘满过程中留下的 pending 请求保留，没有重发、删除或改写回执。原有失败数据目录保持不动。
-- 原验证服务退出后，原后台 Job 归属无法核验，同目录重启返回 `operation_unknown`；此次没有绕过归属检查。正常新目录结果不证明中断恢复通过。
+- Windows 服务记录保存实际 OS Session。只有原 serve/daemon 身份均确认退出、同一 Session 的原 Job 返回 `ERROR_FILE_NOT_FOUND`，才允许建立新 Job；存活、PID 复用、跨 Session、访问拒绝与旧记录缺失 Session 均保持拒绝。源码检查通过，安装后的同目录重启尚未完成。
 - main 的 Go OpenCode 1.18.35 适配器与本 CLI 的 ACP 是不同路径；本机新版入口不兼容及完整 main 检查失败范围见另一个 Windows 任务。
 - 尚未验证 Pi 模型正向调用、全部异常资源回收、存活 Worker 的后续输入及全部安装验收。未合并到 main，未创建 Release。
+
+本批独立审查使用 Swarm CLI `run_380c0f90b555 / ctx_cb496d4b4ae3`，真实 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`，原生工具关闭。计划已审核；补充原生 executor 的直接 JSON 持久化及父回执镜像来源后，代码审查解除静态阻断，仍要求实际安装验证。`go test -mod=readonly ./cmd/swa` 与完整 strict TypeScript 通过；真实运行结果继续写入本任务。

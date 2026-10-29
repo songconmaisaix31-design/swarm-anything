@@ -3,6 +3,7 @@ import { isUnknownWorkerStartOutcome, type WorkerSetupReceipt } from './worker-t
 import type { OrchestrationWorkerLaunchReceipt } from './worker-launch-preferences'
 import type { WorkerStartModeReceipt } from '../../orchestration-worker-start-mode'
 import { isStructuredWorkerHandle } from '../../../../../../shared/structured-worker-handle'
+import { OrchestrationError } from '../../../../orchestration/orchestration-error'
 
 export function failWorkerStartWithReceipt(args: {
   db: OrchestrationDb
@@ -26,6 +27,10 @@ export function failWorkerStartWithReceipt(args: {
   const residual = unknown ? undefined : args.db.getWorkerTerminalResourceByOwner(args.dispatchId)
   const releasable =
     residual?.ownership_state === 'owned' && !isStructuredWorkerHandle(residual.terminal_handle)
+  // 仅原生创建入口的明确准入拒绝可以证明没有启动；未知结果不保存此结论。
+  const unstarted = !unknown && args.error instanceof OrchestrationError &&
+    args.error.data !== null && typeof args.error.data === 'object' &&
+    'nativeCreation' in args.error.data && args.error.data.nativeCreation === 'not_started'
   return {
     runId: args.runId,
     taskId: args.taskId,
@@ -39,6 +44,7 @@ export function failWorkerStartWithReceipt(args: {
     mode: args.mode,
     effects: JSON.parse(worker.effects) as unknown[],
     residualResources: JSON.parse(worker.residual_resources) as unknown[],
+    ...(unstarted ? { nativeCreation: 'not_started' } : {}),
     ...(releasable
       ? {
           recovery: `This start created a terminal that never ran the Task. Close it with: orca orchestration worker-release --dispatch ${args.dispatchId}`

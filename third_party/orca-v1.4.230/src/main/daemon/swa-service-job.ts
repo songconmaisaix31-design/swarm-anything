@@ -9,6 +9,7 @@ import type { ParsedDaemonPid } from './daemon-pid-file-parse'
 const roots = {
   name: z.string().regex(/^Local\\SWAService[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
   serve_pid: z.number().int().positive(), serve_created_at_ms: z.number().int().positive(),
+  windows_session_id: z.number().int().positive().optional(),
   data_root: z.string().refine(isAbsolute), install_root: z.string().refine(isAbsolute), source_revision: z.string().regex(/^[0-9a-f]{40}$/)
 }
 const serviceOwnerSchema = z.strictObject(roots)

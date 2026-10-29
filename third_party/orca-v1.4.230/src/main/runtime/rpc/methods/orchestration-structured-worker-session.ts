@@ -141,7 +141,10 @@ export async function createStructuredWorkerSession(args: {
     if (!created.ok) {
       throw new OrchestrationError(
         'agent_unconfigured',
-        `The structured ${args.agent} session for this worker was refused: ${created.refusal.message}`
+        `The structured ${args.agent} session for this worker was refused: ${created.refusal.message}`,
+        isDefinitiveAgentSessionCreateRefusal(created.refusal.code)
+          ? { nativeCreation: 'not_started' }
+          : undefined
       )
     }
     const host = requireInstalledHost()
