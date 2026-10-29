@@ -2,7 +2,7 @@
 
 本页统一维护当前版本、已验范围和实际限制。资源参数只在 [RESOURCES](docs/RESOURCES.md) 维护，授权和待答项只在 [QUESTIONS](docs/QUESTIONS.md) 维护，接管操作见 [HANDOFF](HANDOFF.md)。
 
-2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 从 `893fb885` 修复已有工作树参数、Structured 模型预检、私有 host 路由和受限权限模式。安装源码 `9ba95300` 通过 strict TypeScript、Windows 构建/安装及 Swarm CLI 两个真实 OpenCode Worker 的正常派发、输出、停止、释放、成果导出、任务完成和控制端关闭。验证服务已退出；无资源失败任务关闭与中断后 Job 恢复仍未通过。准确验证、Commit 和限制见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
+2026-10-29 独立分支 `codex/swa-windows-dispatch-20261029` 从 `893fb885` 修复已有工作树参数、Structured 模型预检、私有 host 路由和受限权限模式；安装源码 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75` 通过 Go、strict TypeScript、完整 Windows 构建/安装、同会话恢复、活跃第二服务拒绝和确定未启动 Worker 的回收检查。同一安装双 Worker 短任务的停止、释放、3,298,102 字节完整结果、任务完成及控制端关闭全部成功。全局服务关闭仍有历史空资源判定缺陷；新增计划因 Swarm 原生版本探测超时和来源变化未取得审核，新补丁未实施。此前来源变化与 12 MiB 上限导出失败保留。最后本轮所属进程均退出、64626 无监听，原生 unknown/未释放记录保持；C 盘约剩 260 MiB。准确验证、Commit 和剩余范围见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。
 
 ## 当前主线与 M0
 

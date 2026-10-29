@@ -1,6 +1,6 @@
 # SWA 主线接续
 
-2026-10-29 用户批准的独立 Windows CLI 修复位于 `codex/swa-windows-dispatch-20261029`，来源 `893fb885`，已运行安装为 `9ba95300`。正常双 Worker 流程已完成；失败关闭和恢复保持未通过。接续首先读取 [Windows 派发任务](tasks/windows-dispatch-20261029.md)，保留原数据库和未知请求，不据旧 PID 操作进程。
+2026-10-29 用户批准的独立 Windows CLI 修复位于 `codex/swa-windows-dispatch-20261029`，基线 `893fb885`，当前已验证安装源码为 `c8bc7a67ed75f7c2012bc9fa2a29abb5254d6b75`。同会话服务恢复、活跃服务拒绝、启动前确定失败回收和正常双 Worker 短任务完整流程已有实际通过结果。全局关闭仍错误拒绝历史确定未创建的记录；后继 Swarm 审核因原生版本探测超时及来源变化失败，新关闭补丁未实施。此前导出的来源变化和 12 MiB 上限失败保持。最后本轮服务、控制端及 daemon 进程均退出、64626 无监听，原生 unknown/未释放记录保留。C 盘约剩 260 MiB，下一步先恢复实际审核条件并修复关闭缺陷；完整状态见 [Windows 派发任务](tasks/windows-dispatch-20261029.md)。不据旧 PID 操作进程。
 
 先读 [STATUS](STATUS.md)、[AGENTS](AGENTS.md)、[代码规范](docs/CODING.md) 和[资源限制](docs/RESOURCES.md)，再读 [META_PLAN](docs/META_PLAN.md)、[总任务](tasks/swa-mainline-20261020.md)、[M0](tasks/swa-m0-20261020.md)、具体规格与[用户决定](docs/QUESTIONS.md)。开发者从 [CONTRIBUTING](CONTRIBUTING.md) 进入，完整导航见[文档目录](docs/README.md)。
 

@@ -59,3 +59,19 @@
 准确 `c8bc7a67` 的 Run `run_fc462cd9ae90` 两名实际 Reviewer 完成后均已停止、释放，控制端关闭成功。`task result` 返回 `native_opencode_result_policy_changed`：只读核对确认 config/auth 文件版本、credential ID/time_updated 及选中与私有凭据值相同，而全局 OpenCode SQLite/WAL 文件版本已变化。检查只输出比较结果，没有输出凭据。现有完整来源版本比较保持，导出失败及原数据库保留，没有将该任务的完整成果标记为通过。原件为 main 的 `final3-cli/policy-change-evidence.json`、`task-result-corrected.json` 和 `controller-close.json`。
 
 准确源码的独立结论已发布为 [PR #12 COMMENT review](https://github.com/songconmaisaix31-design/swarm-anything/pull/12#pullrequestreview-5692203718)，限定接受同会话恢复和确定拒绝回收，不代表合并或完整 Windows 验收。
+
+同一 `c8bc7a67` 安装后续 Run `run_4b49a894985d` 的两名 Worker 均完成实际审查；main Worker 多次后继输入保持同一原生会话，实际返回完成消息。两次 stop、两次 release、controller close 全部成功；完整 `task result` 返回 `evidence_missing`。只读权威 journal 核对 main 22,076,306 字节、CLI 2,998,138 字节，超过既定总上限 12 MiB。完整数据及未知请求保留，没有提高上限或将任务标记完成。来源为 main 的 `final5-cli/journal-bounds.json`、`task-result-final.json` 与 `controller-close.json`。
+
+独立短任务 `task_76cfd48ec271 / run_ac524afaae94` 两名实际 Worker `ctx_87e5a7dda318`、`ctx_ee6145ac4244` 均完成，工具调用为 0。使用同一 `c8bc7a67` 安装和 OpenCode 2.0.31 / `deepseek/deepseek-v4-pro`；两次 stop、两次 release、task result、task complete、controller close 全部退出 0。完整原生正文、journal、usage 导出为 3,298,102 字节，证据位于 main 的 `final6-cli/exported-result/result.json`。长对话上限与原来源变化失败保持独立记录，完整 Windows 验收仍未通过。
+
+## 服务关闭剩余缺陷与审核阻塞
+
+正常短任务后 Ctrl+C 退出 1，`host-entry.ts` 全局检查报告 Worker 资源未释放。实际 SQLite 只有 `ctx_b0f62ae22695` 为空 resource；failed/terminal_create、原 epoch、无终端句柄、无残留，父子完成回执明确 `nativeCreation=not_started`，原控制端关闭成功，全局 pending 为 0。全局关闭拒绝任何空 resource，与 `native-methods.ts` 控制端关闭严格验证未创建证明的行为不一致。四个服务进程已全部退出，未修改数据库。
+
+新增单轨计划：写域为 `runtime/swa-orca/src/native-methods.ts`、`host-entry.ts` 和本任务；拟复用现有严格证明，核对准确父子回执、Run/root/dispatch 归属、effects、空残留、原生身份缺席及无 pending。重启产生新 runtime ID，历史 epoch 还须准确控制端关闭回执、两次实际原进程退出观察；现有控制端当前 epoch 检查保持。计划要求 strict TypeScript、实际源码运行文件构建、真实同库恢复和关闭，以及空间允许时完整安装包；不采用模拟数据、增大超时或删除历史失败记录。
+
+计划通过 Swarm `run_a82f9c777cd3` 提交独立审核，但两个 Worker 均在 terminal_create 失败：`ctx_78051cab76c1` 实际原生版本探测超时；`ctx_cc918f6333ab` 返回 `native_opencode_source_changed`。没有审核结论，计划未实施。首次服务重启 daemon 超时，后继启动成功；来源及运行超时仍是真实限制。
+
+两个失败 Worker 的 stop 返回 alreadySettled/failed 和 processAction=none，公开结果为 operation_unknown；controller close 返回 worker_release_unconfirmed。服务退出时报告资源未释放及 daemon busy。按本次回执核对 PID/创建时间/名称后，清理本次 helper 和 shell，daemon、OpenConsole 随之退出。原请求、SQLite、会话和原生未释放状态保留；进程退出不能代替释放确认。实际证据位于 main 的 `final7-cli/`。
+
+C 盘约剩 260 MiB；自动审批拒绝删除本次旧构建副本，目录保持。新增修复计划未审、新源码与新安装包均未产生。当前已安装源码仍为 `c8bc7a67`；本批实际正常链通过、历史异常和关闭问题未通过。
