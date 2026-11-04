@@ -58,4 +58,4 @@ Swarm App、SQLite 迁移028和四个角色 HTTP 操作已实现。内置角色�
 
 ## 资源清理
 
-按用户新要求，使用夸克 skill 归档后清理可重建文件。安装检查通过，版本1.0.25；登录尚待用户授权。`7z t D:/C-drive-cleanup-20261029.7z` 通过。当前历史验证目录共11.31GiB，其中223个程序文件共5.72GiB正在独立归档；文件清单和结果位于 `.verification/swarm-redesign-20261104/cleanup-archives/`。上传成功前不删除本地副本。
+按用户新要求，使用夸克 skill 归档后清理可重建文件。安装检查通过，版本1.0.25；用户已完成浏览器授权，CLI尚未收到回执，等待跳转地址的 code。`7z t D:/C-drive-cleanup-20261029.7z` 通过。历史验证目录共11.31GiB，其中223个程序文件共5.72GiB已打包成1.17GiB归档，`7z t`通过；文件清单和结果位于 `.verification/swarm-redesign-20261104/cleanup-archives/`。上传成功前不删除本地副本。

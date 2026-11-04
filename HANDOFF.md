@@ -23,6 +23,6 @@
 
 本轮 Swarm Worker 均已通过 CLI 停止、释放，控制端已关闭；Swarm 服务与角色 HTTP 实测服务均已停止。运行数据保留于 `C:/Users/DW/AppData/Local/SwarmCli/validation-data/conversational-20261104`，调用入口和结果位于已忽略的 `.verification/swarm-redesign-20261104/`。下一次派发须启动 Swarm 服务和新控制端。
 
-夸克 skill 安装于 `C:/Users/DW/.agents/skills/quarkclouddrive`，官方安装检查通过，版本1.0.25。当前未登录，官方登录流程等待用户授权后返回未完成；已向用户提供授权入口，禁止反复自动登录。旧归档 `D:/C-drive-cleanup-20261029.7z` 的7-Zip完整性检查通过。历史验证程序文件正在独立归档，文件清单、归档和资源检查在本轮忽略目录；上传成功后才清理对应本地副本。
+夸克 skill 安装于 `C:/Users/DW/.agents/skills/quarkclouddrive`，官方安装检查通过，版本1.0.25。用户已在浏览器完成授权，CLI 后继登录仍返回未完成；已请求用户提供跳转地址的 code，通过官方 `login --token` 完成连接，不反复自动登录。旧归档 `D:/C-drive-cleanup-20261029.7z` 的7-Zip完整性检查通过。223个历史验证程序文件共6138481720字节，已打包成1259509972字节的 `cleanup-archives/validation-binaries-20261104.7z`，完整性检查通过。文件清单、归档和资源检查在本轮忽略目录；上传成功后才清理对应本地副本。
 
 新产品已获准在明确登记的项目中按角色使用原生文件与命令工具，须实现目录 tripwire、命令人类审批、角色权限、现有事件审计和随时停止。准确要求见 [QUESTIONS](docs/QUESTIONS.md)。资源参数见 [RESOURCES](docs/RESOURCES.md)。旧产品和 Windows 结果见 [Windows 任务](tasks/windows-compatibility-20261029.md)，研究与正式实验沿各自任务处理。
