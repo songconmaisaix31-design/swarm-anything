@@ -16,7 +16,7 @@ $env:ASTROCYTE_DATA_DIR = Join-Path $env:LOCALAPPDATA 'Astrocyte/data'
 pnpm dev
 ```
 
-普通开发默认网页为 `http://127.0.0.1:5173`，API 为 `http://127.0.0.1:8787`。既有服务占用资源窗口时先按任务安排，不能直接再启动服务。仓库名称变化不自动迁移 Go module、应用标识、配置、数据或已安装客户端。
+普通开发默认网页为 `http://127.0.0.1:5173`，API 为 `http://127.0.0.1:8787`。服务使用独立数据目录，启动前检查所选端口。
 
 ## 修改与检查
 
@@ -25,13 +25,14 @@ pnpm dev
 | 修改范围 | 仓库现有命令与用途 |
 | --- | --- |
 | HTTP 契约 | `pnpm generate` 生成类型；`pnpm check:contracts` 检查契约、示例和漂移 |
+| 角色资产 | `pnpm check:cards`；Go 校验器与 `swarm roles validate FILE` 使用相同 Schema |
 | 程序 | `pnpm check` 检查格式、Go、架构、TypeScript、ESLint 与 Vitest |
 | 模块依赖 | `pnpm check:architecture`、`pnpm check:dependencies` |
 | 浏览器行为 | `pnpm test:e2e`；必须符合浏览器及服务权限和资源要求 |
 | 交付产物 | `pnpm build`；构建后 `pnpm start` |
 | 文档与提交 | 成熟 Markdown 解析器检查所改文档；`git diff --check` |
 
-本表说明命令用途，实际执行和通过范围见任务报告及 STATUS。Windows 契约检查崩溃的原始 FAIL 由 M1 处理；没有完整默认 CI 的通过证据。禁止通过替身、虚假数据或跳过错误改变验收含义。
+具体命令结果见当前任务和 STATUS。
 
 Domain 保持纯逻辑；App 声明消费方端口并编排领域逻辑；Adapters 实现端口；Composition 完成注入。CLI、MCP、HTTP 作为协议边界复用应用服务。保持已有模块结构，在规则拥有的边界修改并更新直接消费者。
 

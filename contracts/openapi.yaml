@@ -2,11 +2,8 @@ openapi: 3.1.0
 info:
   title: Astrocyte HTTP v1
   version: 1.0.0
-  description: SPEC v0.1 local foundation and S1 Attention contracts. Supported
-    operations are explicitly marked; unassembled capabilities fail with 501.
-    S1 protected reads use the local human session and writes require CSRF;
-    request bodies never supply trusted actor identity. Fixture examples and
-    CLI installation observations are not native execution or S1 acceptance evidence.
+  description: Local API for projects, tasks, role cards and attention data.
+    Protected reads use authenticated sessions; human writes require CSRF.
   license:
     name: AGPL-3.0-only
     identifier: AGPL-3.0-only
@@ -51,6 +48,59 @@ tags:
   - name: relay
     description: Human confirmed Works Relay access layer
 paths:
+  /roles:
+    get:
+      operationId: listRoleCards
+      summary: List built-in and saved role cards
+      tags: [missions]
+      x-s1-supported: true
+      security: [{HumanSession: []}]
+      responses:
+        '200': {description: Current role cards, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardListV1'}}}}
+        '403': {$ref: '#/components/responses/S2CommandError'}
+        default: {$ref: '#/components/responses/S2CommandError'}
+    post:
+      operationId: createRoleCard
+      summary: Create a role card
+      tags: [missions]
+      x-s1-supported: true
+      security: [{HumanSession: []}]
+      parameters: [{$ref: '#/components/parameters/S2Idempotency'}, {$ref: '#/components/parameters/ProductCSRF'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardCommandV1'}}}}
+      responses:
+        '200': {description: Saved role card version 1, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardResultV1'}}}}
+        '400': {$ref: '#/components/responses/S2CommandError'}
+        '403': {$ref: '#/components/responses/S2CommandError'}
+        '409': {$ref: '#/components/responses/S2CommandError'}
+        default: {$ref: '#/components/responses/S2CommandError'}
+  /roles/{id}:
+    parameters: [{$ref: '#/components/parameters/S2ID'}]
+    get:
+      operationId: getRoleCard
+      summary: Read a role card and current version
+      tags: [missions]
+      x-s1-supported: true
+      security: [{HumanSession: []}]
+      responses:
+        '200': {description: Current role card, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardResultV1'}}}}
+        '403': {$ref: '#/components/responses/S2CommandError'}
+        '404': {$ref: '#/components/responses/S2CommandError'}
+        default: {$ref: '#/components/responses/S2CommandError'}
+    put:
+      operationId: updateRoleCard
+      summary: Replace a complete role card at its current version
+      tags: [missions]
+      x-s1-supported: true
+      security: [{HumanSession: []}]
+      parameters: [{$ref: '#/components/parameters/S2Idempotency'}, {$ref: '#/components/parameters/ProductCSRF'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardCommandV1'}}}}
+      responses:
+        '200': {description: Saved role card with incremented version, content: {application/json: {schema: {$ref: '#/components/schemas/RoleCardResultV1'}}}}
+        '400': {$ref: '#/components/responses/S2CommandError'}
+        '403': {$ref: '#/components/responses/S2CommandError'}
+        '404': {$ref: '#/components/responses/S2CommandError'}
+        '409': {$ref: '#/components/responses/S2CommandError'}
+        default: {$ref: '#/components/responses/S2CommandError'}
   /openviking/status:
     get:
       operationId: getOpenVikingStatus
@@ -9315,6 +9365,40 @@ components:
   responses:
     S2CommandError: {description: 'Invalid command, current permission denial, version conflict or unavailable dependency. No execution retry.', content: {application/json: {schema: {$ref: '#/components/schemas/ErrorV1'}}}}
   schemas:
+    RoleCardV1:
+      $ref: './role-card.schema.json'
+    RoleCardRecordV1:
+      type: object
+      additionalProperties: false
+      required: [role, version]
+      properties:
+        role: {$ref: '#/components/schemas/RoleCardV1'}
+        version: {type: integer, minimum: 1}
+    RoleCardListV1:
+      type: object
+      additionalProperties: false
+      required: [schema_version, items, next_cursor]
+      properties:
+        schema_version: {const: 1}
+        items: {type: array, items: {$ref: '#/components/schemas/RoleCardRecordV1'}}
+        next_cursor: {type: 'null'}
+    RoleCardResultV1:
+      type: object
+      additionalProperties: false
+      required: [schema_version, role, version]
+      properties:
+        schema_version: {const: 1}
+        role: {$ref: '#/components/schemas/RoleCardV1'}
+        version: {type: integer, minimum: 1}
+    RoleCardCommandV1:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request_id, expected_version, role]
+      properties:
+        schema_version: {const: 1}
+        request_id: {type: string, minLength: 1}
+        expected_version: {type: integer, minimum: 1}
+        role: {$ref: '#/components/schemas/RoleCardV1'}
     OpenVikingStatusV1:
       type: object
       additionalProperties: false

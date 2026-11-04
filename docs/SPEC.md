@@ -1117,3 +1117,13 @@ structured launch admission增加disabledOpenCodeTools，与disabledPiTools各�
 ### B.3 文档更新规则
 
 产品语义改动先更新 SPEC 对应条目与验收场景，再更新契约和实现。字段、错误码和事件版本只维护一个来源。完成任务后更新 STATUS 中的当前基线、命令结果与下一步，不重写完整历史。
+
+### 22.1 对话协作与角色卡
+
+当前产品方向按 [SWA 对话式蜂群](SWA_REDESIGN.md) 执行，开发顺序见 [本轮任务](../tasks/swa-redesign-20261104.md)。Swarm Domain 拥有 RoleCard、RoleBudget、HandoffContent 和 SourceTrace；格式由两份 Card JSON Schema 定义，YAML/JSON 经同一校验器加载。预算缺省为16000 tokens 和20步；显式空工具列表关闭工具，缺省工具列表继承默认。
+
+共享角色管理由 Swarm App 的 RoleCardService 负责。消费方端口为 CardCatalog（内置角色与格式校验）、RoleCardStore（角色查询和事务）及 RoleCardTransaction（角色写入和既有幂等回执）。SQLite 实现端口，Composition 注入，HTTP 与 CLI 使用同一应用语义。
+
+角色 API 为 `GET /roles`、`GET /roles/{id}`、`POST /roles`、`PUT /roles/{id}`。响应资源包含 `role` 与 `version`；列表按 ID 返回资源。写入命令包含现有 `schema_version/request_id/expected_version` 和完整 `role`，使用 Idempotency-Key。POST 要求 expected_version=1，创建版本1；PUT 整卡替换，expected_version 为当前版本，成功后递增。内置角色的初始版本为1，修改结果作为完整覆盖值保存于 SQLite，原内置资产保持原值。相同幂等键及正文返回原结果，变更正文返回 version_conflict。写入只接受 human 会话；读取沿现有 HTTP 身份规则。角色写入不更改项目许可。
+
+角色 CLI 的本地文件命令管理 YAML/JSON，配置 `--endpoint` 后读取和写入共享 API；远程修改先取得当前版本。交接格式校验独立于角色目录；实际会话交接须验证来源和目标角色存在。交接只向目标角色发送所选业务字段及其 source_trace。

@@ -30,6 +30,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/httpapi"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/importers"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/objects"
+	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/rolecards"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/sqlite"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/worksscan"
 	attentionapp "github.com/songconmaisaix31-design/Astrocyte/internal/attention/app"
@@ -230,7 +231,16 @@ func run(logger *slog.Logger) (runErr error) {
 		return err
 	}
 	// 组装现有 S1 服务和 S2 提案命令，原生执行由原控制器接口负责。
+	cards, err := rolecards.New()
+	if err != nil {
+		return err
+	}
+	cardStore, err := sqlite.NewSwarmRepository(db)
+	if err != nil {
+		return err
+	}
 	services := httpapi.Services{
+		RoleCards:            swarmapp.NewRoleCardService(cards, cardStore),
 		OpenViking:           vikingService,
 		RepositoryContext:    &httpapi.RepositoryContextServices{},
 		WorkspaceS2:          workspaceapp.NewS2Service(sqlite.NewWorkspaceRepository(db), agents.ProjectFiles{}, projectReferences),

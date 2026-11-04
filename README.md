@@ -10,7 +10,11 @@ go build -mod=readonly -o dist/swarm.exe ./cmd/swarm
 ./dist/swarm.exe roles show builtin.reviewer
 ./dist/swarm.exe roles new --output my-role.yaml
 ./dist/swarm.exe roles validate my-role.yaml
+./dist/swarm.exe roles new my-role.yaml --endpoint http://127.0.0.1:8787
+./dist/swarm.exe roles list --endpoint http://127.0.0.1:8787
 ```
+
+本地文件命令用于管理可共享的 YAML/JSON。指定 `--endpoint` 后，角色保存到该服务的 SQLite，使用 `roles edit ID --file FILE --endpoint URL` 更新；内置角色的修改保存在数据库中。
 
 SWA connects installed local Agent CLIs through shared tasks and role cards. The core uses Go, TypeScript and local SQLite storage. See [CONTRIBUTING](CONTRIBUTING.md) for development commands.
 
@@ -22,7 +26,7 @@ SWA connects installed local Agent CLIs through shared tasks and role cards. The
 
 Workspace 的作品册读取真实持久化缓存，提供平台/分组/时间视图、态度、人工交接手册、隐藏、扫描和 JSON 投递。扫描只接受已登记批准根，读取目录名/stat/count/mtime，有界遍历；未知平台、未核实文件和不完整发现保持可见。机器同步和缺少认知 topic 的作品活动保存原始 pending observation，不生成关注 Signal。JSON 投递的路径只是线索，不自动获得扫描权限。
 
-`pnpm build` 生成 `dist/astrocyte`、`dist/astrocyte-mcp`、`dist/astrocyte-sleep`（Windows 带 `.exe`）及 `web/dist`。MCP 为 stdio 服务，五个工具为 `astrocyte.get_attention_state`、`astrocyte.explain_focus`、`astrocyte.get_experiences`、`astrocyte.report_event`、`astrocyte.veto`；项目/会话/身份在启动时绑定。启动参数：
+`pnpm build` 生成 `dist/astrocyte`、`dist/astrocyte-mcp`、`dist/astrocyte-sleep`、`dist/swarm`（Windows 带 `.exe`）及 `web/dist`。MCP 为 stdio 服务，五个工具为 `astrocyte.get_attention_state`、`astrocyte.explain_focus`、`astrocyte.get_experiences`、`astrocyte.report_event`、`astrocyte.veto`；项目/会话/身份在启动时绑定。启动参数：
 
 | 参数 | 要求 |
 |---|---|

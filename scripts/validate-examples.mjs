@@ -7,6 +7,7 @@ const spec = parse(await readFile(new URL('../contracts/openapi.yaml', import.me
 const normalized = JSON.parse(JSON.stringify(spec.components.schemas).replaceAll('#/components/schemas/', '#/$defs/'));
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
+ajv.addSchema(JSON.parse(await readFile(new URL('../contracts/role-card.schema.json', import.meta.url), 'utf8')), 'https://astrocyte.local/role-card.schema.json');
 const schema = { $id: 'https://astrocyte.local/http-v1', $defs: normalized };
 ajv.addSchema(schema);
 let count = 0;
@@ -19,6 +20,7 @@ for (const [name, definition] of Object.entries(normalized)) {
 }
 for (const [path, methods] of Object.entries(spec.paths)) {
   for (const [method, operation] of Object.entries(methods)) {
+    if (!['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'].includes(method)) continue;
     for (const message of [operation.requestBody, ...Object.values(operation.responses)]) {
       for (const media of Object.values(message?.content ?? {})) {
         if (media.example === undefined) continue;

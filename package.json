@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "check": "node scripts/check.mjs",
-    "check:contracts": "redocly lint contracts/openapi.yaml --config contracts/redocly.yaml && node scripts/validate-examples.mjs && node scripts/generate-client.mjs --check",
+    "check:contracts": "node scripts/check-contracts.mjs",
     "generate": "node scripts/generate-client.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:cards": "node scripts/validate-cards.mjs",

@@ -41,3 +41,17 @@ Swarm CLI 使用安装 `f25c4c361424bb372437adec898d436c1b1467c1`，实际 Worke
 | 实际 `swarm.exe handoff validate roles/examples/handoff.yaml --json` | 通过 |
 
 下一项为 SQLite 与 HTTP 的共享角色管理，其后继续会话执行和流式输出。单角色模型端到端、三角色接力、聊天前端和跨平台安装保持待开发。
+
+## 共享角色管理
+
+Swarm App、SQLite 迁移028和四个角色 HTTP 操作已实现。内置角色的修改以完整覆盖值存储，版本从1递增；新建、CAS、幂等及重开使用实际 SQLite。CLI 指定 `--endpoint` 后访问相同角色服务；`--expected-version` 和 `--request-id` 可以保留原编辑命令的版本及身份。
+
+- `go test -mod=readonly ./cmd/swarm ./internal/adapters/rolecards ./internal/swarm/domain ./internal/swarm/app`：通过，含实际 HTTP 和远程 CLI。
+- `go test -mod=readonly ./internal/adapters/sqlite -run '^TestRoleCards' -count=1`：通过。
+- `pnpm check:contracts`：退出0，264个 OpenAPI 样例、9份角色资产及生成一致性通过；13项既有警告。
+- `node scripts/check-dependencies.mjs`、`node scripts/check-architecture.mjs`：通过。
+- `node scripts/build.mjs`：Go 服务、MCP、Sleep、Swarm CLI 和 Web 构建通过；Web 首包 gzip 为199.50KB。
+
+契约检查使用项目 Node 直接启动真实工具。CLI 实际二进制为11611136字节；五次测量中 `--version` 首次110.56ms、中位11.16ms，`roles list` 首次15.73ms、中位13.79ms。数据位于本轮忽略目录的 `cli-performance.json`。
+
+当前源码审查使用 Swarm `ctx_95d4e0c52fd3`，会话设计分析使用 `ctx_7c21803f3e35`。原 README 固定上下文任务已停止、释放并关闭控制端；新任务固定 LICENSE 作为来源，源码按准确提交随输入提供。

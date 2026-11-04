@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/rolecards"
+	"github.com/songconmaisaix31-design/Astrocyte/internal/apierrors"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/swarm/domain"
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +23,9 @@ swarm roles show ID [--roles-dir DIR] [--json]
 swarm roles validate FILE [--json]
 swarm roles new --output FILE [--id ID --name NAME --identity TEXT] [--json]
 swarm roles edit FILE [--name NAME --identity TEXT] [--json]
+swarm roles list|show ID --endpoint URL [--json]
+swarm roles new FILE --endpoint URL [--request-id UUID] [--json]
+swarm roles edit ID --file FILE --endpoint URL [--request-id UUID] [--json]
 swarm handoff validate FILE [--json]
 swarm --version
 
@@ -43,10 +48,24 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if err := execute(args, stdin, stdout); err != nil {
-		json.NewEncoder(stderr).Encode(map[string]any{"schema_version": 1, "error": map[string]any{
-			"code": "validation_failed", "message": err.Error(), "retryable": false, "request_id": "", "required_action": "检查角色文件和 swarm --help 中的命令参数",
-		}})
-		return 2
+		serviceError := &apierrors.ServiceError{Code: apierrors.ValidationFailed, Message: err.Error(), RequiredAction: "检查角色文件和 swarm --help 中的命令参数"}
+		var remote *apierrors.ServiceError
+		if errors.As(err, &remote) {
+			serviceError = remote
+		}
+		json.NewEncoder(stderr).Encode(apierrors.Wrap(serviceError))
+		switch serviceError.Code {
+		case apierrors.DeliveryUnknown:
+			return 6
+		case apierrors.ScopeDenied, apierrors.ApprovalRequired:
+			return 3
+		case apierrors.ProviderUnavailable:
+			return 4
+		case apierrors.InternalError:
+			return 7
+		default:
+			return 2
+		}
 	}
 	return 0
 }
@@ -68,15 +87,28 @@ func execute(args []string, stdin io.Reader, stdout io.Writer) error {
 	id := flags.String("id", "", "角色 ID")
 	name := flags.String("name", "", "角色名称")
 	identity := flags.String("identity", "", "角色提示词")
+	endpoint := flags.String("endpoint", "", "共享角色 HTTP 服务地址")
+	inputFile := flags.String("file", "", "完整角色文件")
+	requestID := flags.String("request-id", "", "写入的幂等命令 UUID")
+	expectedVersion := flags.Int("expected-version", 0, "共享编辑的原始版本；省略时使用读取的当前版本")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("存在多余参数: %s", strings.Join(flags.Args(), " "))
 	}
+	if *endpoint != "" && (*directory != "" || *output != "") {
+		return fmt.Errorf("共享角色命令使用 --file，本地角色命令使用 --roles-dir 和 --output")
+	}
+	if *endpoint == "" && (*inputFile != "" || *requestID != "" || *expectedVersion != 0) {
+		return fmt.Errorf("--file、--request-id 和 --expected-version 需要指定共享角色 --endpoint")
+	}
 	catalog, err := rolecards.New()
 	if err != nil {
 		return err
+	}
+	if *endpoint != "" {
+		return remoteRoleCommand(roleHTTPOptions{Group: group, Action: action, Target: target, File: *inputFile, Endpoint: *endpoint, Name: *name, Identity: *identity, RequestID: *requestID, ExpectedVersion: *expectedVersion}, stdin, stdout, catalog)
 	}
 	if *directory != "" {
 		info, err := os.Stat(*directory)

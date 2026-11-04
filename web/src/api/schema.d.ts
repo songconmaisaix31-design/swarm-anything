@@ -1,5 +1,43 @@
 // Generated from contracts/openapi.yaml. Run pnpm generate; do not edit.
 export interface paths {
+    "/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List built-in and saved role cards */
+        get: operations["listRoleCards"];
+        put?: never;
+        /** Create a role card */
+        post: operations["createRoleCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["S2ID"];
+            };
+            cookie?: never;
+        };
+        /** Read a role card and current version */
+        get: operations["getRoleCard"];
+        /** Replace a complete role card at its current version */
+        put: operations["updateRoleCard"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/openviking/status": {
         parameters: {
             query?: never;
@@ -3178,6 +3216,30 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RoleCardV1: components["schemas"]["role-card.schema"];
+        RoleCardRecordV1: {
+            role: components["schemas"]["role-card.schema"];
+            version: number;
+        };
+        RoleCardListV1: {
+            /** @constant */
+            schema_version: 1;
+            items: components["schemas"]["RoleCardRecordV1"][];
+            next_cursor: null;
+        };
+        RoleCardResultV1: {
+            /** @constant */
+            schema_version: 1;
+            role: components["schemas"]["role-card.schema"];
+            version: number;
+        };
+        RoleCardCommandV1: {
+            /** @constant */
+            schema_version: 1;
+            request_id: string;
+            expected_version: number;
+            role: components["schemas"]["role-card.schema"];
+        };
         OpenVikingStatusV1: {
             /** @constant */
             schema_version: 1;
@@ -7717,6 +7779,35 @@ export interface components {
             expected_revision: number;
             hidden: boolean;
         };
+        roleId: string;
+        names: string[];
+        /** Role Card */
+        "role-card.schema": {
+            /** @constant */
+            schema_version: "0.1";
+            id: components["schemas"]["roleId"];
+            name: string;
+            icon?: string;
+            description?: string;
+            identity: string;
+            tools?: components["schemas"]["names"];
+            agents?: components["schemas"]["names"];
+            handoff_policy?: {
+                accept_context?: ("goal" | "done" | "decisions" | "artifacts" | "todos")[];
+                emit?: components["schemas"]["names"];
+                auto_handoff?: components["schemas"]["roleId"][];
+            };
+            budget?: {
+                /** @default 16000 */
+                max_context_tokens: number;
+                /** @default 20 */
+                max_steps: number;
+            };
+            $defs: {
+                roleId: string;
+                names: string[];
+            };
+        };
     };
     responses: {
         /** @description Invalid command, current permission denial, version conflict or unavailable dependency. No execution retry. */
@@ -7747,6 +7838,122 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listRoleCards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current role cards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCardListV1"];
+                };
+            };
+            403: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
+    createRoleCard: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Caller-scoped immutable operation. Human writes also require existing session CSRF. Request ID is transport trace and may differ on replay. */
+                "Idempotency-Key": components["parameters"]["S2Idempotency"];
+                /** @description Required for authenticated human writes */
+                "X-CSRF-Token": components["parameters"]["ProductCSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCardCommandV1"];
+            };
+        };
+        responses: {
+            /** @description Saved role card version 1 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCardResultV1"];
+                };
+            };
+            400: components["responses"]["S2CommandError"];
+            403: components["responses"]["S2CommandError"];
+            409: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
+    getRoleCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["S2ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current role card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCardResultV1"];
+                };
+            };
+            403: components["responses"]["S2CommandError"];
+            404: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
+    updateRoleCard: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Caller-scoped immutable operation. Human writes also require existing session CSRF. Request ID is transport trace and may differ on replay. */
+                "Idempotency-Key": components["parameters"]["S2Idempotency"];
+                /** @description Required for authenticated human writes */
+                "X-CSRF-Token": components["parameters"]["ProductCSRF"];
+            };
+            path: {
+                id: components["parameters"]["S2ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleCardCommandV1"];
+            };
+        };
+        responses: {
+            /** @description Saved role card with incremented version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleCardResultV1"];
+                };
+            };
+            400: components["responses"]["S2CommandError"];
+            403: components["responses"]["S2CommandError"];
+            404: components["responses"]["S2CommandError"];
+            409: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
     getOpenVikingStatus: {
         parameters: {
             query?: never;
