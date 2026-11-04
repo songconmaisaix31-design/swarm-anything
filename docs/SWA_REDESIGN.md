@@ -27,6 +27,12 @@ SWA 把本机已经安装的 Agent CLI 连接到同一任务中，提供对话 C
 
 内置角色为规划者、实现者、审查者、研究员、写作者和运维者。角色数据放在 `roles/builtin/`，贡献角色放在 `roles/community/`，格式示例放在 `roles/examples/`。角色约束与项目已有许可共同决定实际能力。
 
+### 项目与角色权限
+
+每个项目目录由人类明确选择登记。文件工具将路径解析到授权目录内，越界读写触发 tripwire，记录事件并暂停任务。角色交接后使用目标角色的工具权限，网页展示当前角色能力；实现者具有文件写入能力，审查者保持只读。
+
+读取、查询和测试命令直接允许。写入、破坏和外发命令使用 on-request 人类审批或黑名单，覆盖 rm、chmod、git push 和网络请求。审批请求上浮给人类，任务保留等待处理。文件和命令操作进入现有 SQLite 事件系统，CLI 和网页可以查询；停止操作在执行和等待审批期间均可使用。
+
 ## 交接卡 v0.1
 
 交接卡由 `contracts/handoff-card.schema.json` 定义。顶层字段为 `schema_version/handoff_id/session_id/from_role/to_role/at/card`。`card` 包含目标、已完成内容、决定、产出物、待办事项及 `source_trace`。

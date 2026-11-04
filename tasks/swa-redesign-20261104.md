@@ -6,7 +6,7 @@
 
 产品基线为 `ad3259e25fdba28cb3698fe577ebc28706ed0658`；分支为 `codex/conversational-swarm-20261104`。现有 CLI 源码在 `C:/Users/DW/Documents/ChatGPT/swa-windows-fix`，提交 `9ca7c9e0c545f5f60999acb970d1866f8d66135b`。原目录只读复用。
 
-使用 Swarm CLI 安排 Agent，参考 orca-cli、orchestration 的任务派发、消息、等待、指定停止、资源释放和成果获取。开发客户端为 Local Codex；实际 Swarm Worker 客户端和模型在启动后登记。工具权限沿当前公开项目范围执行。
+使用 Swarm CLI 安排 Agent，参考 orca-cli、orchestration 的任务派发、消息、等待、指定停止、资源释放和成果获取。开发客户端为 Local Codex；实际 Swarm Worker 客户端和模型在启动后登记。新产品允许在明确登记的项目内按角色使用原生工具；目录 tripwire、命令人类审批、角色权限、现有事件审计和随时停止按 [QUESTIONS](../docs/QUESTIONS.md) 的五条要求实施。
 
 ## 开发顺序与写入范围
 
@@ -40,7 +40,7 @@ Swarm CLI 使用安装 `f25c4c361424bb372437adec898d436c1b1467c1`，实际 Worke
 | `go build -mod=readonly -trimpath -o .verification/swarm-redesign-20261104/swarm.exe ./cmd/swarm` | 通过 |
 | 实际 `swarm.exe handoff validate contracts/examples/handoff-card.yaml --json` | 通过 |
 
-下一项为 SQLite 与 HTTP 的共享角色管理，其后继续会话执行和流式输出。单角色模型端到端、三角色接力、聊天前端和跨平台安装保持待开发。
+共享角色管理已交付，其后继续角色工具、会话执行和流式输出。单角色模型端到端、三角色接力、聊天前端和跨平台安装保持待开发。
 
 ## 共享角色管理
 
@@ -54,4 +54,8 @@ Swarm App、SQLite 迁移028和四个角色 HTTP 操作已实现。内置角色�
 
 契约检查使用项目 Node 直接启动真实工具。CLI 实际二进制为11611136字节；五次测量中 `--version` 首次110.56ms、中位11.16ms，`roles list` 首次15.73ms、中位13.79ms。数据位于本轮忽略目录的 `cli-performance.json`。
 
-当前源码审查使用 Swarm `ctx_95d4e0c52fd3`，会话设计分析使用 `ctx_7c21803f3e35`。原 README 固定上下文任务已停止、释放并关闭控制端；新任务固定 LICENSE 作为来源，源码按准确提交随输入提供。
+源码审查使用 Swarm `ctx_95d4e0c52fd3`，准确提交 `29c715503640dc9648bf3bdde80a113ec3cafd58` 取得接受结论；审查发现的幂等字段存在性问题已修复并通过真实 SQLite 回归。角色工具测试计划由 `ctx_7c21803f3e35` 接受，要求继续验证越界恢复、审批重放与事件中断状态。所有本轮 Worker 已停止、释放，控制端和服务已关闭。
+
+## 资源清理
+
+按用户新要求，使用夸克 skill 归档后清理可重建文件。安装检查通过，版本1.0.25；登录尚待用户授权。`7z t D:/C-drive-cleanup-20261029.7z` 通过。当前历史验证目录共11.31GiB，其中223个程序文件共5.72GiB正在独立归档；文件清单和结果位于 `.verification/swarm-redesign-20261104/cleanup-archives/`。上传成功前不删除本地副本。

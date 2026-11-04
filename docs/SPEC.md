@@ -1127,3 +1127,15 @@ structured launch admission增加disabledOpenCodeTools，与disabledPiTools各�
 角色 API 为 `GET /roles`、`GET /roles/{id}`、`POST /roles`、`PUT /roles/{id}`。响应资源包含 `role` 与 `version`；列表按 ID 返回资源。写入命令包含现有 `schema_version/request_id/expected_version` 和完整 `role`，使用 Idempotency-Key。POST 要求 expected_version=1，创建版本1；PUT 整卡替换，expected_version 为当前版本，成功后递增。内置角色的初始版本为1，修改结果作为完整覆盖值保存于 SQLite，原内置资产保持原值。相同幂等键及正文返回原结果，变更正文返回 version_conflict。写入只接受 human 会话；读取沿现有 HTTP 身份规则。角色写入不更改项目许可。
 
 角色 CLI 的本地文件命令管理 YAML/JSON，配置 `--endpoint` 后读取和写入共享 API；远程修改先取得当前版本。交接格式校验独立于角色目录；实际会话交接须验证来源和目标角色存在。交接只向目标角色发送所选业务字段及其 source_trace。
+
+### 22.2 角色工具与项目许可
+
+新会话只接受已由人类登记并启用目录访问的项目。会话保存角色卡版本和有效工具列表，后续每个工具动作重新读取当前项目许可；角色变更使旧角色调用失效。工具为 `read`（文件和目录）、`write`（文件）、`diff`、`test`、`command`，缺省继承角色默认值，空数组关闭。审查者没有 `write`，命令审批不扩大角色权限。
+
+文件路径使用 Go `os.Root` 解析，拒绝根外路径、外部符号链接和 Windows 设备/替代数据流。越界产生 `swarm.tool.tripwire` 事件，暂停会话并保留执行上下文。人类显式恢复时重新载入当前角色和项目权限；原越界动作不重放。
+
+命令参数为 argv 数组。已知读取、查询和测试命令直接执行，其余命令进入 `awaiting_approval`，包括写入、破坏、外发与 shell。审批对象保存完整 argv、角色版本和项目许可版本；人类决定只适用于该对象，重放不重复执行，参数不可在审批期间替换。停止取消当前执行和待审批；停止后批准不执行。
+
+Codex 会话关闭原生 shell，使用平台作用域 dynamicTools；原生文件编辑请求不获批准。命令复用实际 Codex `command/exec` 权限配置，默认无网络和只读，获批后按当前角色授予项目写入和单命令网络权限。Windows 原生沙箱需要系统根读取，文件工具的目录限制由 `os.Root` 执行。
+
+操作开始事件持久化后才能产生文件或命令效果，结束事件记录真实结果。事件存于既有 `foundation_outbox`，包含项目、会话、角色、工具和操作 ID。开始后无结束的动作保持结果未知，恢复时查询原执行及产物，不自动重放。事件写入失败立即返回错误并暂停；已产生的效果保留实际状态。

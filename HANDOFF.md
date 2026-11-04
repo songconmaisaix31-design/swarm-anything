@@ -6,8 +6,7 @@
 
 - 产品目录：`C:/Users/DW/Documents/ChatGPT/swarm-anything`。
 - 开发分支：`codex/conversational-swarm-20261104`。
-- 角色卡与 CLI 提交：`33323d4582c5701193d1675d886df87a996e96c6`，已 push。
-- 共享角色 API、SQLite 和远程 CLI 正在同一分支继续实现。
+- 当前提交：`29c715503640dc9648bf3bdde80a113ec3cafd58`，已 push。角色卡、共享角色 API、SQLite 与远程 CLI 已实现并通过专项检查及 Swarm 源码审查。
 - 既有执行 CLI 源码：`C:/Users/DW/Documents/ChatGPT/swa-windows-fix`，提交 `9ca7c9e0c545f5f60999acb970d1866f8d66135b`，本轮当前只读使用。
 
 ## 已有功能
@@ -18,10 +17,12 @@
 
 ## 接续动作
 
-1. 完成共享角色管理的准确源码审查、检查与提交。
-2. 接入现有 Swarm 执行能力，完成单角色会话、任务和成果持久化。
+1. 完成用户要求的夸克网盘归档及本机资源清理，上传前保留本地文件。
+2. 实现已确认的五条角色工具护栏，接入单角色会话、任务和成果持久化。
 3. 完成 SSE、恢复、指定停止与角色交接，再实现聊天网页及安装引导。
 
-当前 Swarm 服务由本聊天工具会话持有，监听 `127.0.0.1:64914`，数据根为 `C:/Users/DW/AppData/Local/SwarmCli/validation-data/conversational-20261104`。操作入口和实际回执位于已忽略的 `.verification/swarm-redesign-20261104/`。当前审查控制端为 `term_5b4ddfa0c025ab4efdebfacbcc35ca85`；角色审查 Worker 为 `ctx_95d4e0c52fd3`，会话设计 Worker 为 `ctx_7c21803f3e35`。结束时按 Swarm CLI 停止、释放和关闭。
+本轮 Swarm Worker 均已通过 CLI 停止、释放，控制端已关闭；Swarm 服务与角色 HTTP 实测服务均已停止。运行数据保留于 `C:/Users/DW/AppData/Local/SwarmCli/validation-data/conversational-20261104`，调用入口和结果位于已忽略的 `.verification/swarm-redesign-20261104/`。下一次派发须启动 Swarm 服务和新控制端。
 
-原生验证使用公开固定项目和已允许的工具范围。资源参数见 [RESOURCES](docs/RESOURCES.md)。旧产品和 Windows 结果见 [Windows 任务](tasks/windows-compatibility-20261029.md)，研究与正式实验沿各自任务处理。
+夸克 skill 安装于 `C:/Users/DW/.agents/skills/quarkclouddrive`，官方安装检查通过，版本1.0.25。当前未登录，官方登录流程等待用户授权后返回未完成；已向用户提供授权入口，禁止反复自动登录。旧归档 `D:/C-drive-cleanup-20261029.7z` 的7-Zip完整性检查通过。历史验证程序文件正在独立归档，文件清单、归档和资源检查在本轮忽略目录；上传成功后才清理对应本地副本。
+
+新产品已获准在明确登记的项目中按角色使用原生文件与命令工具，须实现目录 tripwire、命令人类审批、角色权限、现有事件审计和随时停止。准确要求见 [QUESTIONS](docs/QUESTIONS.md)。资源参数见 [RESOURCES](docs/RESOURCES.md)。旧产品和 Windows 结果见 [Windows 任务](tasks/windows-compatibility-20261029.md)，研究与正式实验沿各自任务处理。
