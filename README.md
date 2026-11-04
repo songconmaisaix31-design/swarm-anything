@@ -1,12 +1,20 @@
 # SWA（Swarm Anything）
 
-SWA 提供可由现有 Agent 或终端调用的 Swarm CLI，目标是发现并调用本机真实注册的 Agent，控制多个 Worker 并获取成果。产品使用独立后台、安装目录和私有运行环境；本机 Orca 的安装、账号、配置及运行进程保持原归属。
+SWA 连接本机 Agent CLI，提供任务执行、角色协作与对话入口。核心使用 Go、TypeScript 和 SQLite，数据保存在本地。
 
-当前正在实现[首版 CLI](tasks/swa-cli-v1-20261020.md)，尚无通过验证的安装候选。最终验收须使用安装后的同一候选，运行至少两个真实 Worker，验证并发、指定停止及成果获取。实际检查和剩余限制见 [STATUS](STATUS.md)。用户要求参考 REA 的仓库格式，[来源与目录对应](docs/standards/swa-repository-format-20261021.md)记录已核内容及待确认范围。
+当前按[对话式蜂群方案](docs/SWA_REDESIGN.md)开发。`swarm roles` 已提供六个内置角色，以及角色创建、编辑和校验；既有 `swa` 客户端提供 Worker 派发、停止和成果获取。功能状态见 [STATUS](STATUS.md)。
 
-本仓库从已接受的 Astrocyte 产品历史接续。已有网页、HTTP、认知 MCP 与 SQLite 数据路径继续使用原程序标识。[META_PLAN](docs/META_PLAN.md) 保留原 v2.1 规划，M2—M6 为后续规划；MCP、网页重构、完整旧 S3 和全部历史分支清理按后续任务处理，旧 S3 保留独立验收记录。最新目标及适用关系见 [QUESTIONS](docs/QUESTIONS.md)。仓库规范名称为 `songconmaisaix31-design/swarm-anything`，默认分支为 `main`；M0 已合入 main。
+```powershell
+go build -mod=readonly -o dist/swarm.exe ./cmd/swarm
+./dist/swarm.exe roles list
+./dist/swarm.exe roles show builtin.reviewer
+./dist/swarm.exe roles new --output my-role.yaml
+./dist/swarm.exe roles validate my-role.yaml
+```
 
-现有页面连接资料、项目、批准、作品与认知接口。蜂群页显示真实 WorkItem 依赖、来源、授权和停止历史；DAG 按需加载，分块加载失败时显示错误并允许人工重新加载。OpenViking 为可选配置。安装与检查见 [CONTRIBUTING](CONTRIBUTING.md)，接管先读 [HANDOFF](HANDOFF.md)、[AGENTS](AGENTS.md) 和[文档目录](docs/README.md)；已验来源、实际运行观察及失败记录统一见 STATUS 和[交付报告](docs/standards/delivery-candidate-20261020.md)。
+SWA connects installed local Agent CLIs through shared tasks and role cards. The core uses Go, TypeScript and local SQLite storage. See [CONTRIBUTING](CONTRIBUTING.md) for development commands.
+
+现有网页提供资料、项目、作品、认知和 WorkItem 依赖图。OpenViking 为可选配置。安装与检查见 [CONTRIBUTING](CONTRIBUTING.md)，接管见 [HANDOFF](HANDOFF.md)。
 
 ## Attention Engine 与作品册
 

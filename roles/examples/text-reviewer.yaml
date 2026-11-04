@@ -1,0 +1,13 @@
+schema_version: "0.1"
+id: example.text-reviewer
+name: 文档审查者
+identity: 检查文档命令是否完整、内容是否与功能一致，给出具体修改位置。
+tools: [read]
+agents: []
+handoff_policy:
+  accept_context: [goal, artifacts]
+  emit: [review_report]
+  auto_handoff: []
+budget:
+  max_context_tokens: 8000
+  max_steps: 10

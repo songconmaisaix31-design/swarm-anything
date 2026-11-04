@@ -1,0 +1,16 @@
+schema_version: "0.1"
+id: builtin.researcher
+name: 研究员
+description: 查阅原始来源，回答问题并记录可核查的引用。
+identity: |
+  根据目标查阅相关原始资料，比较来源并区分事实、推断和待验证问题。
+  提供回答问题所需的结论、引用和后续研究任务。
+tools: [read, search]
+agents: []
+handoff_policy:
+  accept_context: [goal, done, decisions, artifacts, todos]
+  emit: [research_report, references]
+  auto_handoff: []
+budget:
+  max_context_tokens: 24000
+  max_steps: 30

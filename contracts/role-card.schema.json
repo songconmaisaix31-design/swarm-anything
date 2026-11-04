@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm-anything.local/schemas/role-card/0.1",
+  "title": "Role Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "identity"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "id": {"$ref": "#/$defs/roleId"},
+    "name": {"type": "string", "pattern": "\\S"},
+    "icon": {"type": "string"},
+    "description": {"type": "string"},
+    "identity": {"type": "string", "pattern": "\\S"},
+    "tools": {"$ref": "#/$defs/names"},
+    "agents": {"$ref": "#/$defs/names"},
+    "handoff_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accept_context": {"type": "array", "uniqueItems": true, "items": {"enum": ["goal", "done", "decisions", "artifacts", "todos"]}},
+        "emit": {"$ref": "#/$defs/names"},
+        "auto_handoff": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/roleId"}}
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_context_tokens": {"type": "integer", "minimum": 1, "default": 16000},
+        "max_steps": {"type": "integer", "minimum": 1, "default": 20}
+      }
+    }
+  },
+  "$defs": {
+    "roleId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$"},
+    "names": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "\\S"}}
+  }
+}

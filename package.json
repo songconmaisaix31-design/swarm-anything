@@ -14,6 +14,7 @@
     "check:contracts": "redocly lint contracts/openapi.yaml --config contracts/redocly.yaml && node scripts/validate-examples.mjs && node scripts/generate-client.mjs --check",
     "generate": "node scripts/generate-client.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:cards": "node scripts/validate-cards.mjs",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "test:e2e": "pnpm --dir web test:e2e",
     "test:s1": "node --test tests/s1/acceptance.test.mjs",

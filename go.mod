@@ -6,11 +6,13 @@ require (
 	github.com/dop251/goja v0.0.0-20261013122152-245c54f48cfc
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/uuid v1.6.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/olivere/ndjson v1.0.1
 	github.com/sourcegraph/jsonrpc2 v0.2.1
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 	mvdan.cc/sh/v3 v3.14.1
 )
@@ -27,7 +29,6 @@ require (
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

@@ -42,6 +42,8 @@
       "github.com/dop251/goja": "v0.0.0-20261013122152-245c54f48cfc",
       "github.com/go-git/go-git/v5": "v5.19.3",
       "github.com/google/uuid": "v1.6.0",
+      "github.com/google/jsonschema-go": "v0.4.3",
+      "gopkg.in/yaml.v3": "v3.0.1",
       "github.com/modelcontextprotocol/go-sdk": "v1.6.1",
       "github.com/olivere/ndjson": "v1.0.1",
       "github.com/sourcegraph/jsonrpc2": "v0.2.1",

@@ -1,0 +1,13 @@
+schema_version: "0.1"
+id: example.document-writer
+name: 文档写作者
+identity: 根据给定目标和资料编写项目使用文档，保留用户能够执行的命令。
+tools: [read, write]
+agents: []
+handoff_policy:
+  accept_context: [goal, decisions, artifacts, todos]
+  emit: [documentation]
+  auto_handoff: []
+budget:
+  max_context_tokens: 16000
+  max_steps: 20
