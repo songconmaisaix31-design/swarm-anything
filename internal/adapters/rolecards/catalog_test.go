@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/songconmaisaix31-design/Astrocyte/contracts"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/rolecards"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/swarm/domain"
 	"github.com/songconmaisaix31-design/Astrocyte/roles"
@@ -48,7 +49,7 @@ func TestBuiltinCardsAndExamples(t *testing.T) {
 			t.Fatalf("JSON/YAML 内容不一致: %v", err)
 		}
 	}
-	data, err := roles.Files.ReadFile("examples/handoff.yaml")
+	data, err := contracts.CardSchemas.ReadFile("examples/handoff-card.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,6 +90,8 @@ func TestRoleFormatErrors(t *testing.T) {
 		"zero_budget":     func(v map[string]any) { v["budget"].(map[string]any)["max_context_tokens"] = 0 },
 		"negative_steps":  func(v map[string]any) { v["budget"].(map[string]any)["max_steps"] = -1 },
 		"duplicate_tools": func(v map[string]any) { v["tools"] = []string{"read", "read"} },
+		"spaced_tools":    func(v map[string]any) { v["tools"] = []string{"read write"} },
+		"spaced_agent":    func(v map[string]any) { v["agents"] = []string{"open code"} },
 		"context_field":   func(v map[string]any) { v["handoff_policy"].(map[string]any)["accept_context"] = []string{"password"} },
 		"empty_emit":      func(v map[string]any) { v["handoff_policy"].(map[string]any)["emit"] = []string{""} },
 		"role_reference":  func(v map[string]any) { v["handoff_policy"].(map[string]any)["auto_handoff"] = []string{"invalid id"} },
@@ -115,8 +118,13 @@ func TestRoleFormatErrors(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
+	valid.ID = "custom.duplicate"
+	duplicate, err := json.Marshal(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"a.yaml", "b.yaml"} {
-		if err := os.WriteFile(filepath.Join(dir, name), source, 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), duplicate, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,7 +138,7 @@ func TestHandoffFormatErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := roles.Files.ReadFile("examples/handoff.yaml")
+	source, err := contracts.CardSchemas.ReadFile("examples/handoff-card.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +169,7 @@ func TestHandoffFormatErrors(t *testing.T) {
 	for _, mutate := range []func(*domain.HandoffCard){
 		func(c *domain.HandoffCard) { c.At = "yesterday" },
 		func(c *domain.HandoffCard) { c.SchemaVersion = "unknown" },
+		func(c *domain.HandoffCard) { c.HandoffID = "id with spaces" },
 		func(c *domain.HandoffCard) { c.Card.SourceTrace = []domain.SourceTrace{} },
 		func(c *domain.HandoffCard) { c.Card.SourceTrace[0].Field = domain.ContextDone },
 	} {
@@ -176,5 +185,14 @@ func TestHandoffFormatErrors(t *testing.T) {
 		if _, err := catalog.ParseHandoff(data); err == nil {
 			t.Fatal("非法交接时间、版本或来源未拒绝")
 		}
+	}
+	englishGoal := "Review the project documentation"
+	card.Card.Goal = &englishGoal
+	data, err := json.Marshal(card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.ParseHandoff(data); err != nil {
+		t.Fatalf("交接正文应允许英文空格: %v", err)
 	}
 }

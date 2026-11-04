@@ -34,6 +34,6 @@
   },
   "$defs": {
     "roleId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$"},
-    "names": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "\\S"}}
+    "names": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^\\S+$"}}
   }
 }

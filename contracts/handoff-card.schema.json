@@ -7,8 +7,8 @@
   "required": ["schema_version", "handoff_id", "session_id", "from_role", "to_role", "at", "card"],
   "properties": {
     "schema_version": {"const": "0.1"},
-    "handoff_id": {"$ref": "#/$defs/name"},
-    "session_id": {"$ref": "#/$defs/name"},
+    "handoff_id": {"$ref": "#/$defs/identifier"},
+    "session_id": {"$ref": "#/$defs/identifier"},
     "from_role": {"$ref": "#/$defs/roleId"},
     "to_role": {"$ref": "#/$defs/roleId"},
     "at": {"type": "string", "format": "date-time"},
@@ -31,7 +31,7 @@
             "properties": {
               "field": {"enum": ["goal", "done", "decisions", "artifacts", "todos"]},
               "role": {"$ref": "#/$defs/roleId"},
-              "msg_id": {"$ref": "#/$defs/name"}
+              "msg_id": {"$ref": "#/$defs/identifier"}
             }
           }
         }
@@ -40,6 +40,7 @@
   },
   "$defs": {
     "name": {"type": "string", "pattern": "\\S"},
+    "identifier": {"type": "string", "pattern": "^\\S+$"},
     "roleId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$"},
     "texts": {"type": "array", "items": {"$ref": "#/$defs/name"}}
   }

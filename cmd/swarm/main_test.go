@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/songconmaisaix31-design/Astrocyte/contracts"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/rolecards"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/swarm/domain"
 	"github.com/songconmaisaix31-design/Astrocyte/roles"
@@ -62,6 +63,7 @@ func TestRoleCommands(t *testing.T) {
 	invoke([]string{"roles", "list", "--roles-dir", dir, "--json"}, "", 0)
 	invoke([]string{"roles", "show", "custom.writer", "--roles-dir", dir, "--json"}, "", 0)
 	invoke([]string{"roles", "show", "builtin.missing"}, "", 2)
+	invoke([]string{"roles", "list", "--roles-dir", filepath.Join("..", "..", "roles", "examples"), "--json"}, "", 0)
 	invoke([]string{"roles", "list", "--roles-dir", filepath.Join(dir, "missing")}, "", 2)
 	invoke([]string{"roles", "validate", filepath.Join(dir, "missing.yaml")}, "", 2)
 	invoke([]string{"roles", "new", "--output", path, "--id", "custom.other", "--name", "其他", "--identity", "说明", "--json"}, "", 2)
@@ -75,7 +77,7 @@ func TestRoleCommands(t *testing.T) {
 	}
 	invoke([]string{"roles", "validate", "-", "--json"}, string(roleSource), 0)
 	invoke([]string{"roles", "validate", "-"}, "id: [", 2)
-	handoffSource, err := roles.Files.ReadFile("examples/handoff.yaml")
+	handoffSource, err := contracts.CardSchemas.ReadFile("examples/handoff-card.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

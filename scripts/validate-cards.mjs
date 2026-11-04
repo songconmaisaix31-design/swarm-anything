@@ -19,13 +19,14 @@ for (const directory of ['builtin', 'examples', 'community']) {
     const document = parseDocument(await readFile(new URL(name, root), 'utf8'), { uniqueKeys: true });
     if (document.errors.length) throw new Error(`${directory}/${name}: ${document.errors.map(error => error.message).join('; ')}`);
     const value = document.toJS();
-    const kind = Object.hasOwn(value, 'handoff_id') ? 'handoff' : 'role';
-    if (!validators[kind](value)) throw new Error(`${directory}/${name}: ${ajv.errorsText(validators[kind].errors)}`);
-    if (kind === 'role') {
-      if (ids.has(value.id)) throw new Error(`Duplicate role ID: ${value.id}`);
-      ids.add(value.id);
-    }
+    if (!validators.role(value)) throw new Error(`${directory}/${name}: ${ajv.errorsText(validators.role.errors)}`);
+    if (ids.has(value.id)) throw new Error(`Duplicate role ID: ${value.id}`);
+    ids.add(value.id);
     count++;
   }
 }
+const handoff = parseDocument(await readFile(new URL('../contracts/examples/handoff-card.yaml', import.meta.url), 'utf8'), { uniqueKeys: true });
+if (handoff.errors.length) throw new Error(handoff.errors.map(error => error.message).join('; '));
+if (!validators.handoff(handoff.toJS())) throw new Error(`handoff-card.yaml: ${ajv.errorsText(validators.handoff.errors)}`);
+count++;
 console.log(`Validated ${count} role and handoff assets`);

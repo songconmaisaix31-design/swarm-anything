@@ -38,7 +38,7 @@ Swarm CLI 使用安装 `f25c4c361424bb372437adec898d436c1b1467c1`，实际 Worke
 | `node scripts/validate-cards.mjs` | 九份真实角色和交接资产通过 |
 | `node scripts/check-architecture.mjs` | 46 个包通过 |
 | `go build -mod=readonly -trimpath -o .verification/swarm-redesign-20261104/swarm.exe ./cmd/swarm` | 通过 |
-| 实际 `swarm.exe handoff validate roles/examples/handoff.yaml --json` | 通过 |
+| 实际 `swarm.exe handoff validate contracts/examples/handoff-card.yaml --json` | 通过 |
 
 下一项为 SQLite 与 HTTP 的共享角色管理，其后继续会话执行和流式输出。单角色模型端到端、三角色接力、聊天前端和跨平台安装保持待开发。
 

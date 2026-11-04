@@ -1,5 +1,5 @@
 schema_version: "0.1"
-handoff_id: example.readme-review
+handoff_id: example.documentation-review
 session_id: example.documentation
 from_role: example.document-writer
 to_role: example.text-reviewer
