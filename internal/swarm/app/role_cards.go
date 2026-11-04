@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -102,15 +103,21 @@ func (s *RoleCardService) Write(ctx context.Context, p domain.Principal, id stri
 	if !create && id != role.ID {
 		return result, domain.Failure(apierrors.ValidationFailed, "URL 角色 ID 必须与正文相同")
 	}
+	var source any
+	decoder := json.NewDecoder(bytes.NewReader(command.Role))
+	decoder.UseNumber()
+	if err := decoder.Decode(&source); err != nil {
+		return result, domain.Failure(apierrors.ValidationFailed, "角色命令需要 JSON 对象")
+	}
 	commandType := "role.update"
 	if create {
 		commandType = "role.create"
 	}
 	d, err := digest(struct {
 		ID              string
-		Role            domain.RoleCard
+		Role            any
 		ExpectedVersion int
-	}{id, role, command.ExpectedVersion})
+	}{id, source, command.ExpectedVersion})
 	if err != nil {
 		return result, err
 	}

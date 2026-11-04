@@ -92,6 +92,30 @@ func TestRoleCardsActualSQLitePersistenceAndVersions(t *testing.T) {
 	if !errors.As(err, new(*apierrors.ServiceError)) {
 		t.Fatal("幂等正文冲突缺少结构化处理建议")
 	}
+	var omitted map[string]any
+	if err := json.Unmarshal(create.Role, &omitted); err != nil {
+		t.Fatal(err)
+	}
+	omitted["id"] = "custom.default-presence"
+	delete(omitted, "budget")
+	delete(omitted, "handoff_policy")
+	omittedData, err := json.Marshal(omitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawCreate := command(role, 1)
+	rawCreate.Role = omittedData
+	defaulted, err := service.Write(ctx, human, "", true, rawCreate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedDefaults := rawCreate
+	changedDefaults.Role, err = json.Marshal(defaulted.Role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.Write(ctx, human, "", true, changedDefaults)
+	assertCode(err, apierrors.VersionConflict)
 	_, err = service.Write(ctx, human, "", true, command(role, 1))
 	assertCode(err, apierrors.VersionConflict)
 	_, err = service.Write(ctx, human, "custom.other", false, command(role, 1))
