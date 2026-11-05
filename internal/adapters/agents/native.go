@@ -224,7 +224,7 @@ func (n *Native) launch(ctx context.Context, r domain.NativeRequest, resume bool
 		<-probeDone
 		return nil, nativeError(apierrors.ProviderUnavailable, "native version probe timed out")
 	}
-	version := versionPattern.FindString(string(probeOutput.bytes))
+	version := versionPattern.FindString(string(probeOutput.Bytes))
 	if version == "" {
 		return nil, nativeError(apierrors.EvidenceMissing, "native version was not reported")
 	}

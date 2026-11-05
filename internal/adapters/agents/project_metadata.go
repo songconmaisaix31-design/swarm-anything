@@ -257,8 +257,8 @@ func (s *RegisteredProjects) observeProjectMetadata(ctx context.Context, result 
 		result.Sources = append(result.Sources, obs)
 	}
 	for _, def := range definitions {
-		if !available[def.id] {
-			result.Sources = append(result.Sources, domain.ProjectSourceObservation{CLI: def.id, Source: "native_project_metadata", Status: "unknown", Reason: "no_reliable_metadata_only_adapter"})
+		if !available[def.ID] {
+			result.Sources = append(result.Sources, domain.ProjectSourceObservation{CLI: def.ID, Source: "native_project_metadata", Status: "unknown", Reason: "no_reliable_metadata_only_adapter"})
 		}
 	}
 	for _, obs := range result.Sources {

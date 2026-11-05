@@ -1,8 +1,20 @@
 # SWA（Swarm Anything）
 
-SWA 连接本机 Agent CLI，提供任务执行、角色协作与对话入口。核心使用 Go、TypeScript 和 SQLite，数据保存在本地。
+SWA 是本地 Agent 的开源入口。CLI 和桌面共用一个引擎，发现已安装的 Agent、检查 ACP 连接并交换角色卡。[仓库分工与扩展](docs/SWA_LOCAL_FOUNDATION.md)记录核心、科研和记忆的边界。
 
-当前按[对话式蜂群方案](docs/SWA_REDESIGN.md)开发。`swarm roles` 已提供六个内置角色，以及角色创建、编辑和校验；既有 `swa` 客户端提供 Worker 派发、停止和成果获取。功能状态见 [STATUS](STATUS.md)。
+```sh
+go build -mod=readonly -o dist/swarm ./cmd/swarm
+./dist/swarm agents list --probe
+./dist/swarm agents connect dsh --project "$PWD" --json
+npm --prefix desktop ci
+npm --prefix desktop start
+```
+
+Windows 下 CLI 输出为 `dist/swarm.exe`。首次连接前先安装对应 Agent。`agents connect` 验证协议，模型任务运行另行验收。其他本地 ACP Agent 可通过[登记文件](docs/SWA_LOCAL_FOUNDATION.md#登记第三方-acp-agent)加入。桌面打包见[桌面说明](desktop/README.md)。
+
+`swarm roles` 提供六个内置角色。角色可在 SWA、`SKILL.md`、Grok Build、社区 Dossier 和文本之间交换。导入后的工具权限需要重新配置。[角色交换说明](docs/SWA_LOCAL_FOUNDATION.md#角色交换)
+
+既有[对话式蜂群方案](docs/SWA_REDESIGN.md)和 `swa` Worker 开发记录见 [STATUS](STATUS.md)。
 
 ```powershell
 go build -mod=readonly -o dist/swarm.exe ./cmd/swarm
