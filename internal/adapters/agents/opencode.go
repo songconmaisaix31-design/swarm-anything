@@ -609,7 +609,7 @@ func (n *opencodeNative) launch(ctx context.Context, r domain.NativeRequest, res
 		waitErr := <-probeDone
 		return nil, errors.Join(nativeError(apierrors.ProviderUnavailable, "native version probe timed out"), probeCtx.Err(), cancelErr, waitErr)
 	}
-	version := versionPattern.FindString(string(probeOutput.bytes))
+	version := versionPattern.FindString(string(probeOutput.Bytes))
 	if version == "" {
 		return nil, nativeError(apierrors.EvidenceMissing, "native version was not reported")
 	}

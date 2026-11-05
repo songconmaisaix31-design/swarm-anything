@@ -243,8 +243,8 @@ func (s *RegisteredProjects) DiscoverRegistered(ctx context.Context) (domain.Pro
 					a.Status = "known"
 				}
 				for _, def := range definitions {
-					if def.id == tree.CreatedWithAgent {
-						cli := def.id
+					if def.ID == tree.CreatedWithAgent {
+						cli := def.ID
 						a.CreatedWithCLI = &cli
 						a.Status = "known"
 						break

@@ -1,5 +1,7 @@
 # SWA 当前状态
 
+本地底座分支以 [仓库分工与扩展](docs/SWA_LOCAL_FOUNDATION.md) 为入口。现有 CLI 和桌面共用本机发现与 ACP 握手，角色文件支持交换。下文保留此前对话式蜂群分支的实现状态。
+
 当前开发分支为 `codex/conversational-swarm-20261104`，按 [对话式蜂群方案](docs/SWA_REDESIGN.md) 执行。具体任务、命令和检查结果见 [本轮任务](tasks/swa-redesign-20261104.md)。
 
 | 功能 | 当前结果 |

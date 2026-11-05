@@ -18,7 +18,9 @@ import (
 
 var version = "development"
 
-const usage = `swarm roles list [--roles-dir DIR] [--json]
+const usage = `swarm agents list [--probe] [--json]
+swarm agents connect ID --project DIR [--json]
+swarm roles list [--roles-dir DIR] [--json]
 swarm roles show ID [--roles-dir DIR] [--json]
 swarm roles validate FILE [--json]
 swarm roles new --output FILE [--id ID --name NAME --identity TEXT] [--json]
@@ -26,6 +28,8 @@ swarm roles edit FILE [--name NAME --identity TEXT] [--json]
 swarm roles list|show ID --endpoint URL [--json]
 swarm roles new FILE --endpoint URL [--request-id UUID] [--json]
 swarm roles edit ID --file FILE --endpoint URL [--request-id UUID] [--json]
+swarm roles import FILE --from dossier|skill|grok-build|text [--id ID --name NAME --description TEXT]
+swarm roles export FILE --to dossier|skill|grok-build|text
 swarm handoff validate FILE [--json]
 swarm --version
 
@@ -48,7 +52,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if err := execute(args, stdin, stdout); err != nil {
-		serviceError := &apierrors.ServiceError{Code: apierrors.ValidationFailed, Message: err.Error(), RequiredAction: "检查角色文件和 swarm --help 中的命令参数"}
+		serviceError := &apierrors.ServiceError{Code: apierrors.ValidationFailed, Message: err.Error(), RequiredAction: "查看 swarm --help 中的命令参数"}
 		var remote *apierrors.ServiceError
 		if errors.As(err, &remote) {
 			serviceError = remote
@@ -71,6 +75,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func execute(args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) >= 2 && args[0] == "agents" {
+		return executeAgents(args[1:], stdout)
+	}
+	if len(args) >= 2 && args[0] == "roles" && (args[1] == "import" || args[1] == "export") {
+		return executeRoleExchange(args[1:], stdin, stdout)
+	}
 	if len(args) < 2 || (args[0] != "roles" && args[0] != "handoff") {
 		return fmt.Errorf("未知命令，请运行 swarm --help")
 	}
