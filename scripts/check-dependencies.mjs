@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parse } from 'yaml';
+import { parseAllDocuments } from 'yaml';
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { root, web, findGo } from './process.mjs';
@@ -8,8 +8,10 @@ import { summarizeEnvironment, summarizeVersion } from './summarize.mjs';
 
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const inventory = await json(join(root, 'dependencies.lock.json'));
-const lock = parse(await readFile(join(root, 'pnpm-lock.yaml'), 'utf8'));
-for (const [name, base, importer] of [['root', root, '.'], ['web', web, 'web']]) {
+const lockDocuments = parseAllDocuments(await readFile(join(root, 'pnpm-lock.yaml'), 'utf8'));
+for (const document of lockDocuments) if (document.errors.length) throw document.errors[0];
+const lock = Object.assign({}, ...lockDocuments.map(document => document.toJS()));
+for (const [name, base, importer] of [['root', root, '.'], ['web', web, 'web'], ['swa_runtime', join(root, 'runtime', 'swa-orca'), 'runtime/swa-orca']]) {
   const pkg = await json(join(base, 'package.json'));
   const expected = inventory.direct_dependencies[name];
   const actual = { ...pkg.dependencies, ...pkg.devDependencies };
@@ -17,10 +19,11 @@ for (const [name, base, importer] of [['root', root, '.'], ['web', web, 'web']])
     throw new Error(`${name} dependency inventory drift; update dependencies.lock.json`);
   }
   for (const [dependency, version] of Object.entries(actual)) {
-    if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`${dependency} must use an exact stable version`);
+    const workspace = name === 'swa_runtime' && version === 'workspace:*';
+    if (!workspace && !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(version)) throw new Error(`${dependency} must use an exact version or the explicitly recorded local workspace`);
     const installed = await json(join(base, 'node_modules', dependency, 'package.json'));
     const entry = lock.importers[importer].dependencies?.[dependency] ?? lock.importers[importer].devDependencies?.[dependency];
-    if (installed.version !== version || entry?.specifier !== version) throw new Error(`${dependency} installed/lock version differs from ${version}; run pnpm install --frozen-lockfile`);
+    if ((!workspace && installed.version !== version) || entry?.specifier !== version) throw new Error(`${dependency} installed/lock version differs from ${version}; run pnpm install --frozen-lockfile`);
   }
 }
 const go = await findGo();

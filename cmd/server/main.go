@@ -52,6 +52,9 @@ func main() {
 func run(logger *slog.Logger) (runErr error) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	if os.Getenv("SWA_INSTALL_ROOT") != "" {
+		return runOrcaProduct(ctx, logger)
+	}
 
 	halfLife, weights, err := resolveAttentionPolicy()
 	if err != nil {
@@ -175,6 +178,10 @@ func run(logger *slog.Logger) (runErr error) {
 		return fmt.Errorf("configure project discovery: %w", err)
 	}
 	localProjects.ConfigureRegisteredDiscovery(db, projectDiscovery)
+	orcaExecution, err := composeOrcaExecution(db, localProjects)
+	if err != nil {
+		return fmt.Errorf("configure product Orca execution: %w", err)
+	}
 	textProcessor := &selectedTextBridge{projects: localProjects, processor: registry}
 	processingTimeout := min(time.Duration(jobSeconds)*time.Second, 30*time.Minute)
 	attention := attentionapp.NewAttentionService(sqlite.NewAttentionRepository(db), sourceReader, objectStore, attentionapp.ServiceOptions{
@@ -238,6 +245,7 @@ func run(logger *slog.Logger) (runErr error) {
 		GitHubRepositories:   workspaceapp.NewGitHubRepositoryService(db, db, agents.NewPublicGitHubSource(), agents.NewManagedRepositoryCloner(filepath.Join(dataDir, "repositories")), &repositorySpaceBridge{attention: attention}),
 		Tracking:             attention,
 		LocalProjects:        localProjects,
+		OrcaExecution:        orcaExecution,
 		RegisteredProjects:   localProjects,
 		Attention:            attention,
 		Foundation:           foundation.NewAttentionService(schemaVersion),

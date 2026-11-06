@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astrocyte.local/contracts/swa-cli.schema.json",
+  "title": "SWA native execution command and response",
+  "$defs": {
+    "registeredAgent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "id", "adapter", "execution_mode", "registered", "source", "source_revision", "registry", "runtime"],
+      "properties": {
+        "schema": {"const": "swa.registered-agent.v1"}, "id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1},
+        "execution_mode": {"enum": ["structured", "terminal"]}, "registered": {"const": true},
+        "source": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"enum": ["structured-registry", "tui-launcher"]}}},
+        "source_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "registry": {"type": "object", "additionalProperties": false, "required": ["orca_version", "artifact_sha256"], "properties": {"orca_version": {"const": "1.4.230"}, "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+        "runtime": {"type": "object", "additionalProperties": false, "required": ["runtime_id", "authority_domain", "data_root", "install_root"], "properties": {"runtime_id": {"type": "string", "minLength": 1}, "authority_domain": {"type": "string", "minLength": 1}, "data_root": {"type": "string", "minLength": 1}, "install_root": {"type": "string", "minLength": 1}}}
+      },
+      "oneOf": [
+        {"properties": {"execution_mode": {"const": "structured"}, "source": {"properties": {"kind": {"const": "structured-registry"}}}}},
+        {"properties": {"execution_mode": {"const": "terminal"}, "source": {"properties": {"kind": {"const": "tui-launcher"}}}}}
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action"],
+      "properties": {
+        "action": { "enum": ["status", "capabilities", "controller.open", "controller.show", "controller.close", "controller.recover", "task.create", "task.show", "task.list", "task.complete", "task.result", "worker.start", "worker.show", "worker.list", "worker.read", "worker.send", "worker.stop", "worker.release", "request.show"] },
+        "project_id": { "type": "string", "minLength": 1 },
+        "controller": { "type": "string", "minLength": 1 },
+        "task_id": { "type": "string", "minLength": 1 },
+        "dispatch_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "format": "uuid" },
+        "workdir": { "type": "string", "minLength": 1 },
+        "spec_file": { "type": "string", "minLength": 1 },
+        "input_file": { "type": "string", "minLength": 1 },
+        "result_file": { "type": "string", "minLength": 1 },
+        "output_dir": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "agent": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "source": { "const": "transcript" },
+        "cursor": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      },
+      "description": "Each action accepts only its documented fields. Mutations require the original canonical UUID; task/result paths are checked against current project directory permission. Trusted caller, native identities and context cannot be supplied here."
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason", "source"],
+      "properties": {
+        "status": {"enum": ["available", "unavailable", "unknown"]},
+        "reason": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "checked_at": {"type": "string"}
+      }
+    },
+    "settingsSource": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {"kind": {"enum": ["native", "orca-profile"]}, "path": {"type": "string", "minLength": 1}, "revision": {"type": "integer", "minimum": 0}}
+    },
+    "requirements": {
+      "type": "object", "additionalProperties": false,
+      "required": ["settings_revision", "allow_directory", "allowed_subdirs", "allowed_actions", "allowed_tools", "grant_actions", "external_model_cli", "allow_agent_control"],
+      "properties": {
+        "settings_revision": {"type": "integer", "minimum": 1},
+        "allow_directory": {"type": "boolean"},
+        "allowed_subdirs": {"type": ["array", "null"], "items": {"type": "string"}},
+        "allowed_actions": {"type": ["array", "null"], "items": {"type": "string"}},
+        "allowed_tools": {"type": ["array", "null"], "items": {"type": "string"}},
+        "grant_actions": {"type": ["array", "null"], "items": {"type": "string"}},
+        "external_model_cli": {"type": "string"}, "allow_agent_control": {"type": "boolean"}
+      }
+    },
+    "nativeConfigurationSource": {
+      "type": "object", "additionalProperties": false, "required": ["path", "version"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1}}
+    },
+    "nativeLaunchPolicy": {"oneOf": [{"$ref": "#/$defs/nativePiLaunchPolicy"}, {"$ref": "#/$defs/nativeOpenCodeLaunchPolicy"}]},
+    "nativeOpenCodeLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "config_source", "database_source", "credential_id", "credential_updated_at", "private_root", "model_target"],
+          "properties": {
+            "kind": {"const": "opencode-native-api-key"}, "provider": {"const": "deepseek"}, "source_home": {"type": "string", "minLength": 1},
+            "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "config_source": {"$ref": "#/$defs/nativeConfigurationSource"}, "database_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "credential_id": {"type": "string", "minLength": 1}, "credential_updated_at": {"type": "integer", "minimum": 0}, "private_root": {"type": "string", "minLength": 1},
+            "model_target": {"type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"], "properties": {"model_id": {"const": "deepseek-v4-pro"}, "api": {"const": "opencode-native-deepseek"}, "base_url": {"const": "https://api.deepseek.com"}}}
+          }
+        },
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "opencode-cli-2.0.31"}}}
+      }
+    },
+    "nativePiLaunchPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "account", "tools"],
+      "properties": {
+        "schema": {"const": "swa.native-launch.v1"},
+        "account": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "provider", "source_home", "auth_source", "models_source", "private_home", "model_target"],
+          "properties": {
+            "kind": {"const": "pi-native-api-key"}, "provider": {"type": "string", "minLength": 1},
+            "source_home": {"type": "string", "minLength": 1}, "auth_source": {"$ref": "#/$defs/nativeConfigurationSource"},
+            "models_source": {"oneOf": [{"$ref": "#/$defs/nativeConfigurationSource"}, {"type": "null"}]},
+            "private_home": {"type": "string", "minLength": 1},
+            "model_target": {
+              "type": "object", "additionalProperties": false, "required": ["model_id", "api", "base_url"],
+              "properties": {"model_id": {"type": "string", "minLength": 1}, "api": {"enum": ["openai-responses", "openai-completions", "azure-openai-responses"]}, "base_url": {"type": "string", "format": "uri"}}
+            }
+          }
+        },
+        "tools": {"type": "object", "additionalProperties": false, "required": ["mode", "native_contract"], "properties": {"mode": {"const": "disabled"}, "native_contract": {"const": "pi-cli-1.0.1"}}}
+      }
+    },
+    "agentSelection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent_id", "adapter", "execution_mode", "executable", "version", "model", "provider", "external_target", "settings_source", "settings_revision", "configuration_version", "native_launch"],
+      "properties": {
+        "agent_id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1}, "execution_mode": {"const": "structured"},
+        "executable": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1}, "provider": {"type": "string", "minLength": 1}, "external_target": {"type": "string", "minLength": 1},
+        "settings_source": {"$ref": "#/$defs/settingsSource"}, "settings_revision": {"type": "integer", "minimum": 0}, "configuration_version": {"type": "string", "minLength": 1}, "native_launch": {"$ref": "#/$defs/nativeLaunchPolicy"}
+      }
+    },
+    "installedObservation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "reason", "source"],
+      "properties": {"status": {"enum": ["available", "unavailable", "unknown"]}, "reason": {"type": "string", "minLength": 1}, "source": {"type": "string", "minLength": 1}, "checked_at": {"type": "string"}, "executable": {"type": "string"}, "version": {"type": "string"}},
+      "if": {"properties": {"status": {"const": "available"}}}, "then": {"required": ["executable", "version"]}
+    },
+    "configuredObservation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "reason", "source"],
+      "properties": {"status": {"enum": ["available", "unavailable", "unknown"]}, "reason": {"type": "string", "minLength": 1}, "source": {"type": "string", "minLength": 1}, "checked_at": {"type": "string"}, "model": {"type": "string"}, "provider": {"type": "string"}, "account_source": {"type": "string"}},
+      "if": {"properties": {"status": {"const": "available"}}}, "then": {"required": ["model", "provider", "account_source"]}
+    },
+    "capabilities": {
+      "type": "object", "additionalProperties": false, "required": ["schema", "source_revision", "registry", "discovery", "agents"],
+      "properties": {
+        "schema": {"const": "swa.capabilities.v1"}, "source_revision": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "registry": {"type": "object", "additionalProperties": false, "required": ["orca_version", "artifact_sha256"], "properties": {"orca_version": {"const": "1.4.230"}, "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+        "discovery": {"type": "object", "additionalProperties": false, "required": ["host", "platform", "observed_at", "settings_source"], "properties": {"host": {"const": "local"}, "platform": {"type": "string"}, "observed_at": {"type": "string"}, "settings_source": {"$ref": "#/$defs/settingsSource"}}},
+        "agents": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "adapter", "execution_mode", "registered", "enabled", "installed", "configured", "launchable", "control", "requirements"], "properties": {
+          "id": {"type": "string", "minLength": 1}, "adapter": {"type": "string", "minLength": 1}, "execution_mode": {"const": "structured"},
+          "registered": {"$ref": "#/$defs/observation"}, "enabled": {"$ref": "#/$defs/observation"}, "installed": {"$ref": "#/$defs/installedObservation"}, "configured": {"$ref": "#/$defs/configuredObservation"}, "launchable": {"$ref": "#/$defs/observation"},
+          "control": {"type": "object", "additionalProperties": false, "required": ["start", "send", "read", "stop", "resume", "tools"], "properties": {"start": {"$ref": "#/$defs/observation"}, "send": {"$ref": "#/$defs/observation"}, "read": {"$ref": "#/$defs/observation"}, "stop": {"$ref": "#/$defs/observation"}, "resume": {"$ref": "#/$defs/observation"}, "tools": {"$ref": "#/$defs/observation"}}},
+          "requirements": {"$ref": "#/$defs/requirements"}
+        }}}
+      }
+    },
+    "nativeError": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "required_action"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string" },
+        "retryable": { "const": false },
+        "required_action": { "type": "string", "minLength": 1 },
+        "data": {}
+      },
+      "additionalProperties": false
+    },
+    "envelope": {
+      "type": "object",
+      "required": ["ok"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "request_id": { "type": "string" },
+        "runtime_id": { "type": "string" },
+        "authority_domain": { "type": "string" },
+        "controller": { "type": "string" },
+        "run_id": { "type": "string" },
+        "task_id": { "type": "string" },
+        "dispatch_id": { "type": "string" },
+        "result": {},
+        "error": { "$ref": "#/$defs/nativeError" }
+      },
+      "additionalProperties": false,
+      "description": "Result preserves actual native records and provenance. HTTP transport success is insufficient for mutation success; unknown outcomes retain the original request and resource ownership."
+    }
+  },
+  "$ref": "#/$defs/command"
+}

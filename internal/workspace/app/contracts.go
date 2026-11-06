@@ -54,6 +54,11 @@ type NativeRegistry interface {
 	Adapter(string) (NativeAdapter, error)
 	List() []string
 }
+
+// ExternalCLIRegistry 只核实真实执行注册，不授予账号、工具或模型权限。
+type ExternalCLIRegistry interface {
+	ValidateExternalCLI(context.Context, string) error
+}
 type ProjectFiles interface {
 	CanonicalRoot(string) (string, error)
 	ValidateProjectPath(string, string) (string, error)

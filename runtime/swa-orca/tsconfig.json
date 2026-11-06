@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "customConditions": ["orca-source"],
+    "strict": true,
+    "noEmit": true,
+    "incremental": false,
+    "skipLibCheck": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
+    "paths": {
+      "@orca/process-host": ["../../third_party/orca-v1.4.230/src/packages/process-host/src/run-process.ts"],
+      "@orca/process-host/*": ["../../third_party/orca-v1.4.230/src/packages/process-host/src/*"],
+      "@orca/windows-security": ["../../third_party/orca-v1.4.230/native/windows-security/index.d.ts"],
+      "@orca/windows-registry": ["../../third_party/orca-v1.4.230/native/windows-registry/index.d.ts"],
+      "ssh2": ["./node_modules/@types/ssh2/index.d.ts"],
+      "ws": ["./node_modules/@types/ws/index.d.ts"],
+      "proper-lockfile": ["./node_modules/@types/proper-lockfile/index.d.ts"],
+      "qrcode": ["./node_modules/@types/qrcode/index.d.ts"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"],
+      "express": ["./node_modules/@types/express/index.d.ts"],
+      "stream-json/*": ["./node_modules/stream-json/src/*"],
+      "stream-chain/*": ["./node_modules/stream-chain/src/*"],
+      "*": ["./node_modules/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "../../tests/swa-cli-headless/controller-inspection.ts",
+    "../../third_party/orca-v1.4.230/src/types/build-constants.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -308,8 +308,8 @@ func TestTasteProfileActualMigrationUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(names) != 27 || names[25] != "026_taste_profiles.sql" || names[26] != "027_openviking.sql" {
-		t.Fatalf("actual upgrade requires the current 27 migration sources: %v", names)
+	if len(names) != 28 || names[25] != "026_taste_profiles.sql" || names[26] != "027_openviking.sql" || names[27] != "028_orca_execution_links.sql" {
+		t.Fatalf("actual upgrade requires the current 28 migration sources: %v", names)
 	}
 	for _, name := range names {
 		if name >= "026_taste_profiles.sql" {

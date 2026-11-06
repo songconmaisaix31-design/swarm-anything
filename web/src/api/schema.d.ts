@@ -1,5 +1,25 @@
 // Generated from contracts/openapi.yaml. Run pnpm generate; do not edit.
 export interface paths {
+    "/local-projects/{id}/orca/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute one authorized command against the installed private Orca runtime
+         * @description Uses current project grants and fixed context. Mutations require the same canonical UUID in request_id and Idempotency-Key. Native Run, Task, Dispatch, receipt and transcript remain authoritative; unknown operations are never resent automatically. Authenticated human safety stops recheck exact native ownership and remain available after execution approval changes.
+         */
+        post: operations["executeOrcaCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/openviking/status": {
         parameters: {
             query?: never;
@@ -3178,6 +3198,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SwaRegisteredAgentV1: components["schemas"]["registeredAgent"];
+        SwaAgentCapabilitiesV1: components["schemas"]["capabilities"];
+        SwaAgentSelectionV1: components["schemas"]["agentSelection"];
+        SwaNativeLaunchPolicyV1: components["schemas"]["nativeLaunchPolicy"];
         OpenVikingStatusV1: {
             /** @constant */
             schema_version: 1;
@@ -7717,6 +7741,246 @@ export interface components {
             expected_revision: number;
             hidden: boolean;
         };
+        /** @description Each action accepts only its documented fields. Mutations require the original canonical UUID; task/result paths are checked against current project directory permission. Trusted caller, native identities and context cannot be supplied here. */
+        command: {
+            /** @enum {unknown} */
+            action: "status" | "capabilities" | "controller.open" | "controller.show" | "controller.close" | "controller.recover" | "task.create" | "task.show" | "task.list" | "task.complete" | "task.result" | "worker.start" | "worker.show" | "worker.list" | "worker.read" | "worker.send" | "worker.stop" | "worker.release" | "request.show";
+            project_id?: string;
+            controller?: string;
+            task_id?: string;
+            dispatch_id?: string;
+            /** Format: uuid */
+            request_id?: string;
+            workdir?: string;
+            spec_file?: string;
+            input_file?: string;
+            result_file?: string;
+            output_dir?: string;
+            name?: string;
+            agent?: string;
+            model?: string;
+            /** @constant */
+            source?: "transcript";
+            cursor?: string;
+            limit?: number;
+        };
+        nativeError: {
+            code: string;
+            message: string;
+            /** @constant */
+            retryable: false;
+            required_action: string;
+            data?: unknown;
+        };
+        /** @description Result preserves actual native records and provenance. HTTP transport success is insufficient for mutation success; unknown outcomes retain the original request and resource ownership. */
+        envelope: {
+            ok: boolean;
+            request_id?: string;
+            runtime_id?: string;
+            authority_domain?: string;
+            controller?: string;
+            run_id?: string;
+            task_id?: string;
+            dispatch_id?: string;
+            result?: unknown;
+            error?: components["schemas"]["nativeError"];
+        };
+        registeredAgent: {
+            /** @constant */
+            schema: "swa.registered-agent.v1";
+            id: string;
+            adapter: string;
+            /** @enum {unknown} */
+            execution_mode: "structured" | "terminal";
+            /** @constant */
+            registered: true;
+            source: {
+                /** @enum {unknown} */
+                kind: "structured-registry" | "tui-launcher";
+            };
+            source_revision: string;
+            registry: {
+                /** @constant */
+                orca_version: "1.4.230";
+                artifact_sha256: string;
+            };
+            runtime: {
+                runtime_id: string;
+                authority_domain: string;
+                data_root: string;
+                install_root: string;
+            };
+        } & ({
+            /** @constant */
+            execution_mode?: "structured";
+            source?: {
+                /** @constant */
+                kind?: "structured-registry";
+            };
+        } | {
+            /** @constant */
+            execution_mode?: "terminal";
+            source?: {
+                /** @constant */
+                kind?: "tui-launcher";
+            };
+        });
+        settingsSource: {
+            /** @enum {unknown} */
+            kind: "native" | "orca-profile";
+            path?: string;
+            revision?: number;
+        };
+        observation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+        };
+        installedObservation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+            executable?: string;
+            version?: string;
+        };
+        configuredObservation: {
+            /** @enum {unknown} */
+            status: "available" | "unavailable" | "unknown";
+            reason: string;
+            source: string;
+            checked_at?: string;
+            model?: string;
+            provider?: string;
+            account_source?: string;
+        };
+        requirements: {
+            settings_revision: number;
+            allow_directory: boolean;
+            allowed_subdirs: string[] | null;
+            allowed_actions: string[] | null;
+            allowed_tools: string[] | null;
+            grant_actions: string[] | null;
+            external_model_cli: string;
+            allow_agent_control: boolean;
+        };
+        capabilities: {
+            /** @constant */
+            schema: "swa.capabilities.v1";
+            source_revision: string;
+            registry: {
+                /** @constant */
+                orca_version: "1.4.230";
+                artifact_sha256: string;
+            };
+            discovery: {
+                /** @constant */
+                host: "local";
+                platform: string;
+                observed_at: string;
+                settings_source: components["schemas"]["settingsSource"];
+            };
+            agents: {
+                id: string;
+                adapter: string;
+                /** @constant */
+                execution_mode: "structured";
+                registered: components["schemas"]["observation"];
+                enabled: components["schemas"]["observation"];
+                installed: components["schemas"]["installedObservation"];
+                configured: components["schemas"]["configuredObservation"];
+                launchable: components["schemas"]["observation"];
+                control: {
+                    start: components["schemas"]["observation"];
+                    send: components["schemas"]["observation"];
+                    read: components["schemas"]["observation"];
+                    stop: components["schemas"]["observation"];
+                    resume: components["schemas"]["observation"];
+                    tools: components["schemas"]["observation"];
+                };
+                requirements: components["schemas"]["requirements"];
+            }[];
+        };
+        nativeConfigurationSource: {
+            path: string;
+            version: string;
+        };
+        nativePiLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "pi-native-api-key";
+                provider: string;
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                models_source: components["schemas"]["nativeConfigurationSource"] | null;
+                private_home: string;
+                model_target: {
+                    model_id: string;
+                    /** @enum {unknown} */
+                    api: "openai-responses" | "openai-completions" | "azure-openai-responses";
+                    /** Format: uri */
+                    base_url: string;
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "pi-cli-1.0.1";
+            };
+        };
+        nativeOpenCodeLaunchPolicy: {
+            /** @constant */
+            schema: "swa.native-launch.v1";
+            account: {
+                /** @constant */
+                kind: "opencode-native-api-key";
+                /** @constant */
+                provider: "deepseek";
+                source_home: string;
+                auth_source: components["schemas"]["nativeConfigurationSource"];
+                config_source: components["schemas"]["nativeConfigurationSource"];
+                database_source: components["schemas"]["nativeConfigurationSource"];
+                credential_id: string;
+                credential_updated_at: number;
+                private_root: string;
+                model_target: {
+                    /** @constant */
+                    model_id: "deepseek-v4-pro";
+                    /** @constant */
+                    api: "opencode-native-deepseek";
+                    /** @constant */
+                    base_url: "https://api.deepseek.com";
+                };
+            };
+            tools: {
+                /** @constant */
+                mode: "disabled";
+                /** @constant */
+                native_contract: "opencode-cli-2.0.31";
+            };
+        };
+        nativeLaunchPolicy: components["schemas"]["nativePiLaunchPolicy"] | components["schemas"]["nativeOpenCodeLaunchPolicy"];
+        agentSelection: {
+            agent_id: string;
+            adapter: string;
+            /** @constant */
+            execution_mode: "structured";
+            executable: string;
+            version: string;
+            model: string;
+            provider: string;
+            external_target: string;
+            settings_source: components["schemas"]["settingsSource"];
+            settings_revision: number;
+            configuration_version: string;
+            native_launch: components["schemas"]["nativeLaunchPolicy"];
+        };
     };
     responses: {
         /** @description Invalid command, current permission denial, version conflict or unavailable dependency. No execution retry. */
@@ -7747,6 +8011,53 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    executeOrcaCommand: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for mutation and original request lookup */
+                "Idempotency-Key"?: string;
+                /** @description Required for an authenticated human POST; project Agent bearer requests use their current scoped grant */
+                "X-CSRF-Token"?: string;
+            };
+            path: {
+                id: components["parameters"]["S2ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["command"];
+            };
+        };
+        responses: {
+            /** @description Actual native result and identities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["envelope"];
+                };
+            };
+            400: components["responses"]["S2CommandError"];
+            403: components["responses"]["S2CommandError"];
+            404: components["responses"]["S2CommandError"];
+            /** @description Actual native refusal or unknown outcome */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["envelope"] | components["schemas"]["ErrorV1"];
+                };
+            };
+            500: components["responses"]["S2CommandError"];
+            501: components["responses"]["S2CommandError"];
+            503: components["responses"]["S2CommandError"];
+            default: components["responses"]["S2CommandError"];
+        };
+    };
     getOpenVikingStatus: {
         parameters: {
             query?: never;

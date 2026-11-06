@@ -26,6 +26,7 @@ type localProjectService struct {
 	refs            ProjectReferences
 	files           ProjectFiles
 	registry        NativeRegistry
+	externalCLI     ExternalCLIRegistry
 
 	nativeMessageMu      sync.RWMutex
 	nativeMessageOptions nativeMessageOptions
@@ -35,6 +36,16 @@ type localProjectService struct {
 
 func NewLocalProjectService(repo LocalProjectRepository, refs ProjectReferences, files ProjectFiles, registry NativeRegistry) *localProjectService {
 	return &localProjectService{repo: repo, refs: refs, files: files, registry: registry, discoveryGate: make(chan struct{}, 1)}
+}
+
+func (s *localProjectService) ConfigureExternalCLIRegistry(port ExternalCLIRegistry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if port == nil || s.externalCLI != nil {
+		return errors.New("external CLI registry requires one non-nil binding before serving")
+	}
+	s.externalCLI = port
+	return nil
 }
 
 func projectError(code apierrors.Code, message string) error {
@@ -153,8 +164,14 @@ func (s *localProjectService) SetProjectSettings(ctx context.Context, c domain.C
 		}
 	}
 	if cmd.Settings.ExternalModelCLI != "" {
-		if _, err := s.registry.Adapter(cmd.Settings.ExternalModelCLI); err != nil {
-			return p, err
+		if s.externalCLI != nil {
+			if err := s.externalCLI.ValidateExternalCLI(ctx, cmd.Settings.ExternalModelCLI); err != nil {
+				return p, err
+			}
+		} else {
+			if _, err := s.registry.Adapter(cmd.Settings.ExternalModelCLI); err != nil {
+				return p, err
+			}
 		}
 	}
 	// 当前 adapter 只提供选定上下文，拒绝原生协议无法限制范围的工具配置。
