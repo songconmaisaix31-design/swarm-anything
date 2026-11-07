@@ -109,7 +109,12 @@ async function retainServiceEvidence(directory) {
   const unknownReasons = ['invalid_native_process_row', 'current_root_identity_unverified', 'root_in_descendant_branch', 'parent_incarnation_unverified', 'process_identity_not_unique', 'creation_time_unavailable', 'parent_incarnation_changed']
   const closure = value => {
     keys(value, ['rootVerified', 'ownedRows', 'excludedEdges', 'unknownRows']); bool(value.rootVerified); list(value.ownedRows, 16384, nativeRow)
-    list(value.excludedEdges, 32768, row => { keys(row, ['reason', 'actual', ...(Object.hasOwn(row, 'anchor') ? ['anchor'] : ['parent'])]); assert.ok(['different-root-incarnation', 'predates-root', 'predates-parent'].includes(row.reason)); nativeRow(row.actual); identity(row.anchor ?? row.parent) })
+    list(value.excludedEdges, 32768, row => {
+      const replaced = row.reason === 'parent-incarnation-replaced'
+      keys(row, ['reason', 'actual', ...(replaced ? ['anchor', 'parent'] : Object.hasOwn(row, 'anchor') ? ['anchor'] : ['parent'])])
+      assert.ok(['different-root-incarnation', 'predates-root', 'predates-parent', 'parent-incarnation-replaced'].includes(row.reason)); nativeRow(row.actual); identity(row.anchor ?? row.parent)
+      if (replaced) { identity(row.parent); assert.equal(row.anchor.pid, row.parent.pid); assert.ok(row.parent.creationTimeMs > row.anchor.creationTimeMs && row.actual.ppid === row.parent.pid && row.actual.creationTimeMs > row.parent.creationTimeMs) }
+    })
     list(value.unknownRows, 32768, row => {
       keys(row, ['reason', 'actual', ...(Object.hasOwn(row, 'source_anchor') ? ['source_anchor'] : [])]); assert.ok(unknownReasons.includes(row.reason)); nativeRow(row.actual)
       if (row.source_anchor) { keys(row.source_anchor, ['kind', 'pid', 'creation_time_ms']); assert.ok(['serve', 'additional'].includes(row.source_anchor.kind)); assert.ok(uint(row.source_anchor.pid) && row.source_anchor.pid > 0 && birth(row.source_anchor.creation_time_ms)) }

@@ -23,3 +23,9 @@ Pi 默认账户为空且目录为 Junction；npm Codex 0.164.0 使用 ChatGPT �
 request.show 现在先通过 SWA 自身的 observeRequest 核对同一父子回执、历史 controller pane、完整 helper 参数、Task.spec、Dispatch/session、输入 binding 与真实 journal accepted/body fingerprint。事务内重读记录并排除在途执行后，只完成原 start 父回执；最终模型结果继续由原生 collector 验证。原生只读 orchestration.requestShow 保持原合同。独立只读审查通过，后继完整 Windows 构建和实际运行继续验证。
 
 服务重启后的旧 Worker runtime epoch 不会被修改；原任务回执恢复与最终结算分别记录。最终包使用不同内容的新任务检查完整 Windows 链路。
+
+## Windows 退出观察
+
+[CI 42362649663](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42362649663) 的统一 runtime 类型检查、完整原生构建、解压检查和安装检查均通过，服务真实退出码为 0，两次 native remaining 为 0，两次 CIM 确认全部退出。服务观察器仍将 PID 复用后的外部子进程记为未知，整项未通过；原失败资料保留。
+
+真实 sample 623 中历史 conhost.exe PID 7148 已复用成新 wsl.exe，子进程 6216 比新父晚创建 21ms。观察器现在仅在同一原生快照确认唯一新父与唯一子进程，且三个有效创建时间严格满足旧父 < 新父 < 子时排除该旧父边，并记录三份原身份。缺失父、时间不足和重复身份继续未知。原首个、PID 复用和末尾真实样本回放的 owned 数量保持 2/8/2，unknown 均为 0；退出门保持原要求，完整 Windows CI 继续验证。

@@ -75,6 +75,16 @@ function collectStrict(actualRows, root, independentlyOwned = new Set()) {
       // Unknown parentage propagates through every raw-reachable child.
       // A readable child timestamp cannot repair that missing provenance.
       if (!parent.verified) {
+        const current = byPID.get(parent.pid)
+        // 同一快照确认父 PID 已复用，且子进程更晚创建时，原父身份不可能产生此边。
+        if (positivePID(parent.pid) && positivePID(row.pid) && byPID.get(row.pid)?.length === 1 && current?.length === 1 &&
+            creation(parent.creationTimeMs) && creation(current[0].creationTimeMs) && creation(row.creationTimeMs) &&
+            current[0].creationTimeMs > parent.creationTimeMs && row.creationTimeMs > current[0].creationTimeMs) {
+          excludedEdges.push({ reason: 'parent-incarnation-replaced', actual: row,
+            anchor: { pid: parent.pid, creationTimeMs: parent.creationTimeMs },
+            parent: { pid: current[0].pid, creationTimeMs: current[0].creationTimeMs } })
+          continue
+        }
         if (!independentlyOwned.has(row)) unknown('parent_incarnation_unverified', row)
         enqueue(row, false)
         continue
