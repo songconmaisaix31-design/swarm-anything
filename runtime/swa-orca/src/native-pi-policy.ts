@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
 import { findPackageJSON } from 'node:module'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { resolveWindowsCmdShim } from '@orca/process-host/windows-cmd-shim-resolution'
 import { z } from 'zod'
@@ -146,14 +146,14 @@ export async function inspectNativePiSources(executable: string, version: string
   }
   const manifestPath = findPackageJSON(pathToFileURL(entry.path))
   if (!manifestPath) throw new Error('native_cli_source_unverifiable')
-  const manifest = await readJSON(manifestPath)
+  const manifest = await readJSON(fileURLToPath(pathToFileURL(manifestPath)))
   const parsed = cliPackageSchema.safeParse(manifest.value)
   if (!parsed.success) throw new Error('native_cli_source_unverifiable')
   const declaredEntry = await realpath(resolve(dirname(manifest.source.path), parsed.data.bin.pi))
   if (process.platform === 'win32' ? declaredEntry.toLowerCase() !== entry.path.toLowerCase() : declaredEntry !== entry.path) throw new Error('native_cli_source_unverifiable')
   const aiPath = findPackageJSON('@earendil-works/pi-ai', pathToFileURL(entry.path))
   if (!aiPath) throw new Error('native_cli_source_unverifiable')
-  const ai = await readJSON(aiPath)
+  const ai = await readJSON(fileURLToPath(pathToFileURL(aiPath)))
   if (!aiPackageSchema.safeParse(ai.value).success) throw new Error('native_cli_contract_unavailable')
   const files = await Promise.all(['core/model-config.js', 'core/provider-composer.js', 'core/resolve-config-value.js', 'core/auth-storage.js'].map(file => nativeConfigurationSource(join(dirname(manifest.source.path), 'dist', file))))
   const catalog = await nativeConfigurationSource(join(dirname(ai.source.path), 'dist/providers/all.js'))
