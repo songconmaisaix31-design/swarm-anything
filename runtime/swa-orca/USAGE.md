@@ -135,6 +135,27 @@ Linux候选要求x64 glibc系统，以及内核可查询的`/proc`、pidfd和当
 
 Linux服务在本次`serve`进程启用内核subreaper，按照真实boot ID、进程启动ticks、UID和pidfd核对后代，包括脱离会话后重新挂载的进程。正常关闭所属stdin或发送Ctrl-C后，先等待所属Node/HTTP退出，再回收已收养且身份确定的后代，并通过独立的完整进程观察确认退出。只观察到父进程退出不能代表整树释放。强制杀死`serve`或无法查询进程表时不能保证整树回收，仍须保留未知状态并核对原资源。旧Linux服务或daemon仍存活时不自动接管，也不删除其证据。
 
+## macOS 安装与启动
+
+macOS 候选使用 arm64 原生 Go 二进制、固定 Node 24.21.0 和原生编译的 node-pty。构建需要 Xcode Command Line Tools、满足 go.mod 的 Go、Node 24.16.0、pnpm 11.27.0 和 Python。`SWA_PNPM_CLI` 指向该 pnpm 的绝对 JavaScript 入口；提交源码后运行 `node scripts/build-swa.mjs --output "$PWD/dist/swa-macos-arm64" --python /usr/bin/python3`。构建检查固定 Node 归档、可执行文件和 headers 的 SHA-256。
+
+安装目标须是 Git 工作区外的新目录，父目录已存在。安装与数据目录不可和实际账户保护目录重叠。下列变量为实际绝对路径，安装使用候选自带的 Node：
+
+```sh
+"$package_root/node/node" "$package_root/install-swa.mjs" --package "$package_root" --destination "$install_root" --protected-root "$HOME/.codex"
+"$install_root/swa" --version
+"$install_root/swa" --help
+"$install_root/swa" serve --data-dir "$data_root" --port 8787 --protected-roots "$HOME/.codex:$HOME/.pi" --json
+```
+
+仅列入确实存在的保护目录，并补充本机其他账户目录。保持前台 stdin 开启，Ctrl-C 请求关闭所属服务。目录路径段不得包含符号链接；数据根必须属于当前 UID、权限为 0700 且无扩展 ACL。安装不修改 PATH、launchd 或系统设置。项目授权和 token 仍遵循下方协议；获得本次项目观察授权后配置 `SWA_ENDPOINT`、`SWA_PROJECT_ID` 和仅在内存中保存的 `SWA_PROJECT_TOKEN`，再执行 `swa capabilities --json`。
+
+macOS 使用 `kern.proc.pid` 的 PID、UID 和微秒启动时间核验进程，以 `kern.boottime` 标识本次系统启动；协议中的 `start_ticks` 在 Darwin 表示微秒，不能与 Linux ticks 比较。Node 通过同安装的只读 `swa darwin-process-identity PID` 查询内核，查询不读取账户配置。服务子进程使用独立进程组，已归属后代通过父链快照识别并以 kqueue 观察退出。正常关闭后独立重读内核进程表，只有已观察身份的退出事件和进程缺失一致时才确认这些进程退出。
+
+macOS 没有 Linux subreaper 和 pidfd；kqueue 的 fork 事件不包含完整子进程身份，进程快照也不能证明捕获瞬间脱组的全部后代。观察注册前的 fork 无法追溯，因此即使未收到 fork 事件且已知后代均退出，整树完整性仍返回退出码 6“效果未知”；同一系统启动中的旧 daemon 记录阻止自动接管。此候选的整树正常释放验收仍未满足。未知进程不会按 PID 或组号直接终止。可用内存量保持 unknown，资源报告单独提供物理内存总量。
+
+Linux bubblewrap 项目 shell 和原生 Worker 进程归属能力不适用于 macOS，未完成对应验证的能力保持不可用。发现 Pi/Codex 可执行文件只证明安装与版本探测，不证明账户可用、模型执行或 Worker 释放通过。实际构建、安装与启动验证记录见仓库 `tasks/macos-arm64-port.md`。
+
 ## 启动私有服务
 
 `$dataRoot`为产品独占绝对目录，须与安装目录、原Orca及所有保护目录互不包含。默认发现本机原生命令和配置。需要采用既有Orca的Agent设置时，显式提供`--agent-profile $agentProfile`，其中`$agentProfile`是已经存在的原profile绝对目录；该来源只读，缺失或损坏时明确失败。
