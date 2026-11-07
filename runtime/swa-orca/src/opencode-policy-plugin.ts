@@ -197,11 +197,19 @@ export default {
       const { scope } = await guardSession(event)
       const context = z.object({ model: modelSchema, agent: z.literal('build'), tools: z.record(z.string(), z.unknown()) }).parse(event)
       if (!isDeepStrictEqual(Object.keys(context.tools).sort(), project ? ['shell'] : [])) throw new Error('swa_opencode_request_tools_available')
-      // context.messages 可能与原生历史共享对象；先复制模型输入，再移除桥接元数据。
-      const messages = structuredClone(z.object({ messages: z.array(z.record(z.string(), z.unknown())) }).parse(event).messages)
-      for (const message of messages) {
-        if (message.metadata && typeof message.metadata === 'object') delete (message.metadata as Record<string, unknown>).swa_input
-      }
+      // OpenCode 2.0.31 的 Message 为原生类；通过其官方 make 保留类型并避免修改历史。
+      const messageSchema = z.object({ role: z.string(), content: z.unknown(), metadata: z.record(z.string(), z.unknown()).optional() })
+      const messages = z.object({ messages: z.array(z.unknown()) }).parse(event).messages.map(raw => {
+        const message = messageSchema.parse(raw)
+        if (!message.metadata || !Object.hasOwn(message.metadata, 'swa_input')) return raw as typeof message
+        const metadata = { ...message.metadata }
+        delete metadata.swa_input
+        const original = raw as object & { constructor: { make?: (input: unknown) => unknown } }
+        if (typeof original.constructor.make !== 'function') throw new Error('swa_opencode_message_constructor_unavailable')
+        const copy = original.constructor.make({ ...original, metadata })
+        if (!copy || Object.getPrototypeOf(copy) !== Object.getPrototypeOf(original)) throw new Error('swa_opencode_message_type_changed')
+        return copy as typeof message
+      })
       if (JSON.stringify(messages).includes(inputPrefix) || JSON.stringify(messages).includes('"swa_input"')) throw new Error('swa_opencode_model_input_bridge_leaked')
       Object.assign(event as object, { messages })
       const users = messages.filter(message => message.role === 'user').map(message => typeof message.content === 'string' ? message.content : z.array(z.object({ type: z.literal('text'), text: z.string() })).parse(message.content).map(part => part.text).join(''))
