@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -27,11 +27,26 @@ const nativeInputs = {
     addon: ptyAddon, sha256: createHash('sha256').update(await readFile(ptyAddon)).digest('hex') }
 }
 const { build } = requireRuntime('esbuild')
-await mkdir(join(root, '.verification/controller-linux-startup'), { recursive: true })
-const directory = await mkdtemp(join(root, '.verification/controller-linux-startup/run-'))
+const outputRoot = process.platform === 'darwin' ? join(root, '.verification/macos-port2/controller-startup') : join(root, '.verification/controller-linux-startup')
+await mkdir(outputRoot, { recursive: true })
+const directory = await mkdtemp(join(outputRoot, 'run-'))
+if (process.platform === 'darwin') {
+  // 原生预检查通过 require.resolve 查找 spawn-helper，与加载的 addon 必须来自同一安装。
+  const spawnHelper = join(dirname(ptyAddon), 'spawn-helper')
+  const info = await stat(spawnHelper)
+  assert.ok(info.isFile() && (info.mode & 0o111) !== 0, 'installed spawn-helper must already be executable; do not repair the installation')
+  await mkdir(join(directory, 'node_modules'))
+  await symlink(dirname(ptyPackage), join(directory, 'node_modules/node-pty'), 'dir')
+  assert.equal(await realpath(createRequire(join(directory, 'source.cjs')).resolve('node-pty/lib/unixTerminal.js')), await realpath(requireInstalled.resolve('node-pty/lib/unixTerminal.js')))
+  nativeInputs.node_pty.spawn_helper = { path: spawnHelper, sha256: createHash('sha256').update(await readFile(spawnHelper)).digest('hex') }
+}
 for (const name of ['home', 'cwd', 'temp', 'data']) await mkdir(join(directory, name), { mode: 0o700 })
 process.env.ORCA_USER_DATA_PATH = join(directory, 'data')
-process.env.TMPDIR = join(directory, 'temp')
+process.env.TMPDIR ??= join(directory, 'temp')
+if (process.platform === 'darwin') {
+  process.env.SWA_INSTALL_ROOT = dirname(executable)
+  process.env.SWA_EXECUTABLE = executable
+}
 const common = {
   absWorkingDir: root, bundle: true, platform: 'node', target: 'node24', format: 'cjs', conditions: ['orca-source'],
   nodePaths: [join(runtime, 'node_modules'), join(root, 'node_modules')],
@@ -61,6 +76,10 @@ test('controller parameters respect the actual local Windows-only shell override
   const linux = makeOptions('linux')
   assert.equal(Object.hasOwn(linux, 'shellOverride'), false)
   assert.equal(production.terminalShellOverrideRefusal({ ...scope, platform: 'linux', shellOverride: linux.shellOverride }), null)
+  const darwin = makeOptions('darwin')
+  assert.equal(Object.hasOwn(darwin, 'shellOverride'), false)
+  assert.equal(darwin.command, linux.command)
+  assert.equal(production.terminalShellOverrideRefusal({ ...scope, platform: 'darwin', shellOverride: darwin.shellOverride }), null)
   const windows = makeOptions('win32')
   assert.equal(windows.shellOverride, 'pwsh.exe')
   assert.equal(production.terminalShellOverrideRefusal({ ...scope, platform: 'win32', shellOverride: windows.shellOverride }), null)
@@ -68,14 +87,21 @@ test('controller parameters respect the actual local Windows-only shell override
   assert.equal(production.resolveWindowsShellLaunchArgs('pwsh.exe', scope.cwd, scope.cwd, undefined, windows.command).startupCommandDeliveredInShellArgs, true)
 })
 
-test('actual native PTY starts the original controller helper, identifies twice and exits through EOF', { skip: process.platform !== 'linux', timeout: 25_000 }, async () => {
+test('actual native PTY starts the original controller helper, identifies twice and exits through EOF', { skip: !['linux', 'darwin'].includes(process.platform), timeout: 25_000 }, async () => {
   const sessionId = randomUUID(), requestId = randomUUID(), workspace = randomUUID()
   const handle = production.deriveRemoteRuntimeTerminalCreateHandle('swa-controller-local', workspace, `${requestId}/controller-pty`)
   const options = production.controllerTerminalOptions(process.execPath, helper, handle)
   const data = join(directory, 'data'), cwd = join(directory, 'cwd')
-  const env = { ...options.env, ORCA_TERMINAL_HANDLE: handle, ORCA_USER_DATA: data, ORCA_USER_DATA_PATH: data, SWA_EXECUTABLE: executable, HOME: join(directory, 'home'), TMPDIR: join(directory, 'temp') }
+  const env = { ...options.env, ORCA_TERMINAL_HANDLE: handle, ORCA_USER_DATA: data, ORCA_USER_DATA_PATH: data, SWA_EXECUTABLE: executable, HOME: join(directory, 'home'), ZDOTDIR: join(directory, 'home'), TMPDIR: process.env.TMPDIR }
   const readiness = [], replies = new Map()
   let transcript = '', exit = null, spawnIncarnation = null, rootIdentity = null, helperIdentity = null, naturalExit = false
+  let failure = null
+  const darwin = process.platform === 'darwin'
+  const readIdentity = darwin ? production.readSwaDarwinProcess : production.readSwaLinuxProcess
+  const requireAncestor = darwin ? production.requireSwaDarwinAncestor : production.requireSwaLinuxAncestor
+  const isAbsent = darwin ? pid => production.observeSwaDarwinProcess(pid).state === 'absent' : production.isSwaLinuxProcessAbsent
+  // exec 可改变程序路径；Darwin 的 PID、UID、微秒启动时间及 boottime 必须保持同一进程实例。
+  const darwinIncarnation = identity => ({ platform: identity.platform, pid: identity.pid, owner_uid: identity.owner_uid, start_ticks: identity.start_ticks, boot_id: identity.boot_id })
   const framer = production.createIncrementalNdjsonFramer(value => {
     const parsed = production.helperReply.safeParse(value)
     if (parsed.success) replies.set(parsed.data.request_id, parsed.data)
@@ -104,7 +130,7 @@ test('actual native PTY starts the original controller helper, identifies twice 
       }
     })
     assert.ok(created.pid > 0)
-    spawnIncarnation = production.readSwaLinuxProcessIncarnation(created.pid)
+    spawnIncarnation = darwin ? darwinIncarnation(readIdentity(created.pid)) : production.readSwaLinuxProcessIncarnation(created.pid)
     for (const id of [requestId, randomUUID()]) {
       host.write(sessionId, JSON.stringify(production.helperInput.parse({ type: 'swa_controller_action', action: 'identify', request_id: id })) + '\n')
       await waitUntil(() => replies.has(id) || exit !== null, 'original helper did not identify')
@@ -113,22 +139,28 @@ test('actual native PTY starts the original controller helper, identifies twice 
       assert.equal(reply.controller, handle)
       assert.deepEqual(reply.result, { ready: true })
       assert.equal(reply.error, undefined)
-      const current = production.readSwaLinuxProcess(reply.pid)
-      production.requireSwaLinuxIncarnation(spawnIncarnation)
-      rootIdentity ??= production.readSwaLinuxProcess(created.pid)
-      production.requireSwaLinuxAncestor(current, rootIdentity)
+      const current = readIdentity(reply.pid)
+      if (darwin) {
+        assert.deepEqual(darwinIncarnation(readIdentity(created.pid)), spawnIncarnation)
+        assert.equal(current.executable.path, await realpath(process.execPath), 'helper must execute the selected real Node')
+      } else production.requireSwaLinuxIncarnation(spawnIncarnation)
+      rootIdentity ??= readIdentity(created.pid)
+      requireAncestor(current, rootIdentity)
       if (helperIdentity) assert.deepEqual(current, helperIdentity)
       else helperIdentity = current
     }
     host.write(sessionId, '\x04')
     await waitUntil(() => exit !== null, 'original helper did not exit on EOF')
     assert.equal(exit.code, 0)
-    await waitUntil(() => production.isSwaLinuxProcessAbsent(helperIdentity.pid) && production.isSwaLinuxProcessAbsent(rootIdentity.pid), 'owned PTY/helper process still exists')
+    await waitUntil(() => isAbsent(helperIdentity.pid) && isAbsent(rootIdentity.pid), 'owned PTY/helper process still exists')
     naturalExit = true
     assert.deepEqual(host.listSessions(), [])
+  } catch (error) {
+    failure = { name: error.name, message: error.message, code: error.code }
+    throw error
   } finally {
     await host.dispose()
-    await writeFile(join(directory, 'actual-controller-report.json'), JSON.stringify({ status: naturalExit ? 'PASS' : 'FAIL', natural_eof: naturalExit, nativeInputs, spawnIncarnation, rootIdentity, helperIdentity, exit, readiness, reply_count: replies.size, sessions_after_dispose: host.listSessions(), coverage: 'original_terminal_host_pty_helper_only', model_execution: 'NOT_RUN' }, null, 2) + '\n', { flag: 'wx' })
+    await writeFile(join(directory, 'actual-controller-report.json'), JSON.stringify({ status: naturalExit ? 'PASS' : 'FAIL', natural_eof: naturalExit, platform: process.platform, identity_source: darwin ? 'swa.darwin-process-identity.v1' : 'linux-proc', complete_tree_release: darwin ? 'unknown' : 'NOT_CLAIMED', failure, nativeInputs, spawnIncarnation, rootIdentity, helperIdentity, exit, readiness, reply_count: replies.size, sessions_after_dispose: host.listSessions(), coverage: 'original_terminal_host_pty_helper_only', model_execution: 'NOT_RUN' }, null, 2) + '\n', { flag: 'wx' })
     await writeFile(join(directory, 'actual-controller-transcript.txt'), transcript, { flag: 'wx', mode: 0o600 })
   }
   assert.equal(naturalExit, true)

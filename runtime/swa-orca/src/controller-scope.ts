@@ -6,10 +6,12 @@ import { getLocalPtyProvider } from '../../../third_party/orca-v1.4.230/src/main
 import { readWindowsProcessIdentityTableFresh } from '../../../third_party/orca-v1.4.230/src/main/windows/windows-process-table'
 import { contextSchema, nativeObject, scopeSchema, type Scope } from './contracts'
 import { isSwaLinuxProcessAbsent, readSwaLinuxProcess, requireSwaLinuxProcess, swaLinuxProcessIdentitySchema } from '../../../third_party/orca-v1.4.230/src/main/daemon/swa-linux-process-identity'
+import { observeSwaDarwinProcess, readSwaDarwinProcess, swaDarwinProcessIdentitySchema } from '../../../third_party/orca-v1.4.230/src/main/daemon/swa-darwin-process-identity'
 
 const controllerProcessSchema = z.union([
   z.object({ pid: z.number().int().positive(), creationTimeMs: z.number().positive(), name: z.string() }),
-  swaLinuxProcessIdentitySchema
+  swaLinuxProcessIdentitySchema,
+  swaDarwinProcessIdentitySchema.options[0]
 ])
 
 export const controllerOwnerSchema = z.object({
@@ -66,7 +68,15 @@ export async function observeControllerExited(runtime: OrcaRuntimeService, owner
     const inventory = await getLocalPtyProvider().listProcesses()
     const ptys = inventory.filter(row => row.id === owner.binding.ptyId || row.terminalHandle === owner.controller)
     let processCount = 0
-    if (process.platform === 'linux') {
+    if (process.platform === 'darwin') {
+      for (const old of [owner.process, owner.helper]) {
+        if (!('platform' in old) || old.platform !== 'darwin') return fail('operation_unknown', 'The controller belongs to another operating system')
+        const actual = observeSwaDarwinProcess(old.pid)
+        if (actual.state === 'absent') continue
+        if (!isDeepStrictEqual(actual, old)) return fail('operation_unknown', 'The prior controller process identity was replaced')
+        processCount++
+      }
+    } else if (process.platform === 'linux') {
       for (const old of [owner.process, owner.helper]) {
         if (!('platform' in old)) return fail('operation_unknown', 'The controller belongs to another operating system')
         try {
@@ -97,9 +107,15 @@ export async function exactController(runtime: OrcaRuntimeService, owner: Contro
   const binding = runtime.getTerminalPromptRequestBinding(owner.controller)
   if (binding.ptyId !== owner.binding.ptyId || binding.processIncarnation !== owner.binding.processIncarnation) return fail('worker_identity_changed', 'The controller binding changed')
   if (runtime.getTerminalProcessIncarnation(owner.controller) !== owner.caller_authority.processIncarnation) return fail('worker_identity_changed', 'The controller caller process incarnation changed')
+  if (process.platform === 'darwin') {
+    for (const identity of [owner.process, owner.helper]) {
+      if (!('platform' in identity) || identity.platform !== 'darwin' || !isDeepStrictEqual(readSwaDarwinProcess(identity.pid), identity)) return fail('worker_identity_changed', 'The Darwin controller process identity changed')
+    }
+    return
+  }
   if (process.platform === 'linux') {
     for (const identity of [owner.process, owner.helper]) {
-      if (!('platform' in identity)) return fail('worker_identity_changed', 'The controller belongs to another operating system')
+      if (!('platform' in identity) || identity.platform !== 'linux') return fail('worker_identity_changed', 'The controller belongs to another operating system')
       requireSwaLinuxProcess(identity)
     }
     return

@@ -16,6 +16,7 @@ import { quotePowerShellNativeArgument } from '../../../third_party/orca-v1.4.23
 import { resolveWindowsShellLaunchArgs } from '../../../third_party/orca-v1.4.230/src/main/providers/windows-shell-args'
 import { quotePosixShellString } from '../../../third_party/orca-v1.4.230/src/main/agent-hooks/posix-hook-command'
 import { readSwaLinuxProcess, requireSwaLinuxAncestor } from '../../../third_party/orca-v1.4.230/src/main/daemon/swa-linux-process-identity'
+import { readSwaDarwinProcess, requireSwaDarwinAncestor } from '../../../third_party/orca-v1.4.230/src/main/daemon/swa-darwin-process-identity'
 import { createIncrementalNdjsonFramer } from '../../../third_party/orca-v1.4.230/src/shared/main-process-ndjson-framer'
 import { getPendingWorkerStartRecovery, hashCanonical } from '../../../third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'
 import { parsePaneKey } from '../../../third_party/orca-v1.4.230/src/shared/stable-pane-id'
@@ -152,7 +153,7 @@ async function effect<T>(run: () => Promise<T>): Promise<T> {
 
 // Linux 由原生宿主选择登录 shell；per-terminal override 只适用于 Windows。
 export function controllerTerminalOptions(node: string, entry: string, preAllocatedHandle: string, platform: NodeJS.Platform = process.platform): TerminalCreateOptions {
-  const command = platform === 'linux' ? `exec ${quotePosixShellString(node)} ${quotePosixShellString(entry)}` : `& ${quotePowerShellNativeArgument(node)} ${quotePowerShellNativeArgument(entry)}; exit $LASTEXITCODE`
+  const command = platform === 'linux' || platform === 'darwin' ? `exec ${quotePosixShellString(node)} ${quotePosixShellString(entry)}` : `& ${quotePowerShellNativeArgument(node)} ${quotePowerShellNativeArgument(entry)}; exit $LASTEXITCODE`
   return {
     command, env: { SWA_CONTROLLER_HELPER: '1' }, ...(platform === 'win32' ? { shellOverride: 'pwsh.exe' } : {}), startupCommandDelivery: 'fast',
     launchConfig: { agentCommand: `"${node}"`, agentArgs: `"${entry}"`, agentEnv: { SWA_CONTROLLER_HELPER: '1' } },
@@ -172,7 +173,7 @@ async function createController(context: RpcContext, project: string, workspace:
   if (!node) throw new Error('installed_node_missing')
   const launchScope = await runtime.resolveTerminalWorkspaceLaunchScope(`id:${workspace}`)
   const options = controllerTerminalOptions(node, entry, controller)
-  if (launchScope.connectionId || process.platform !== 'linux' && process.platform !== 'win32' || process.platform === 'win32' && !resolveWindowsShellLaunchArgs('pwsh.exe', launchScope.path, launchScope.path, undefined, options.command).startupCommandDeliveredInShellArgs) throw new Error('native_controller_startup_delivery_unavailable')
+  if (launchScope.connectionId || !['linux', 'darwin', 'win32'].includes(process.platform) || process.platform === 'win32' && !resolveWindowsShellLaunchArgs('pwsh.exe', launchScope.path, launchScope.path, undefined, options.command).startupCommandDeliveredInShellArgs) throw new Error('native_controller_startup_delivery_unavailable')
   const terminal = await runtime.dedupeTerminalCreate('swa-controller-local', `id:${workspace}`, childId, false,
     (canonical, preAllocatedHandle) => runtime.createTerminal(canonical, {
       ...options, preAllocatedHandle
@@ -184,7 +185,11 @@ async function createController(context: RpcContext, project: string, workspace:
   const pty = listed.find(row => row.id === binding.ptyId && row.terminalHandle === controller && row.incarnationId === binding.processIncarnation)
   if (!pty?.rootProcessId) throw new Error('native_controller_process_missing')
   let rootProcess: z.infer<typeof controllerOwnerSchema>['process'], helperProcess: z.infer<typeof controllerOwnerSchema>['helper']
-  if (process.platform === 'linux') {
+  if (process.platform === 'darwin') {
+    rootProcess = readSwaDarwinProcess(pty.rootProcessId)
+    helperProcess = readSwaDarwinProcess(observed.pid)
+    requireSwaDarwinAncestor(helperProcess, rootProcess)
+  } else if (process.platform === 'linux') {
     rootProcess = readSwaLinuxProcess(pty.rootProcessId)
     helperProcess = readSwaLinuxProcess(observed.pid)
     requireSwaLinuxAncestor(helperProcess, rootProcess)
