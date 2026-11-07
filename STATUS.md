@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-07 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)：修复 OpenCode ACP 接受输入的身份观察及官方 Message 类的 context 处理。`a5899493` 完整 Linux 构建、新安装与实际模型链路通过；模拟器输入、两轮完成与呈现、导出、HTTP 接续/去重、重启、指定停止和正式释放共 11 项通过。SWA serve 正常退出 0。验证范围与原生身份见任务页。
+
 2026-10-29 后继：[Morphogenesis 工具桥](tasks/swa-morph-bridge-20261029.md)已实现。Pi 可通过固定 `morph_list_tools` / `morph_call_tool` 连接同项目的 Morph MCP；CLI、项目工具许可、原生消息、结果导出和安装构建入口已接通。真实扩展经官方 MCP SDK 调用 Python 子进程，列出 23 工具、认领并释放任务、传递错误与关闭子进程均通过。原生 Pi 模型会话未运行；本环境尚无模型账号和已授权 SWA 项目。
 
 本轮完整 runtime 与 Web 类型检查、新桥 8 项、相关原生回归 12 项、设置表单 3 项、完整 Go app 检查及 264 个契约示例通过。完整 CLI 包的 `TestLinuxServiceRealProcessTree` 因 PID namespace 与 `/proc` 环境不一致失败，其余 CLI 检查通过。完整候选构建与安装检查在此源码冻结后进行，结果写入任务页。
