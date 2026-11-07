@@ -154,7 +154,11 @@ macOS 使用 `kern.proc.pid` 的 PID、UID 和微秒启动时间核验进程，�
 
 macOS 没有 Linux subreaper 和 pidfd；kqueue 的 fork 事件不包含完整子进程身份，进程快照也不能证明捕获瞬间脱组的全部后代。观察注册前的 fork 无法追溯，因此即使未收到 fork 事件且已知后代均退出，整树完整性仍返回退出码 6“效果未知”；同一系统启动中的旧 daemon 记录阻止自动接管。此候选的整树正常释放验收仍未满足。未知进程不会按 PID 或组号直接终止。可用内存量保持 unknown，资源报告单独提供物理内存总量。
 
-Linux bubblewrap 项目 shell 和原生 Worker 进程归属能力不适用于 macOS，未完成对应验证的能力保持不可用。发现 Pi/Codex 可执行文件只证明安装与版本探测，不证明账户可用、模型执行或 Worker 释放通过。实际构建、安装与启动验证记录见仓库 `tasks/macos-arm64-port.md`。
+macOS 的 Pi 1.5.0 模型目录通过官方 `pi --list-models` 观察，不直接读取账号秘密文件。当前授权的本地模型为 `omlx/CyberTiel-MLX-MTP`；官方命令成功列出模型后，`configured` 为 available，认证状态仍为 unknown。Codex 要求显式 `SWA_CODEX_API_KEY_HOME`；未设置时保持未配置，不使用 ChatGPT OAuth 登录作为替代来源。
+
+内部 Darwin 监督器将直接子进程放入独立进程组，通过专用管道接受绑定完整身份的停止请求，并记录直接 child 的回收和已观察后代状态。它保留 `tree:unknown` 与退出码 6，尚未接入完整 ProviderProcessTree 释放合同。现有 Pi 原生会话策略校验 1.0.1，本机 1.5.0 会话合同未验证，因此正式 `control.start/send/stop` 保持 unknown，`swa run` 明确拒绝。Linux bubblewrap 项目 shell 在 macOS 保持 unavailable。正式 Worker 停止命令为 `swa worker stop --controller ... --dispatch ... --request-id ... --json`，必须使用实际创建的身份。
+
+第二轮验证使用新的安装目录、数据根与 8788；不要复用运行中的 8787 或其数据。直接监督器下的官方 Pi 调用、SWA Run、正式导出和整树释放分别记录。实际构建、安装与启动验证记录见仓库 `tasks/macos-arm64-port.md`。
 
 ## 启动私有服务
 

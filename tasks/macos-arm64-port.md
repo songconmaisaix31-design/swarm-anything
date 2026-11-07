@@ -1,5 +1,19 @@
 # macOS arm64 移植
 
+## 第二轮：Worker 生命周期与模型目录
+
+依据完整读取的 [MACOS-PORT-BRIEF-2](../MACOS-PORT-BRIEF-2.md)，在同一分支从 `f290e2602fca2ccfcad66c01fc8086c2042f5dfb` 继续，只做本地主题提交。现有 `127.0.0.1:8787` 服务及 `~/Documents/SWA-macOS-validation/fl-data-parent/d` 保持原状；验证使用新的安装、短数据根和 8788。
+
+修改范围为 Go Darwin 直接子进程监督器、Node 消费者、原生 Controller 身份、官方 CLI 模型发现、相关测试与说明。Go 和配置观察分别由原 Codex 子代理负责；独立 Reviewer 只读审查进程信号、管道失联与退出证据，主负责人处理消费者和实际安装验收。未使用外部 Agent 服务。
+
+`swa darwin-worker-supervise ABS_PROGRAM ...` 是内部直接子进程入口，使用独立进程组、fd3 事件与 fd4 控制通道。停止请求绑定完整 v1 身份及规范 UUID，由同一 Go 事件循环核验、发送信号和回收直接 child；kqueue 观察 EXIT/FORK，后代仅观察，不按裸 PID 或进程组终止。`reaped`、子进程退出码/信号与 `tree:unknown` 分别记录，监督器返回 6。Node 不把未回收或缺失最终事件当作完成，管道异常采用有界收尾。
+
+Pi 1.5.0 的模型观察仅调用实际官方 `--list-models`，不读取账号秘密文件；本次授权模型为 `omlx/CyberTiel-MLX-MTP`。`configured` 与模型目录按实际观察返回，认证保持 unknown。Codex 继续要求显式 `SWA_CODEX_API_KEY_HOME`，未设置时未配置。现有 Pi 会话来源合同固定为 1.0.1，1.5.0 会话合同和整树释放尚未证明，因此产品 `control.start/send/stop` 仍 unknown；选择阶段明确拒绝，不进入读取原生 Pi 账号的旧策略。Linux bubblewrap 能力保持 unavailable。
+
+验收入口分别为 `tests/swa-cli-headless/darwin-worker-installed.mjs`（真实 8788 服务、人工授权、capabilities、正式 run）和 `tests/swa-cli-headless/darwin-pi-lifecycle.mjs`（同安装监督器下官方 Pi 只读调用与身份停止）。两者证据分开，直接 CLI 输出不作为 SWA Run 或导出成功证明。本轮实际结果与限制在完成执行后补充，日志目录为 `.verification/macos-port2/`。
+
+## 第一轮记录
+
 任务依据：完整读取的 [MACOS-PORT-BRIEF](../MACOS-PORT-BRIEF.md)。基线为 `d9d979303b074a021a8f7e13038b3e2e45615b9f`，工作分支 `codex/macos-arm64-port`。用户授权无人值守完成实现与本机验证；按任务要求分主题本地提交，不推送。
 
 主负责人修改 Go 平台实现、测试和说明；Node Worker 修改 runtime 与 daemon 身份消费者；打包 Worker 修改 Darwin 构建、安装及检查脚本。进程与权限方案经过独立审查；审查中发现的 ACL 与注册前 fork 窗口修正由主负责人复核并纳入统一测试。使用当前 Codex 原生子代理及继承模型，无外部 Orca/模型账号调用。
