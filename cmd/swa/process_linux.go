@@ -184,7 +184,7 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 		return nil, errors.Join(err, job.close())
 	}
 	job.ownership.ServeStartTicks = strconv.FormatUint(self.Starttime, 10)
-	prior, err := readServiceDaemonRecord(data, install, revision)
+	prior, err := readServiceDaemonRecord(data, install, revision, false)
 	if err != nil {
 		return nil, errors.Join(err, job.close())
 	}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -190,7 +191,7 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 	if err != nil || len(decoded) != 20 || revision != strings.ToLower(revision) {
 		return nil, errors.New("实际安装源码版本无效")
 	}
-	prior, err := readServiceDaemonRecord(data, install, revision)
+	prior, err := readServiceDaemonRecord(data, install, revision, true)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +216,26 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 		}
 		opened, _, callErr := windows.NewLazySystemDLL("kernel32.dll").NewProc("OpenJobObjectW").Call(uintptr(windows.READ_CONTROL|0x0004|0x0001), 0, uintptr(unsafe.Pointer(name)))
 		if opened == 0 {
-			return nil, errors.Join(errServiceOwnershipUnknown, callErr)
+			if !errors.Is(callErr, windows.ERROR_FILE_NOT_FOUND) {
+				return nil, errors.Join(errServiceOwnershipUnknown, callErr)
+			}
+			if err := serviceProcessExited(prior.ServiceJob.DaemonPID, prior.ServiceJob.DaemonCreatedAtMS); err != nil {
+				return nil, errors.Join(errServiceOwnershipUnknown, err)
+			}
+			if err := serviceJobAbsentInAllSessions(prior.ServiceJob.Name); err != nil {
+				return nil, errors.Join(errServiceOwnershipUnknown, err)
+			}
+			// 原 Job 已销毁且两项原进程身份均退出；同名新 Job 保留单一 serve 的成员检查。
+			prior = nil
+			job.adopted = nil
+		} else {
+			job.handle = windows.Handle(opened)
+			if prior.ServiceJob.SourceRevision != revision || !sameServicePath(prior.ServiceJob.InstallRoot, install) {
+				return nil, errors.Join(errServiceOwnershipUnknown, job.close())
+			}
 		}
-		job.handle = windows.Handle(opened)
-	} else {
+	}
+	if prior == nil {
 		acl := "O:" + user.User.Sid.String() + "D:P(A;;0x1f003f;;;" + user.User.Sid.String() + ")(A;;0x1f003f;;;SY)"
 		descriptor, err := windows.SecurityDescriptorFromString(acl)
 		if err != nil {
@@ -255,6 +272,71 @@ func ownServiceTree(data, install string) (*serviceJob, error) {
 		return nil, errors.Join(fmt.Errorf("serve Job 初始成员不确定: active=%d", active), err, job.close())
 	}
 	return job, nil
+}
+
+var errServiceJobStillPresent = errors.New("原命名 Job 仍存在于 Windows Session")
+
+func serviceJobAbsentInAllSessions(name string) (result error) {
+	ntdll := windows.NewLazySystemDLL("ntdll.dll")
+	directoryName, err := windows.NewNTUnicodeString(`\Sessions`)
+	if err != nil {
+		return err
+	}
+	attributes := windows.OBJECT_ATTRIBUTES{ObjectName: directoryName, Attributes: windows.OBJ_CASE_INSENSITIVE}
+	attributes.Length = uint32(unsafe.Sizeof(attributes))
+	var directory windows.Handle
+	status, _, _ := ntdll.NewProc("NtOpenDirectoryObject").Call(uintptr(unsafe.Pointer(&directory)), 0x0001, uintptr(unsafe.Pointer(&attributes)))
+	if status != 0 {
+		return windows.NTStatus(uint32(status))
+	}
+	defer func() { result = errors.Join(result, windows.CloseHandle(directory)) }()
+	leaf := strings.TrimPrefix(name, `Local\`)
+	paths := map[string]bool{`\BaseNamedObjects\` + leaf: true}
+	var context, length uint32
+	buffer := make([]byte, 64*1024)
+	restart := uintptr(1)
+	query := ntdll.NewProc("NtQueryDirectoryObject")
+	for {
+		status, _, _ := query.Call(uintptr(directory), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)), 1, restart, uintptr(unsafe.Pointer(&context)), uintptr(unsafe.Pointer(&length)))
+		restart = 0
+		code := windows.NTStatus(uint32(status))
+		if code == windows.STATUS_NO_MORE_ENTRIES {
+			break
+		}
+		if code != 0 && code != windows.STATUS_MORE_ENTRIES {
+			return code
+		}
+		entry := (*struct{ Name, TypeName windows.NTUnicodeString })(unsafe.Pointer(&buffer[0]))
+		if uintptr(length) < unsafe.Sizeof(*entry) {
+			return errors.New("Windows Session 对象目录记录不完整")
+		}
+		value := entry.Name.String()
+		if _, err := strconv.ParseUint(value, 10, 32); err == nil {
+			if entry.TypeName.String() != "Directory" {
+				return errors.New("Windows Session 对象类型不可用")
+			}
+			paths[`\Sessions\`+value+`\BaseNamedObjects\`+leaf] = true
+		}
+	}
+	open := ntdll.NewProc("NtOpenJobObject")
+	for path := range paths {
+		objectName, err := windows.NewNTUnicodeString(path)
+		if err != nil {
+			return err
+		}
+		attributes := windows.OBJECT_ATTRIBUTES{ObjectName: objectName, Attributes: windows.OBJ_CASE_INSENSITIVE}
+		attributes.Length = uint32(unsafe.Sizeof(attributes))
+		var handle windows.Handle
+		status, _, _ := open.Call(uintptr(unsafe.Pointer(&handle)), 0x0004, uintptr(unsafe.Pointer(&attributes)))
+		code := windows.NTStatus(uint32(status))
+		if code == 0 {
+			return errors.Join(errServiceJobStillPresent, windows.CloseHandle(handle))
+		}
+		if code != windows.STATUS_OBJECT_NAME_NOT_FOUND && code != windows.STATUS_OBJECT_PATH_NOT_FOUND {
+			return code
+		}
+	}
+	return nil
 }
 
 func serviceProcessCreated(process windows.Handle) (uint64, error) {

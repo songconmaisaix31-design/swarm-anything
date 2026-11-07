@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ type serviceDaemonRecord struct {
 	ServiceJob      *serviceJobOwnership `json:"swa_service_job"`
 }
 
-func readServiceDaemonRecord(data, install, revision string) (*serviceDaemonRecord, error) {
+func readServiceDaemonRecord(data, install, revision string, historicalWindowsSource bool) (*serviceDaemonRecord, error) {
 	directory := filepath.Join(data, "daemon")
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, os.ErrNotExist) {
@@ -106,7 +107,22 @@ func readServiceDaemonRecord(data, install, revision string) (*serviceDaemonReco
 			return nil, errServiceOwnershipUnknown
 		}
 		owner := parsed.ServiceJob
-		if owner == nil || owner.ServePID == 0 || owner.DaemonPID != parsed.PID || parsed.StartedAtMS <= 0 || owner.DaemonSession != parsed.LaunchNonce || owner.SourceRevision != revision || !sameServicePath(owner.DataRoot, data) || !sameServicePath(owner.InstallRoot, install) {
+		if owner == nil || owner.ServePID == 0 || parsed.PID == 0 || owner.DaemonPID != parsed.PID || parsed.StartedAtMS <= 0 || owner.DaemonSession != parsed.LaunchNonce || !sameServicePath(owner.DataRoot, data) {
+			return nil, errServiceOwnershipUnknown
+		}
+		recordedInstall := install
+		if historicalWindowsSource && runtime.GOOS == "windows" {
+			recordedInstall = owner.InstallRoot
+			canonical, err := filepath.EvalSymlinks(recordedInstall)
+			if err != nil || !filepath.IsAbs(recordedInstall) || !sameServicePath(canonical, recordedInstall) {
+				return nil, errors.Join(errServiceOwnershipUnknown, err)
+			}
+			version, err := os.ReadFile(filepath.Join(recordedInstall, "VERSION"))
+			decoded, decodeErr := hex.DecodeString(owner.SourceRevision)
+			if err != nil || decodeErr != nil || len(decoded) != 20 || owner.SourceRevision != strings.ToLower(owner.SourceRevision) || strings.TrimSpace(string(version)) != owner.SourceRevision {
+				return nil, errors.Join(errServiceOwnershipUnknown, err, decodeErr)
+			}
+		} else if owner.SourceRevision != revision || !sameServicePath(owner.InstallRoot, install) {
 			return nil, errServiceOwnershipUnknown
 		}
 		prefix := `Local\SWAService`
@@ -132,7 +148,7 @@ func readServiceDaemonRecord(data, install, revision string) (*serviceDaemonReco
 		if err != nil || owner.Name != prefix+id.String() || parsed.LaunchNonce == "" {
 			return nil, errServiceOwnershipUnknown
 		}
-		if !sameServicePath(filepath.Clean(parsed.EntryPath), filepath.Join(install, "runtime", "daemon-entry.js")) || !sameServicePath(filepath.Clean(parsed.SpawnerExecPath), filepath.Join(install, "node", serviceProgramName("node"))) {
+		if !sameServicePath(filepath.Clean(parsed.EntryPath), filepath.Join(recordedInstall, "runtime", "daemon-entry.js")) || !sameServicePath(filepath.Clean(parsed.SpawnerExecPath), filepath.Join(recordedInstall, "node", serviceProgramName("node"))) {
 			return nil, fmt.Errorf("%w: daemon 来源不属于同一安装候选", errServiceOwnershipUnknown)
 		}
 		record = &parsed

@@ -12,7 +12,7 @@ Windows Native 构建基线为 `ee4d7e5d075b81e19ebabfb60d4ae439bd8862a3`。本�
 
 Windows Node 24.21 的 findPackageJSON 对真实 Pi CLI 返回带 `\\?\` 命名空间的路径；同一文件的 realpath 使用普通驱动器路径，原严格检查误报 native_pi_source_redirected，导致已安装的 Pi 显示未知。
 
-仅对 Node 模块 API 返回的两个 manifest 路径使用内置 fileURLToPath/pathToFileURL 往返转换。该转换不解析文件系统链接，readNativePiFile 的全部重定向、权限和来源检查继续执行。实际 Windows 元数据验证确认：真实 CLI manifest 转换后通过，Pi AI 普通路径不变，既有 Junction 路径仍被原检查拒绝；1128 个固定官方源文件匹配。此修复尚待后继完整 Windows 包与本机实际 capabilities 验证。
+仅对 Node 模块 API 返回的两个 manifest 路径使用内置 fileURLToPath/pathToFileURL 往返转换。该转换不解析文件系统链接，readNativePiFile 的全部重定向、权限和来源检查继续执行。实际 Windows 元数据验证确认：真实 CLI manifest 转换后通过，Pi AI 普通路径不变，既有 Junction 路径仍被原检查拒绝；1128 个固定官方源文件匹配。完整 Windows 包和本机实际 capabilities 已通过；Pi 的真实安装被识别，账号与来源限制继续单独报告。
 
 Pi 默认账户为空且目录为 Junction；npm Codex 0.164.0 使用 ChatGPT 登录，Claude Code 2.1.238 使用 AUTH_TOKEN，与现有受控执行合同不符。本轮保留这些配置，分别显示安装和可调用状态，不自动给其他 Agent 新增账号。
 
@@ -28,4 +28,14 @@ request.show 现在先通过 SWA 自身的 observeRequest 核对同一父子回�
 
 [CI 42362649663](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42362649663) 的统一 runtime 类型检查、完整原生构建、解压检查和安装检查均通过，服务真实退出码为 0，两次 native remaining 为 0，两次 CIM 确认全部退出。服务观察器仍将 PID 复用后的外部子进程记为未知，整项未通过；原失败资料保留。
 
-真实 sample 623 中历史 conhost.exe PID 7148 已复用成新 wsl.exe，子进程 6216 比新父晚创建 21ms。观察器现在仅在同一原生快照确认唯一新父与唯一子进程，且三个有效创建时间严格满足旧父 < 新父 < 子时排除该旧父边，并记录三份原身份。缺失父、时间不足和重复身份继续未知。原首个、PID 复用和末尾真实样本回放的 owned 数量保持 2/8/2，unknown 均为 0；退出门保持原要求，完整 Windows CI 继续验证。
+真实 sample 623 中历史 conhost.exe PID 7148 已复用成新 wsl.exe，子进程 6216 比新父晚创建 21ms。观察器现在仅在同一原生快照确认唯一新父与唯一子进程，且三个有效创建时间严格满足旧父 < 新父 < 子时排除该旧父边，并记录三份原身份。缺失父、时间不足和重复身份继续未知。原首个、PID 复用和末尾真实样本回放的 owned 数量保持 2/8/2，unknown 均为 0；退出门保持原要求。[694fdb32 的完整 Windows CI](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42363527748) 已通过。
+
+## 实际模拟器操作与恢复
+
+通过 computer use 操作官方 IrisView 的应用输入面板，完成唤醒、选择 Windows OpenCode、提交公开项目任务、回到列表及打开完成任务。Run `run_e3c0db42ad8c`、Worker Task `task_d1be068bea37`、Dispatch `ctx_650bba4b3af3` 实际完成。DeepSeek 请求返回 HTTP 200，763 个输入 token、203 个输出 token，工具数量 0。原生会话 `ses_e4a4d1e15ffeccUi0rDwfVQw4s` 的 user、assistant、idle 消息均存在；Worker 与 root Task 已完成，资源正式释放，stdout 与 custody 正常关闭。正式导出和 Controller 关闭通过。
+
+任务原文只引用函数名称，关闭工具的模型没有收到函数正文，因而该轮回答不计为函数语义验收。后续通过同一模拟器会话提供公开项目实际源码，检查接续回答。
+
+启动器被强制结束后，原 serve 与 daemon 已退出，命名 Job 已销毁，原 daemon PID 记录仍存在。Windows 启动现在仅在旧安装来源有效、两项原进程创建身份均已退出，且全局与全部实际 Windows Session 对象目录均无同名 Job 时重新建立服务 Job。仍存在或无法查询的 Job 保持错误；原生 daemon 管理器继续按 PID 与 nonce 处理自己的遗留记录。已有 Task、输入、结果和 runtime epoch 不修改。
+
+`go test ./cmd/swa -run '^TestServiceJobNativeAbsence$' -count=1 -v` 已在本机 Windows 通过，实际创建、查询和关闭内核 Job；完整候选包及同目录重启验证继续进行。
