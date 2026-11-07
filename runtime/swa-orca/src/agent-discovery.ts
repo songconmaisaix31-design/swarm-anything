@@ -28,6 +28,7 @@ import { createPrivateClaudeDirectory, requireNativeClaudePath } from './claude-
 import { preparePrivatePiEnvironment, privatePiEnvironment } from './private-pi-account'
 import { assertPiStartupSources } from './pi-session-policy'
 import { agentObservation, describeAgentFeatures, modelCatalogObservation, type AgentObservation } from './execution-observation'
+import { darwinDiscoveryDirectories, readDarwinDiscoveryVersion } from './darwin-discovery'
 
 type Observation = AgentObservation
 const observation = agentObservation
@@ -212,10 +213,18 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
         if (process.env.SWA_DISCOVERY_APPDATA) sourceEnv.APPDATA = process.env.SWA_DISCOVERY_APPDATA
         if (process.env.SWA_DISCOVERY_LOCALAPPDATA) sourceEnv.LOCALAPPDATA = process.env.SWA_DISCOVERY_LOCALAPPDATA
         const overlay = snapshot.settings.agentDefaultEnv?.[id]
-        const pathEnv = [overlay?.PATH ?? overlay?.Path ?? env.PATH ?? env.Path, ...(spec?.installDirectories({ env: sourceEnv, homePath: snapshot.home }) ?? [])].filter(Boolean).join(delimiter)
+        const darwinDirectories = process.platform === 'darwin' ? darwinDiscoveryDirectories(id, snapshot.home) : []
+        const pathEnv = [overlay?.PATH ?? overlay?.Path ?? env.PATH ?? env.Path, ...darwinDirectories, ...(spec?.installDirectories({ env: sourceEnv, homePath: snapshot.home }) ?? [])].filter(Boolean).join(delimiter)
         const command = resolveStructuredAgentCommand(id, spec?.ignoreAgentCommandSetting ? {} : { agentCmdOverrides: snapshot.launch.agentCmdOverrides }, { pathEnv, homePath: snapshot.home }, { command: spec?.command ?? id })
         if (isAbsolute(command)) {
           executable = await realpath(command)
+          if (process.platform === 'darwin') {
+            if (!statSync(executable).isFile() || (statSync(executable).mode & 0o111) === 0) throw new Error('native_executable_unavailable')
+            // 只对本任务核对过版本入口的 Pi/Codex 探测；账户配置继续未知。
+            if (id === 'pi' || id === 'codex') version = readDarwinDiscoveryVersion(executable)
+            installed = { ...(version ? available('本机程序在新私有目录返回 CLI 版本', 'native-version-probe', 'probe') : unknown('已发现本机可执行路径；macOS CLI 版本尚未验证', 'native-command-resolution', 'probe')), executable, version }
+            return { installed, executable, version }
+          }
           if (id === 'opencode' && extname(executable).toLowerCase() === '.cmd') executable = await realpath(join(dirname(executable), 'node_modules/@opencode/cli/bin/opencode.exe'))
           if (id === 'pi') version = await readFixedPiVersion(executable, env)
           else if (id === 'opencode') version = await readFixedOpenCodeVersion(executable, env)
@@ -230,14 +239,17 @@ async function inspectAgents(runtime: OrcaRuntimeService, requirements?: Capabil
     })
     const installed = installation.failure ?? installation.value.installed
     const executable = installation.value?.executable, version = installation.value?.version
-    const configurationResult = await observeAgentStage(mode, 'configuration', () => configuration(id, snapshot, requestedModel, projectRoot))
+    const configurationResult = await observeAgentStage(mode, 'configuration', () => {
+      if (process.platform === 'darwin') throw new Error('darwin_native_configuration_unverified')
+      return configuration(id, snapshot, requestedModel, projectRoot)
+    })
     const config = configurationResult.value
     const proven = !!(config?.model && config.provider && config.account)
     const configured = { ...(configurationResult.failure ?? (proven ? available('Native configuration and the explicit selection supply model, provider and an account source', 'native-configuration', 'configuration') : unknown('The observed native defaults do not supply every model, provider and account field', 'native-configuration', 'configuration'))), model: config?.model, provider: config?.provider, account_source: config?.account }
     const declared = available('The real adapter implements this structured operation; no live handshake is claimed', `adapter-declaration:${adapterName}`, 'declaration')
     const supported = id === 'pi' || id === 'opencode' || id === 'codex' || id === 'claude'
     const unsupported = observation('unavailable', '原生适配器已注册；SWA 尚无该 Agent 的受控账号、关闭工具及完整成果合同', 'swa-native-policy-unsupported', 'declaration')
-    const operation = supported ? declared : unsupported
+    const operation = process.platform === 'darwin' ? unknown('macOS provider 进程归属、停止和完整释放尚未验证', 'darwin-provider-lifecycle-unverified', 'session') : supported ? declared : unsupported
     const features = describeAgentFeatures(definition)
     const control = { start: operation, send: operation, read: unknown('No live session or complete transcript was observed', 'native-session', 'session'), stop: operation, resume: unknown('No native recovery handshake was observed', 'native-session', 'session'), tools: supported ? unknown('The selected Agent tool policy requires its own verified native contract', 'native-policy', 'session') : unsupported, questions: id === 'pi' ? available('The fixed Pi question extension is declared; actual model tool use requires its own Run evidence', 'swa-pi-question-extension', 'declaration') : observation('unavailable', 'This Agent has no native Run question contract', 'swa-native-question-policy', 'declaration'), images: features.images, model_switch: features.model_switch }
     const delegation = id === 'pi' ? available('The fixed Pi delegation extension is declared; current project permission and real execution are checked separately', 'swa-pi-delegation-extension', 'declaration') : observation('unavailable', 'This Agent has no native delegation tool contract', 'swa-native-delegation-policy', 'declaration')

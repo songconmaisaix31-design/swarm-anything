@@ -132,7 +132,7 @@ export function createOpenCodeSessionPolicy(input: {
       await verifyAccount()
       inputKey = await readPrivateOpenCodeInputKey(root)
       requireNativeCodexPrivatePath(launcher.eventDirectory, true)
-      if (process.platform === 'linux') createPosixPrivateFile(tracePath, Buffer.alloc(0))
+      if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(tracePath, Buffer.alloc(0))
       else createFileWithDacl(toNamespacedPath(tracePath), `O:${currentUserSid()}D:P${[...new Set([currentUserSid(), 'S-1-5-18'])].map(sid => `(A;;FA;;;${sid})`).join('')}`, Buffer.alloc(0))
       traceIdentity = identity(lstatSync(tracePath))
     },

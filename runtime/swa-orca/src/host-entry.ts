@@ -21,8 +21,8 @@ const absolute = (key: string) => {
 }
 const data = absolute('SWA_DATA_DIR')
 const install = absolute('SWA_INSTALL_ROOT')
-if (process.platform !== 'win32' && process.platform !== 'linux') throw new Error('This SWA package requires Windows or Linux')
-if (process.platform === 'linux') requirePosixPrivatePath(data, true)
+if (process.platform !== 'win32' && process.platform !== 'linux' && process.platform !== 'darwin') throw new Error('This SWA package requires Windows, Linux or macOS')
+if (process.platform !== 'win32') requirePosixPrivatePath(data, true)
 if (absolute('ORCA_USER_DATA') !== data || absolute('ORCA_USER_DATA_PATH') !== data) throw new Error('SWA native profile root mismatch')
 const privatePath = (name: string) => {
   const target = join(data, name)
@@ -32,6 +32,7 @@ const privatePath = (name: string) => {
   const actual = realpathSync.native(target)
   const rel = relative(data, actual)
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error('SWA private path escaped')
+  if (process.platform !== 'win32') requirePosixPrivatePath(target, true)
   return actual
 }
 const home = privatePath('home'), temp = privatePath('temp'), logs = privatePath('logs'), downloads = privatePath('downloads')

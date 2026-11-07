@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { parseLinuxStartTicks, readBootIdentity } from '../agent-hooks/managed-hook-owner-identity'
+import { readSwaDarwinProcess } from './swa-darwin-process-identity'
 
 /**
  * What the daemon reports about itself over the readiness IPC channel.
@@ -22,6 +23,10 @@ export async function readCurrentDaemonReadyIdentity(
   startedAtMs: number
 ): Promise<DaemonReadyIdentity> {
   const identity = { pid: process.pid, startedAtMs }
+  if (process.platform === 'darwin' && process.env.SWA_SERVICE_JOB !== undefined) {
+    const actual = readSwaDarwinProcess(process.pid)
+    return { ...identity, linuxStartTicks: actual.start_ticks, bootId: actual.boot_id }
+  }
   if (process.platform !== 'linux') {
     return identity
   }
@@ -43,6 +48,10 @@ export async function readCurrentDaemonReadyIdentity(
 export async function readDaemonProcessIncarnation(
   pid: number
 ): Promise<{ linuxStartTicks: string; bootId: string } | null> {
+  if (process.platform === 'darwin' && process.env.SWA_SERVICE_JOB !== undefined) {
+    const actual = readSwaDarwinProcess(pid)
+    return { linuxStartTicks: actual.start_ticks, bootId: actual.boot_id }
+  }
   if (process.platform !== 'linux') {
     return null
   }

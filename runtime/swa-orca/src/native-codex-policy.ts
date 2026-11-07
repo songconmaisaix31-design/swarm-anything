@@ -48,7 +48,7 @@ function actualPath(path: string, directory: boolean) {
 
 export function requireNativeCodexPrivatePath(path: string, directory: boolean) {
   actualPath(path, directory)
-  if (process.platform === 'linux') { requirePosixPrivatePath(path, directory); return }
+  if (process.platform === 'linux' || process.platform === 'darwin') { requirePosixPrivatePath(path, directory); return }
   if (process.platform !== 'win32') fail('private_security_unavailable')
   const user = currentUserSid(), acl = getDaclAces(toNamespacedPath(path)), trustees = new Set([user, 'S-1-5-18'])
   // 原生登录文件可继承受保护父目录的私有ACL；不接受其它主体或继承专用ACE。
