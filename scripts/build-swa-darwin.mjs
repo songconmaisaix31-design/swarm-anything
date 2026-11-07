@@ -23,11 +23,12 @@ if (!pnpm || !isAbsolute(pnpm)) throw new Error('SWA_PNPM_CLI must identify the 
 await access(pnpm)
 if (capture(process.execPath, [pnpm, '--version']) !== '11.27.0') throw new Error('The build requires pnpm 11.27.0')
 const python = await buildPython(values.python), go = await findGo()
+if (Number(python.version.split('.')[1]) < 9) throw new Error('The installed node-gyp requires Python 3.9 or newer')
 const task = join(root, '.verification', 'swa-darwin'), cache = join(task, 'cache')
 await mkdir(cache, { recursive: true, mode: 0o700 })
 const work = await mkdtemp(join(task, 'build-')), temporary = join(work, 'tmp')
 await mkdir(temporary, { mode: 0o700 })
-const environment = { ...process.env, TEMP: temporary, TMP: temporary, TMPDIR: temporary, NODE_GYP_FORCE_PYTHON: python.executable, GOOS: 'darwin', GOARCH: 'arm64' }
+const environment = { ...process.env, PATH: dirname(process.execPath) + delimiter + process.env.PATH, TEMP: temporary, TMP: temporary, TMPDIR: temporary, NODE_GYP_FORCE_PYTHON: python.executable, GOOS: 'darwin', GOARCH: 'arm64' }
 const run = (program, args, cwd = root) => execFileSync(program, args, { cwd, env: environment, stdio: 'inherit', timeout: 20 * 60_000 })
 console.log(JSON.stringify({ stage: 'darwin-toolchain', target, source_revision: revision, python, clang: capture('clang', ['--version']).split('\n')[0], work }))
 const { buildSWARuntime } = await import('./build-swa-runtime.mjs')
