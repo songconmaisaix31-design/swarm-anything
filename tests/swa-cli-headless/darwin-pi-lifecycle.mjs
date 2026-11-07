@@ -13,12 +13,19 @@ await mkdir(output, { mode: 0o700 })
 process.env.SWA_INSTALL_ROOT = install
 process.env.SWA_EXECUTABLE = join(install, 'swa')
 const { startDarwinWorker } = createRequire(import.meta.url)(join(install, 'runtime/darwin-worker.cjs'))
-const program = await realpath('/Users/tester/.local/bin/pi')
+const launcher = await realpath('/Users/tester/.local/bin/pi')
+assert.equal(launcher, '/Users/tester/.pi/agent/bin/pi')
+const managedVersion = (await readFile('/Users/tester/.pi/agent/install/current-version', 'utf8')).trim()
+assert.equal(managedVersion, '1.5.0')
+const officialCLI = await realpath('/Users/tester/.pi/agent/install/releases/1.5.0/node_modules/.bin/pi')
+// 直接启动官方安装的 Node 入口，身份绑定后不再经历 launcher 的 exec 映像替换。
+const program = await realpath(join(install, 'node/node'))
 const home = join(output, 'home'), project = join(output, 'project')
 await mkdir(home, { mode: 0o700 }); await mkdir(project, { mode: 0o700 })
 const readme = '# Example\nfunction add(a, b) { return a + b; }\n'
 await writeFile(join(project, 'README.md'), readme)
 const env = { PATH: `${install}/node:/opt/homebrew/bin:/usr/bin:/bin`, HOME: home, USERPROFILE: home, TMPDIR: home, TMP: home, TEMP: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_CACHE_HOME: home, PI_CODING_AGENT_DIR: '/Users/tester/.pi/agent', PI_OFFLINE: '1', PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1', TERM: 'dumb' }
+assert.equal(execFileSync(program, [officialCLI, '--version'], { env, cwd: project, encoding: 'utf8', timeout: 20000 }).trim(), managedVersion)
 const args = ['--provider', 'omlx', '--model', 'CyberTiel-MLX-MTP', '--offline', '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-session', '--no-approve', '--system-prompt', '只根据用户给定的文本回答，不使用工具。']
 const query = pid => JSON.parse(execFileSync(join(install, 'swa'), ['darwin-process-identity', String(pid)], { encoding: 'utf8', timeout: 5000 }))
 const save = (name, value) => writeFile(join(output, name), JSON.stringify(value, null, 2) + '\n', { flag: 'wx' })
@@ -30,7 +37,7 @@ async function bounded(promise, milliseconds) {
   finally { clearTimeout(timer) }
 }
 async function open(name, extra) {
-  const worker = await startDarwinWorker({ install, program, args: [...args, ...extra], cwd: project, env })
+  const worker = await startDarwinWorker({ install, program, args: [officialCLI, ...args, ...extra], cwd: project, env })
   owned.add(worker)
   let out = '', err = ''
   let outBytes = 0, errBytes = 0, outputComplete = true
@@ -53,10 +60,11 @@ async function open(name, extra) {
 
 try {
 const first = await open('read-only-model', ['--mode', 'json', '--print', '只解释以下 README 的 add 函数，给出 add(2,3) 结果，最多两句话。\n' + readme])
+first.worker.end()
 let timeout = false
 const timer = setTimeout(() => { timeout = true; void first.worker.stop('SIGTERM').catch(() => first.worker.disconnect()) }, 90_000)
 const answer = await first.finish().finally(() => clearTimeout(timer))
-await save('model-attempt.json', { model: 'omlx/CyberTiel-MLX-MTP', timeout, result: answer.result, stdout_file: 'read-only-model.stdout.jsonl', note: '实际监督器下官方 Pi 调用；不代表 SWA Run 或完整释放验收' })
+await save('model-attempt.json', { model: 'omlx/CyberTiel-MLX-MTP', launcher, officialCLI, program, managedVersion, timeout, result: answer.result, stdout_file: 'read-only-model.stdout.jsonl', note: '实际监督器下官方 Pi 调用；不代表 SWA Run 或完整释放验收' })
 console.log(JSON.stringify({ stage: 'official-pi-model', model: 'omlx/CyberTiel-MLX-MTP', timeout, ...answer.result }))
 
 const second = await open('running-stop', ['--mode', 'rpc'])

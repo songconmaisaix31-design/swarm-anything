@@ -20,8 +20,8 @@ git(['init', '--quiet']); git(['add', 'README.md'])
 git(['-c', 'user.name=SWA acceptance', '-c', 'user.email=swa-test@example.invalid', 'commit', '--quiet', '-m', 'Add public synthetic README'])
 const sourceRevision = git(['rev-parse', 'HEAD'])
 const spec = { goal: '只读解释 README 中 add 函数。', source_repo: projectRoot, source_revision: sourceRevision, success_criteria: ['解释两个参数相加并给出 add(2,3) 的结果。'], max_workers: 1, context: { references: [], files: ['README.md'] } }
-await writeFile(join(output, 'task.json'), JSON.stringify(spec))
-await writeFile(join(output, 'input.txt'), '只解释以下 README 中 add 函数，给出 add(2,3) 结果。不调用工具、不修改文件。\n' + readme)
+await writeFile(join(projectRoot, 'task.json'), JSON.stringify(spec))
+await writeFile(join(projectRoot, 'input.txt'), '只解释以下 README 中 add 函数，给出 add(2,3) 结果。不调用工具、不修改文件。\n' + readme)
 const env = { ...process.env }
 for (const key of Object.keys(env)) if (key.startsWith('SWA_') || key.startsWith('ORCA_')) delete env[key]
 const swa = join(install, 'swa')
@@ -83,7 +83,7 @@ try {
   const model = pi.model_catalog?.models.find(model => model.id === 'omlx/CyberTiel-MLX-MTP' || model.id === 'CyberTiel-MLX-MTP' && model.provider === 'omlx')
   assert.ok(model, 'Expected the explicitly approved local model in actual capabilities')
   const request = randomUUID()
-  report.run = await cli('run', ['run', '--agent', 'pi', '--model', 'omlx/CyberTiel-MLX-MTP', '--project', project.id, '--workdir', projectRoot, '--spec-file', join(output, 'task.json'), '--input-file', join(output, 'input.txt'), '--request-id', request, '--timeout', '60s', '--strict', '--export', join(output, 'export')])
+  report.run = await cli('run', ['run', '--agent', 'pi', '--model', 'omlx/CyberTiel-MLX-MTP', '--project', project.id, '--workdir', projectRoot, '--spec-file', join(projectRoot, 'task.json'), '--input-file', join(projectRoot, 'input.txt'), '--request-id', request, '--timeout', '60s', '--strict', '--export', join(projectRoot, 'export')])
   console.log(JSON.stringify({ stage: 'run', ...report.run }))
   report.export = report.run.exit === 0 ? 'see_requested_export_directory' : 'run_not_completed_no_successful_export_claimed'
   assert.equal(await readFile(join(projectRoot, 'README.md'), 'utf8'), readme)
