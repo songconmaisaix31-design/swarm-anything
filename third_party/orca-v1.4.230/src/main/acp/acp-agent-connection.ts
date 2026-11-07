@@ -119,7 +119,7 @@ export class AcpAgentConnection extends AcpSessionRuntime {
       ...(launch.swaOpenCodePolicy
         ? {
             onStderrLine: (line: string, cut: boolean) => launch.swaOpenCodePolicy!.stderr(line, cut, () => {
-              for (const observe of this.nativeInputObservers) observe()
+              for (const observe of this.nativeInputObservers) { observe() }
             }),
             stderrLineMaxChars: SIGN_IN_LINE_MAX_CHARS
           }
