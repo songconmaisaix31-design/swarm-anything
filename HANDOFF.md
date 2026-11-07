@@ -1,6 +1,6 @@
 # 接管说明
 
-2026-11-07 后继：先读 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)。分支 `codex/flowlens-opencode-observation-20261107` 的生产修复 `a5899493` 已完整构建、新安装并通过实际 OpenCode/DeepSeek 与官方 IrisView Linux 模拟器链路。最终运行 `live-1794034074548` 的完成、接续、重启、停止、归档释放及服务退出均通过；其余角色、项目工具和硬件范围保持各任务原有状态。
+2026-11-07 后继：先读 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)。分支 `codex/flowlens-opencode-observation-20261107` 的生产修复 `7cde18b1` 已完整构建、新安装并通过实际 OpenCode/DeepSeek 与官方 IrisView Linux 模拟器链路。最终运行 `live-1794039302390` 的 15 项检查通过，包含真实发现的官方图标映射、完成与接续、HUD 呈现、重启恢复、unknown 原 Worker 精确停止、处理中存档查询原停止回执、正式释放及服务退出。native oxlint 的 31 条已有诊断仍未解决；其余角色、项目工具和硬件范围保持各任务原有状态。
 
 2026-10-29 工具桥后继：先读 [Morphogenesis 工具桥任务](tasks/swa-morph-bridge-20261029.md) 和 SPEC §21.6。分支 `codex/morph-tool-bridge-20261029`，基于下方 PR #10 的 `733ee08f`；新增 Pi 固定研究工具和对应项目授权入口。源码和真实 stdio 调用已验证，下一步完成同一源码的构建安装检查。原生模型会话需配置独立账号及实际项目权限；运行中停止研究工具调用应停止对应 Worker。
 

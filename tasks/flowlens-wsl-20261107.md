@@ -33,4 +33,26 @@
 
 `live-1794035798373` 已有真实签名 user 行与 DeepSeek HTTP 200，首个 ACP 输出迟于原启动观察期限。原输入观察器只由 ACP notification 唤醒，导致 `turn_start_unobserved`。原失败和清理记录保留。
 
-输入策略在已有身份、correlation、sequence、session、模型与工具检查通过的 `http_request` 后唤醒现有观察器；`accept()` 继续使用原有 SQLite 唯一行、签名回执和原始输入核对。HTTP 本身不产生 accepted。启动期限和接受条件保持原有合同。后继源码的构建、新安装及实际验证待记录。
+输入策略在已有身份、correlation、sequence、session、模型与工具检查通过的 `http_request` 后唤醒现有观察器；`accept()` 继续使用原有 SQLite 唯一行、签名回执和原始输入核对。HTTP 本身不产生 accepted。启动期限和接受条件保持原有合同。
+
+源码 `7cde18b131577c3742e7d1d983a2c279521c5051` 完整 Linux 构建通过，安装到全新私有目录 `install-opencode-readiness-final`。最终实际运行 `live-1794039302390` 在 2026-11-07 08:15:02–08:16:58 UTC 完成 15 项检查，涵盖真实能力发现、官方图标映射、配对、HUD 原生呈现、两轮真实模型完成、成果导出、HTTP 重复与冲突处理、完整启动入口恢复、原 Worker 核对与指定停止、处理中存档查询原停止回执、透明任务列表呈现、正式释放关闭。完成结果呈现 revision 62；服务与两个启动入口退出 0，单独 HUD 预期 SIGINT 退出 130。
+
+| 操作 | Run | Root Task | Worker Task | Dispatch | 原生 session | 终态 |
+|---|---|---|---|---|---|---|
+| 首次任务 | `run_241e8e55ef54` | `task_c5d23342ebf4` | `task_3308c6f78bbe` | `ctx_d71c31878c4f` | `ses_e4aec3de7ffePOdQjSxOUpQlC1` | succeeded |
+| 同会话接续 | `run_bbaa0df67d76` | `task_f3a8c189b6ed` | `task_b6d71d70326f` | `ctx_8a0f1deddb12` | `ses_e4aebdc2affe7p0ocaLkT9lK3M` | succeeded |
+| 指定停止 | `run_d7b9113dbcc6` | `task_9d8479073fd6` | `task_29bc6059c465` | `ctx_988e1d862f06` | `ses_e4aeb297fffey6pV2sC2d3Zs9L` | interrupted |
+
+三轮原生 HTTP 请求均返回 200，模型为 `deepseek-v4-pro`、`tools_count=0`，ACP 工具事件均为 0。第三轮停止前 FlowLens 为 unknown，真实查询确认原 Worker 为 ready/live/exactWorker/addressable，停止后原 turn 的 stopRequested 为 true。三项资源均 released，无释放错误，前两轮成果归档已捕获。
+
+FlowLens 源码 `f9e000d2733d0cc82e9fcb06d8bf8526c6556c06` 在原生停止回执确认时同步保存 stopRequested；request.show 按 controller/project 二选一传参，项目路由和授权继续由 SWA_PROJECT_ID / SWA_PROJECT_TOKEN 提供。驱动捕获生产操作实际 pending 存档原文，独立生产 SwarmRPC 从该原样存档查询原请求 `387b57ef-9776-46cf-a058-79c4fd243262`；真实 SQLite 为 completed/native.stopped，恢复存档操作为 confirmed，原 Dispatch 保持 `ctx_988e1d862f06`，终态为 interrupted。没有重放输入、再次提交停止或创建替代 Worker。
+
+| 原生 session | user seq6 | assistant seq7 | idle |
+|---|---|---|---|
+| `ses_e4aec3de7ffePOdQjSxOUpQlC1` | `msg_1b513c87a001IrIJCKbpfKY101` | `msg_1b513c89c0015KB7nedbJF8hFY` | seq14 `msg_1b513ed2e0011RH8D0tK4SXAmW` |
+| `ses_e4aebdc2affe7p0ocaLkT9lK3M` | `msg_1b5142a81001uKPdOFyZ2wwtZ1` | `msg_1b5142aa40013KM32rCqQKxUBP` | seq14 `msg_1b5148348001DqWV3rJSVUqR4F` |
+| `ses_e4aeb297fffey6pV2sC2d3Zs9L` | `msg_1b514dcae0013yEIjqijM6N4fp` | `msg_1b514dcd2001FbK8ICXc67BLu2` | seq12 `msg_1b514ebcc001t44ldyLaCPTUHO` |
+
+各消息 ID 已逐项定位到对应原生 SQLite 的 session_message 表。三个 event 表均为空，输出 event_id 字段计数为 0。Codex 精确会话 `01a1b513-6af2-7711-886a-41f2cafc736a` 共三轮 `gpt-6-luna` / low，三次选择 opencode，实际工具调用 0。SDK 图片、资源与纹理拒绝计数为 0。
+
+native oxlint 1.88.0 对两个修改过的 vendor 文件仍有 31 条诊断：3 条 consistent-type-imports、27 条 curly、1 条 max-lines。前 30 条对应的源码行与基线 `365fe3d9` 完全相同；当前有效行数 330，新增 5 行，基线推算 325，同样超过 300。没有单独重跑基线 lint，未修改规则或隐藏诊断。运行类型检查、构建和实际链路通过，完整 native lint 尚未通过。
