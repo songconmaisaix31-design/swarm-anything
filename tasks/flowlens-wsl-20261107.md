@@ -28,3 +28,9 @@
 本轮仅验证 OpenCode 原生工具关闭的固定公开任务；原生项目工具、其他 Agent、实际眼镜与麦克风语音、macOS、跨设备局域网和原生等待输入仍未验证。Codex 路由通过 WSL 调用已有 Windows 登录，Linux 原生 Codex 账号未配置。
 
 官方消息接口依据：OpenCode `v2.0.31`，commit `22728d67461260d56bb9796b9b8f36e1de47202e` 的 `packages/ai/src/schema/messages.ts`、`packages/plugin/src/promise/session.ts` 与 `packages/core/src/session/model-request.ts`。
+
+## HUD 与上游同步时的启动观察
+
+`live-1794035798373` 已有真实签名 user 行与 DeepSeek HTTP 200，首个 ACP 输出迟于原启动观察期限。原输入观察器只由 ACP notification 唤醒，导致 `turn_start_unobserved`。原失败和清理记录保留。
+
+输入策略在已有身份、correlation、sequence、session、模型与工具检查通过的 `http_request` 后唤醒现有观察器；`accept()` 继续使用原有 SQLite 唯一行、签名回执和原始输入核对。HTTP 本身不产生 accepted。启动期限和接受条件保持原有合同。后继源码的构建、新安装及实际验证待记录。

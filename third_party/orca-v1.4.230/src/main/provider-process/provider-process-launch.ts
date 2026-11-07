@@ -18,7 +18,7 @@ export type SwaOpenCodeToolsPolicy = {
   model: 'deepseek/deepseek-v4-pro' | 'stepfun/step-3.5-flash'
   initialize(track: (resource: SwaInitializationProcess) => void, cwd: string): Promise<void>
   attach(tree: SwaProviderProcessTree): void
-  stderr(line: string, cut: boolean): boolean
+  stderr(line: string, cut: boolean, onNativeInputObservation?: () => void): boolean
   ready(): Promise<void>
   verifySession(sessionId: string): Promise<void>
   preparePrompt(clientMessageId: string, prompt: unknown, beforeSend?: () => void): Promise<import('../acp/acp-response-settlement').AcpRequestWriteOptions>

@@ -137,7 +137,7 @@ export function createOpenCodeSessionPolicy(input: {
       traceIdentity = identity(lstatSync(tracePath))
     },
     attach(value) { if (tree) throw new Error('native_opencode_policy_rebound'); tree = value },
-    stderr(line, cut) {
+    stderr(line, cut, onNativeInputObservation) {
       if (!line.startsWith('SWA_OPENCODE_POLICY ')) return true
       try {
         if (cut || !tree) throw new Error('native_opencode_policy_status_invalid')
@@ -156,6 +156,8 @@ export function createOpenCodeSessionPolicy(input: {
         else if (row.state === 'http_request' && (row.tools_count !== toolsCount || row.model !== target.model_id || row.initial_url !== target.initial_url || row.session_id !== session)) throw new Error('native_opencode_policy_target_changed')
         const { correlation: _nonce, ...publicRow } = row
         trace('native_policy', { server, identity_basis: row.state === 'inactive' ? 'previously_verified_identity' : 'live_process_observation', row: publicRow })
+        // 已验证的请求唤醒原生输入核查，不等待模型首个输出。
+        if (row.state === 'http_request') onNativeInputObservation?.()
       } catch { fail() }
       return true
     },

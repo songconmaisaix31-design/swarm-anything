@@ -117,7 +117,12 @@ export class AcpAgentConnection extends AcpSessionRuntime {
       ...(tree ? { acceptClose: result => result.root === 'exited' && (result.tree === 'exited' || managed.processless) } : {}),
       ...(options.onOutput ? { onOutput: options.onOutput } : {}),
       ...(launch.swaOpenCodePolicy
-        ? { onStderrLine: (line: string, cut: boolean) => launch.swaOpenCodePolicy!.stderr(line, cut), stderrLineMaxChars: SIGN_IN_LINE_MAX_CHARS }
+        ? {
+            onStderrLine: (line: string, cut: boolean) => launch.swaOpenCodePolicy!.stderr(line, cut, () => {
+              for (const observe of this.nativeInputObservers) observe()
+            }),
+            stderrLineMaxChars: SIGN_IN_LINE_MAX_CHARS
+          }
         : options.onStderrLine
         ? { onStderrLine: options.onStderrLine, stderrLineMaxChars: options.stderrLineMaxChars }
         : signIn
