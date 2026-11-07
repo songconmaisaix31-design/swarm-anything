@@ -137,7 +137,7 @@ Linux服务在本次`serve`进程启用内核subreaper，按照真实boot ID、�
 
 ## macOS 安装与启动
 
-macOS 候选使用 arm64 原生 Go 二进制、固定 Node 24.21.0 和原生编译的 node-pty。构建需要 Xcode Command Line Tools、满足 go.mod 的 Go、Node 24.16.0、pnpm 11.27.0 和 Python。`SWA_PNPM_CLI` 指向该 pnpm 的绝对 JavaScript 入口；提交源码后运行 `node scripts/build-swa.mjs --output "$PWD/dist/swa-macos-arm64" --python /usr/bin/python3`。构建检查固定 Node 归档、可执行文件和 headers 的 SHA-256。
+macOS 候选使用 arm64 原生 Go 二进制、固定 Node 24.21.0 和原生编译的 node-pty。构建需要 Xcode Command Line Tools、满足 go.mod 的 Go、Node 24.16.0、pnpm 11.27.0 和 Python 3.9 以上版本。`SWA_PNPM_CLI` 指向该 pnpm 的绝对 JavaScript 入口；提交源码后运行 `node scripts/build-swa.mjs --output "$PWD/dist/swa-macos-arm64" --python "$(xcrun -f python3)"`。构建检查固定 Node 归档、可执行文件和 headers 的 SHA-256。
 
 安装目标须是 Git 工作区外的新目录，父目录已存在。安装与数据目录不可和实际账户保护目录重叠。下列变量为实际绝对路径，安装使用候选自带的 Node：
 
@@ -148,7 +148,7 @@ macOS 候选使用 arm64 原生 Go 二进制、固定 Node 24.21.0 和原生编�
 "$install_root/swa" serve --data-dir "$data_root" --port 8787 --protected-roots "$HOME/.codex:$HOME/.pi" --json
 ```
 
-仅列入确实存在的保护目录，并补充本机其他账户目录。保持前台 stdin 开启，Ctrl-C 请求关闭所属服务。目录路径段不得包含符号链接；数据根必须属于当前 UID、权限为 0700 且无扩展 ACL。安装不修改 PATH、launchd 或系统设置。项目授权和 token 仍遵循下方协议；获得本次项目观察授权后配置 `SWA_ENDPOINT`、`SWA_PROJECT_ID` 和仅在内存中保存的 `SWA_PROJECT_TOKEN`，再执行 `swa capabilities --json`。
+仅列入确实存在的保护目录，并补充本机其他账户目录。数据根应使用较短的绝对路径：macOS Unix socket 路径受内核长度限制，数据根与生成的 socket 文件名总长度过长会使启动失败。本次验证使用 `~/Documents/SWA-macOS-validation/run01/data`。保持前台 stdin 开启，Ctrl-C 请求关闭所属服务。目录路径段不得包含符号链接；数据根必须属于当前 UID、权限为 0700 且无扩展 ACL。安装不修改 PATH、launchd 或系统设置。项目授权和 token 仍遵循下方协议；获得本次项目观察授权后配置 `SWA_ENDPOINT`、`SWA_PROJECT_ID` 和仅在内存中保存的 `SWA_PROJECT_TOKEN`，再执行 `swa capabilities --json`。
 
 macOS 使用 `kern.proc.pid` 的 PID、UID 和微秒启动时间核验进程，以 `kern.boottime` 标识本次系统启动；协议中的 `start_ticks` 在 Darwin 表示微秒，不能与 Linux ticks 比较。Node 通过同安装的只读 `swa darwin-process-identity PID` 查询内核，查询不读取账户配置。服务子进程使用独立进程组，已归属后代通过父链快照识别并以 kqueue 观察退出。正常关闭后独立重读内核进程表，只有已观察身份的退出事件和进程缺失一致时才确认这些进程退出。
 

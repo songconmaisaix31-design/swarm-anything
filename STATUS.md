@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-07 [macOS arm64 移植](tasks/macos-arm64-port.md)：`4178cb19` 原生候选构建、新目录安装、readiness 和 Pi/Codex 实际能力发现通过；Go build/vet/目标包测试、Darwin 5 项、Node Darwin 8 项及 Pi 来源 8 项通过。SIGINT 后已观察后代与四个主要进程已核验退出，整树完整性无法证明，服务退出 6；因此尚未满足全部移植完成标准。Worker/模型/完整释放能力保持 unknown，不推送、不发布。实际目录和日志见任务页。
+
 2026-11-07 [FlowLens Windows 探测与运行](tasks/flowlens-windows-20261107.md)：实际安装 `43b959c2`，完整 Windows CI、归档、官方安装及原数据目录重启通过。Windows 原生探测识别四个已安装 Agent，OpenCode 当前可选择。实际 Codex 路由/OpenCode 模型、同会话源码说明接续、两级 Task 完成、导出及资源释放通过；computer use 已确认实际 IrisView 显示完成回复。Mac 原生功能、其他 Windows 执行者及项目开发工具保留各自限制。
 
 2026-11-07 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)：修复 OpenCode ACP 接受输入的身份观察、官方 Message 类的 context 处理和首个 ACP 输出前的原生输入观察器唤醒。`7cde18b1` 完整 Linux 构建、新安装与真实模型链路通过；官方图标映射、HUD 呈现、两轮完成、导出、HTTP 接续/去重、重启、unknown 原 Worker 精确停止、处理中存档恢复原停止回执和正式释放共 15 项通过。SWA serve 正常退出 0。两个修改过的 vendor 文件仍有 31 条已有 native oxlint 诊断。验证范围与原生身份见任务页。

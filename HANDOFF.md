@@ -1,5 +1,7 @@
 # 接管说明
 
+2026-11-07 macOS 后继：先读 [macOS arm64 移植](tasks/macos-arm64-port.md)。`codex/macos-arm64-port` 已完成原生 CLI 候选构建、安装、启动和 Pi/Codex 发现；已验证安装源码 `4178cb19`，服务已停止。核心未完成项是完整进程树发现及释放证明，当前退出 6 保留 unknown，不自动接管旧 daemon 记录；不要把专项测试和已观察进程退出写成整树验收通过。按本任务授权只保留本地提交，不推送。
+
 2026-11-07 Windows 后继：先读 [FlowLens Windows 探测与运行](tasks/flowlens-windows-20261107.md)。实际安装源码为 `43b959c2`，完整 Windows CI、归档、官方安装、原数据目录重启均通过。Windows Codex 0.164.0 / gpt-6-luna 路由与 OpenCode 2.0.31 / DeepSeek 实际执行、两级 Task 完成、正式导出与释放通过。WSL 官方 IrisView 通过 computer use 完成原会话接续，实际源码说明正确，完成回复自动显示；原项目、历史、设备配对保留。其余 Windows 执行者的账号/版本合同与工具权限限制见任务页。
 
 2026-11-07 后继：先读 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)。分支 `codex/flowlens-opencode-observation-20261107` 的生产修复 `7cde18b1` 已完整构建、新安装并通过实际 OpenCode/DeepSeek 与官方 IrisView Linux 模拟器链路。最终运行 `live-1794039302390` 的 15 项检查通过，包含真实发现的官方图标映射、完成与接续、HUD 呈现、重启恢复、unknown 原 Worker 精确停止、处理中存档查询原停止回执、正式释放及服务退出。native oxlint 的 31 条已有诊断仍未解决；其余角色、项目工具和硬件范围保持各任务原有状态。
