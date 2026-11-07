@@ -86,6 +86,7 @@ export async function buildSWARuntime(output) {
     'client.cjs': join(runtime, 'src', 'client.ts'),
     'controller-helper.cjs': join(runtime, 'src', 'controller-helper.ts'),
     'native-cli-entry.cjs': join(runtime, 'src', 'native-cli-entry.ts'),
+    'darwin-worker.cjs': join(runtime, 'src', 'darwin-worker.ts'),
     'strict-caller-probe.cjs': join(root, 'tests', 'swa-cli-headless', 'strict-caller-probe.mjs'),
     'controller-inspection.cjs': join(root, 'tests', 'swa-cli-headless', 'controller-inspection.ts'),
     'swa-provider-process-tree.cjs': join(upstream, 'src/main/provider-process/swa-provider-process-tree.ts'),

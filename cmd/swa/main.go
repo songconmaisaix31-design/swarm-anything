@@ -79,6 +79,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "darwin-worker-supervise" && nativeDarwinWorker != nil {
+		return nativeDarwinWorker(ctx, args[1:])
+	}
 	if len(args) > 0 && args[0] == "darwin-process-identity" && nativeProcessIdentity != nil {
 		return nativeProcessIdentity(args[1:], stdout, stderr)
 	}
