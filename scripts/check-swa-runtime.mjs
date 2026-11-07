@@ -15,10 +15,11 @@ const runtime = join(candidate, 'runtime')
 let platform = 'win32-x64'
 try { platform = (await readFile(join(candidate, 'PLATFORM'), 'utf8')).trim() }
 catch (error) { if (error.code !== 'ENOENT') throw error }
-assert.ok(['win32-x64', 'linux-x64-glibc'].includes(platform), 'Unknown candidate platform')
+assert.ok(['win32-x64', 'linux-x64-glibc', 'darwin-arm64'].includes(platform), 'Unknown candidate platform')
 assert.equal(platform, process.platform === 'linux' ? 'linux-x64-glibc' : process.platform + '-' + process.arch, 'A candidate must be checked on its native platform')
 const linux = platform === 'linux-x64-glibc'
-const node = join(candidate, 'node', linux ? 'node' : 'node.exe')
+const posix = linux || platform === 'darwin-arm64'
+const node = join(candidate, 'node', posix ? 'node' : 'node.exe')
 const expected = (await readFile(join(candidate, 'VERSION'), 'utf8')).trim()
 assert.match(expected, /^[0-9a-f]{40}$/)
 let edition = 'cli', legacy = false
@@ -37,7 +38,7 @@ function assertContained(path) {
 if (!values.native) {
   const seen = new Set()
   async function walk(path) {
-    if (linux && (await lstat(path)).isSymbolicLink()) throw new Error('A Linux install payload must not contain symbolic links: ' + path)
+    if (posix && (await lstat(path)).isSymbolicLink()) throw new Error('A POSIX install payload must not contain symbolic links: ' + path)
     const actual = await realpath(path)
     assertContained(actual)
     if (seen.has(actual)) return
@@ -49,9 +50,9 @@ if (!values.native) {
   await walk(candidate)
   const codexCatalog = await checkCodexCatalog(candidate)
   const web = edition === 'combined' ? await checkWebAssets(join(candidate, 'web')) : null
-  const actual = execFileSync(join(candidate, linux ? 'swa' : 'swa.exe'), ['--version'], { encoding: 'utf8', windowsHide: true }).trim()
+  const actual = execFileSync(join(candidate, posix ? 'swa' : 'swa.exe'), ['--version'], { encoding: 'utf8', windowsHide: true }).trim()
   assert.equal(actual, expected)
-  for (const file of [linux ? 'install-swa.mjs' : 'install-swa.ps1', 'USAGE.md', 'LICENSE', 'ORCA_LICENSE', 'THIRD_PARTY_SWA.md']) assert.ok((await readFile(join(candidate, file))).length > 0)
+  for (const file of [posix ? 'install-swa.mjs' : 'install-swa.ps1', 'USAGE.md', 'LICENSE', 'ORCA_LICENSE', 'THIRD_PARTY_SWA.md']) assert.ok((await readFile(join(candidate, file))).length > 0)
   const result = execFileSync(node, ['--max-old-space-size=1024', import.meta.filename, '--candidate', candidate, '--native'], { encoding: 'utf8', windowsHide: true, env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1024' }, timeout: 30_000 })
   process.stdout.write(result)
   console.log(JSON.stringify({ candidate, source_revision: expected, platform, edition, legacy_edition: legacy, web_manifest: web, codex_catalog: codexCatalog, closure_paths: seen.size, native_authentication: 'NOT_RUN', functional_acceptance: 'NOT_RUN', gui_http_acceptance: 'NOT_RUN' }))
@@ -60,10 +61,13 @@ if (!values.native) {
   const requireRuntime = createRequire(join(runtime, 'package.json'))
   const packageJSON = JSON.parse(await readFile(join(runtime, 'package.json'), 'utf8'))
   assert.equal(packageJSON.type, 'commonjs')
-  for (const file of ['host.cjs', 'client.cjs', 'controller-helper.cjs', 'native-cli-entry.cjs', 'pi-question-extension.mjs', 'pi-collaboration-extension.mjs', 'pi-project-extension.mjs', 'pi-morph-extension.mjs', 'project-shell-entry.cjs', 'project-shell', 'strict-caller-probe.cjs', 'controller-inspection.cjs', ...(!linux ? ['controller-fault.exe', 'cli-fault-control.exe'] : []), 'task-result.cjs', 'journal-open.cjs', 'swa-provider-process-tree.cjs', 'daemon-entry.js', 'profile-state-writer-worker-entry.js', 'opencode-policy/server.js', 'opencode-policy/package.json']) await readFile(join(runtime, file))
+  for (const file of ['host.cjs', 'client.cjs', 'controller-helper.cjs', 'native-cli-entry.cjs', 'pi-question-extension.mjs', 'pi-collaboration-extension.mjs', 'pi-project-extension.mjs', 'pi-morph-extension.mjs', 'project-shell-entry.cjs', 'project-shell', 'strict-caller-probe.cjs', 'controller-inspection.cjs', ...(!posix ? ['controller-fault.exe', 'cli-fault-control.exe'] : []), 'task-result.cjs', 'journal-open.cjs', 'swa-provider-process-tree.cjs', 'daemon-entry.js', 'profile-state-writer-worker-entry.js', 'opencode-policy/server.js', 'opencode-policy/package.json']) await readFile(join(runtime, file))
   if (linux) {
     const { checkLinuxNative } = await import('./check-swa-linux-native.mjs')
     await checkLinuxNative(candidate)
+  } else if (platform === 'darwin-arm64') {
+    const { checkDarwinNative } = await import('./check-swa-darwin-native.mjs')
+    await checkDarwinNative(candidate)
   } else {
   const utils = requireRuntime('node-pty/lib/utils')
   const loaded = utils.loadNativeModule('conpty')
