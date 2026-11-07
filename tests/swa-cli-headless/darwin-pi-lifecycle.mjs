@@ -88,7 +88,7 @@ const receipt = await second.worker.stop('SIGTERM')
 assert.equal(receipt.accepted, true)
 const stopped = await second.finish()
 lines.close()
-await save('stop-evidence.json', { activeEvidence, running_model_verified: activeEvidence !== null, refused, receipt, result: stopped.result, tree: 'unknown' })
+await save('stop-evidence.json', { activeEvidence, request_processing_observed: activeEvidence !== null, refused, receipt, result: stopped.result, tree: 'unknown' })
 assert.equal(await readFile(join(project, 'README.md'), 'utf8'), readme)
 console.log(JSON.stringify({ stage: 'official-pi-stop', activeEvidence, refused, receipt, ...stopped.result }))
 } finally {

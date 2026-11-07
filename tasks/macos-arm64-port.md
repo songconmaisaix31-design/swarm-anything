@@ -10,7 +10,101 @@
 
 Pi 1.5.0 的模型观察仅调用实际官方 `--list-models`，不读取账号秘密文件；本次授权模型为 `omlx/CyberTiel-MLX-MTP`。`configured` 与模型目录按实际观察返回，认证保持 unknown。Codex 继续要求显式 `SWA_CODEX_API_KEY_HOME`，未设置时未配置。现有 Pi 会话来源合同固定为 1.0.1，1.5.0 会话合同和整树释放尚未证明，因此产品 `control.start/send/stop` 仍 unknown；选择阶段明确拒绝，不进入读取原生 Pi 账号的旧策略。Linux bubblewrap 能力保持 unavailable。
 
-验收入口分别为 `tests/swa-cli-headless/darwin-worker-installed.mjs`（真实 8788 服务、人工授权、capabilities、正式 run）和 `tests/swa-cli-headless/darwin-pi-lifecycle.mjs`（同安装监督器下官方 Pi 只读调用与身份停止）。两者证据分开，直接 CLI 输出不作为 SWA Run 或导出成功证明。本轮实际结果与限制在完成执行后补充，日志目录为 `.verification/macos-port2/`。
+验收入口分别为 `tests/swa-cli-headless/darwin-worker-installed.mjs`（真实 8788 服务、人工授权、capabilities、正式 run）和 `tests/swa-cli-headless/darwin-pi-lifecycle.mjs`（同安装监督器下官方 Pi 只读调用与身份停止）。两者证据分开，直接 CLI 输出不作为 SWA Run 或导出成功证明。日志目录为 `.verification/macos-port2/`。
+
+### 第二轮实际检查
+
+| 命令 | 实际结果 | 本轮日志 |
+| --- | --- | --- |
+| `go build ./...` | 退出 0 | `go-build.log` |
+| `go vet ./cmd/swa` | 退出 0 | `go-worker-vet.log` |
+| `go test ./cmd/swa/... ./internal/...` | 退出 0，所有目标包通过 | `go-all.log` |
+| `go test ./cmd/swa/... -run Darwin -count=1 -v` | 18 个顶层测试通过，包含测试辅助入口、第一轮 5 项与新增 Worker 场景 | `go-darwin-final.log` |
+| `node --max-old-space-size=8192 runtime/swa-orca/node_modules/typescript/bin/tsc --project runtime/swa-orca/tsconfig.json --pretty false` | 退出 0 | `typecheck-final.log` |
+| `node --test runtime/swa-orca/src/darwin-boundaries.test.mjs runtime/swa-orca/src/darwin-model-configuration.test.mjs` | 17/17 通过，含实际官方版本/模型观察 | `node-darwin.log` |
+| `node --test tests/swa-cli-headless/pi-source-boundaries.test.mjs` | 明确选择候选 Pi 1.0.1 和 Node，8/8 通过 | `pi-regression.log` |
+| `node --test tests/swa-cli-headless/controller-startup.test.mjs` | 2/2 通过；真实 PTY/helper 两次 identify、Darwin 父链、EOF 退出 0 和 absent 复核 | `controller-startup-tests-02.log` |
+| `node --test tests/swa-cli-headless/darwin-worker-consumer.mjs` | 新安装实际 Go/Node，5/5 通过；中文输入/EOF、伪造身份、TERM、KILL、通道失联、后代持有输出导致有界 unknown | `worker-consumer.log` |
+| `node scripts/check-swa-darwin-package.mjs` | 10 项拒绝检查通过 | `package-regression.log` |
+| `node scripts/check-architecture.mjs --swa` | 261 个包通过 | `architecture.log` |
+| `pnpm --dir web build --manifest` | 退出 0 | `web-build.log` |
+
+Go 沿用第一轮隔离的 GOPATH/GOMODCACHE/GOCACHE/TMPDIR；Node 使用第一轮专用工具链，安装检查使用新安装内 Node。Controller 补齐明确安装路径后真实测试通过。背压测试针对实际输出管道函数；观察失败测试使用真实 child 与失效 kqueue。伪造 PID/旧启动时间拒绝验证身份不匹配，不宣称实际诱发内核 PID 循环复用。
+
+### 第二轮新构建和正式服务
+
+冻结构建源码为 `fb41699e8f78456533a3db39d1487d786ac62e4a`，独立审查通过。构建命令：
+
+```sh
+node scripts/build-swa.mjs --output "$PWD/dist/swa-macos-arm64-r2-01" --python /Library/Developer/CommandLineTools/usr/bin/python3
+```
+
+实际 `build-01.log`：`platform:darwin-arm64`、`node:24.21.0`、`native_modules_built:["node-pty"]`；真实 PTY `exitCode:0`、输出包含 `SWA_PTY_INPUT:swa-native-check`，文件监听 `create_observed`。新安装 `~/Documents/SWA-macOS-validation/install-r2-fb41699e` 的 `install-01.log` 返回 `ok:true`、`private_mode:0700`、`path_modified:false`。构建后的测试脚本修正仅改变测试启动与输入路径，未修改安装载荷。
+
+正常 HTTP 人工会话在新项目批准 `read_context/observe/start/send/stop` 与 `external_model_cli:pi`，临时 Cookie/CSRF/token 仅在内存中传递。最终服务使用 `~/Documents/SWA-macOS-validation/r2b/d` 与 `127.0.0.1:8788`，readiness 返回 `ok:true`，runtime PID 51582、server PID 51655。实际能力字段：
+
+```json
+{"configured":{"status":"available","model":"omlx/CyberTiel-MLX-MTP"},"model_catalog":{"origin":"probe","availability":"verified","models":[{"id":"omlx/CyberTiel-MLX-MTP","provider":"omlx"}]},"control":{"start":{"status":"unknown"},"send":{"status":"unknown"},"stop":{"status":"unknown"},"development":{"status":"unavailable"}}}
+```
+
+以上仅摘录实际字段；完整结果见 `r2b/capabilities.json`。正式命令实际运行：
+
+```sh
+swa run --agent pi --model omlx/CyberTiel-MLX-MTP --project bb3d600e-ca79-428f-96e6-4b409d164abf --workdir ~/Documents/SWA-macOS-validation/r2b/project --spec-file ~/Documents/SWA-macOS-validation/r2b/project/task.json --input-file ~/Documents/SWA-macOS-validation/r2b/project/input.txt --request-id c0ce105e-93a7-451e-b2f0-9ccb4ecc963d --timeout 60s --strict --export ~/Documents/SWA-macOS-validation/r2b/project/export --json
+```
+
+退出码 **4**，真实输出：
+
+```json
+{"ok":false,"request_id":"c0ce105e-93a7-451e-b2f0-9ccb4ecc963d","error":{"code":"unsupported_capability","message":"Pi 1.5.0 原生会话合同未验证，完整进程树释放 unknown；Darwin Pi 暂不允许执行","retryable":false,"required_action":"inspect_original_request"}}
+```
+
+因此没有可报告的 Run 终态、正式成果导出或已创建 Worker 身份，未伪造身份调用 `worker stop`。首个 `r2a` 检查因输入/导出路径在授权项目外返回 `scope_denied`；测试将路径放入其新项目后，`r2b` 到达上述原生能力拒绝，两个原始结果均保留。
+
+8788 关闭的真实输出：
+
+```json
+{"all_observed_exited":true,"fork_inventory_complete":false,"fork_observed":true,"observed_count":44,"owned_count":0,"type":"darwin_service_descendants"}
+```
+
+退出 6；独立查询 serve 51581、runtime 51582、server 51655、daemon 51599 均 `state:absent`。完整记录在 `r2b/report.json` 和 `installed-02.log`。旧 8787 未参与这些授权、运行或关闭操作。
+
+### 第二轮官方 Pi 调用与停止
+
+实际命令：
+
+```sh
+~/Documents/SWA-macOS-validation/install-r2-fb41699e/node/node tests/swa-cli-headless/darwin-pi-lifecycle.mjs ~/Documents/SWA-macOS-validation/install-r2-fb41699e ~/Documents/SWA-macOS-validation/r2pi2
+```
+
+本机 `~/.local/bin/pi` 指向官方管理安装的 shell launcher；读取公开的 `install/current-version` 得到 1.5.0。监督器直接启动新安装 Node 与该官方版本的 `dist/bundle/cli.js`，避免绑定之后的 shell→Node exec 映像替换。调用明确关闭工具、扩展、MCP、技能、上下文文件和会话保存，仅使用已批准模型。首次 `r2pi` 的 print 模式因测试未关闭 stdin 等待 90 秒，之后所属 child 已按身份 TERM 并回收；补齐 EOF 后在新目录 `r2pi2` 复验，原始失败记录保留。
+
+实际只读请求没有产生解释文本。官方 Pi 以 0 退出，但其真实 `message_end` 内容为错误，不能按 CLI 退出码判定模型成功：
+
+```json
+{"role":"assistant","content":[],"provider":"omlx","model":"CyberTiel-MLX-MTP","stopReason":"error","errorMessage":"507: {\"message\":\"Model 'CyberTiel-MLX-MTP' (20.77GB) does not fit under the dynamic memory ceiling (13.12GB). Close other apps to free RAM (macOS and other apps leave oMLX 13.12GB of the 29.00GB static cap, and oMLX itself uses 197.31MB of that), raise memory_guard_tier (safe → balanced → aggressive), or use a smaller model.\",\"type\":\"server_error\",\"param\":null,\"code\":null}"}
+```
+
+以上摘录第一次实际错误的字段；官方 CLI 自带的后续重试同样返回 507，动态上限在 13.10–13.17 GB 之间。未换模型、账号、调整 oMLX 内存策略或关闭其他应用。原始输出为 `r2pi2/read-only-model.stdout.jsonl`，监督器记录 `reaped:true, code:0, tree:unknown`，退出 6；PID 51886 独立查询 absent。
+
+第二个实际 Pi RPC 进程接收 prompt 后返回 `response.success:true, disposition:started` 和 `{"type":"agent_start"}`。停止证据摘录：
+
+```json
+{"refused":{"request_id":"cb8aa521-ee7b-42e4-aca4-d86297c86f02","accepted":false,"reason":"identity_mismatch"},"receipt":{"request_id":"8f89cb05-7d03-497c-83e7-f9ece9d6dd56","accepted":true,"reason":"signal_sent"},"final":{"reaped":true,"code":143,"signal":null,"tree":"unknown"},"supervisorExit":6}
+```
+
+伪造启动时间被拒绝时原进程仍 present；正确完整身份停止后 PID 51952 独立查询 absent。完整 v1 身份、请求 UUID 和原生输出保存在 `r2pi2/stop-evidence.json`、`running-stop.json`、`running-stop.stdout.jsonl`。这验证直接官方 Pi 进程正在处理请求时的停止，不证明后端模型已经开始生成，也不代替产品 `swa worker stop`。
+
+只读结果复核接受上述范围。历史证据文件的 `running_model_verified:true` 仅表示观察到 `agent_start`，最终测试脚本将该字段准确命名为 `request_processing_observed`；原始事件不变、不重写历史证据。最终内核复核的 8 个本次 Pi/监督器 PID 全部 absent，输出在 `pi-final-identities.jsonl`；旧 8787 listener 仍为 44967，输出在 `protected-8787-final.log`。
+
+### 第二轮剩余限制与交付
+
+- **第二轮全部完成标准仍未满足**：正式 SWA Run、成果导出和产品 Worker 停止尚未通过；不能据此让 FlowLens 选择该执行者。
+- 直接子进程监督器已实际验证，尚未接入完整 ProviderProcessTree 释放合同；瞬间脱组后代完整性、全部后代释放和身份读取到信号间的 exec 映像窗口没有完整证明，继续 unknown/退出 6。
+- Pi 1.5.0 原生会话、禁用工具、私有账号来源与恢复合同仍需完整适配；现有 1.0.1 回归通过不证明 1.5.0 等价。Codex 未提供显式 API-key 来源，本轮未调用其模型。
+- 本地唯一批准模型实际受 oMLX 动态内存上限拒绝；没有成功答案。没有更改资源策略、其他进程或原 8787 服务。
+- 新 8788 检查服务和本次已观察的直接 Pi 进程均已结束；旧 8787 的 listener 保持 PID 44967。真实执行平台仍为 macOS 27.2 arm64，macOS 26 未验证。
+- 已复核 AGENTS 长期规则，无需修改；保留本地主题提交，不推送、不发布。原始测试日志在忽略的 `.verification/macos-port2/`，新安装与独立服务/模型证据在 `~/Documents/SWA-macOS-validation/`。
 
 ## 第一轮记录
 
