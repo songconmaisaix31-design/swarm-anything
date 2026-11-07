@@ -17,8 +17,9 @@ import { resolveWindowsShellLaunchArgs } from '../../../third_party/orca-v1.4.23
 import { quotePosixShellString } from '../../../third_party/orca-v1.4.230/src/main/agent-hooks/posix-hook-command'
 import { readSwaLinuxProcess, requireSwaLinuxAncestor } from '../../../third_party/orca-v1.4.230/src/main/daemon/swa-linux-process-identity'
 import { createIncrementalNdjsonFramer } from '../../../third_party/orca-v1.4.230/src/shared/main-process-ndjson-framer'
-import { getPendingWorkerStartRecovery } from '../../../third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'
-import { invocationSchema, helperReply, nativeObject, nativeError, commandSchema, capabilityRequirementsSchema, agentSelectionSchema, scopeSchema, type AgentSelection, type Invocation, type Scope } from './contracts'
+import { getPendingWorkerStartRecovery, hashCanonical } from '../../../third_party/orca-v1.4.230/src/main/runtime/rpc/orchestration-mutation-receipt'
+import { parsePaneKey } from '../../../third_party/orca-v1.4.230/src/shared/stable-pane-id'
+import { invocationSchema, helperReply, nativeObject, nativeError, commandSchema, capabilityRequirementsSchema, agentSelectionSchema, structuredInputBindingSchema, scopeSchema, type AgentSelection, type Invocation, type Scope } from './contracts'
 import { discoverAgents, selectAgent, registeredAgent } from './agent-discovery'
 import { completeTaskResult, observeWorkerSource, readNativeInputStatus, validateRecordedRunExport } from './task-result'
 import { createPrivatePiProjectRoot } from './private-pi-account'
@@ -30,7 +31,7 @@ import { assertDelegationParentCurrent } from './delegation'
 import { authority, controllerOwnerSchema, controllerScope, exactController, observeControllerExited, recorded } from './controller-scope'
 import { approvedWorkerLimit, assertCompletionInventory, assertWorkerCapacity, assertWorkerStartOpen } from './task-budget'
 import { readRunView, readRunTaskTree, isTaskDescendant, recordedRunResults } from './run-view'
-import { collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment } from './collaboration-records'
+import { collaborationRead, writeCollaborationRecords, resolveCollaborationReferences, assertCurrentCollaborationAssignment, workerTaskSpec } from './collaboration-records'
 import { assignedAgent } from './role-selection'
 import { requestRunSettlement, validateHandoffInput } from './run-settlement'
 import { assertQuestionReservation, questionStartSelection, readAnswerQuestion, validateQuestionAnswer } from './question-answer'
@@ -212,7 +213,51 @@ async function createController(context: RpcContext, project: string, workspace:
   return { ...owner, observation: current.result }
 }
 
+async function observeOriginalStart(runtime: OrcaRuntimeService, query: Invocation) {
+  const db = runtime.getOrchestrationDb(), callerFingerprint = authority(runtime), requestId = query.command.request_id
+  if (!requestId) return fail('invalid_argument', 'The original request ID is required')
+  const parent = db.getMutationReceipt(callerFingerprint, requestId)
+  if (!parent?.receipt || parent.state !== 'pending' || parent.method !== 'swa.controllerDeliver') return
+  const saved = nativeObject(JSON.parse(parent.receipt))
+  if (saved.project_id !== query.project.id || query.command.controller && saved.controller !== query.command.controller) return fail('scope_denied', 'The original request belongs to another project or controller')
+  if (saved.action !== 'worker.start') return
+  const original = invocationSchema.parse(saved.invocation), c = original.command
+  if (!c.controller) return fail('request_mismatch', 'The original start has no controller')
+  const { scope, owner } = controllerScope(runtime, query.project.id, c.controller, { history: true })
+  if (original.caller.id !== query.caller.id || original.caller.kind !== query.caller.kind || original.project.id !== query.project.id || original.project.root !== query.project.root || c.action !== 'worker.start' || c.request_id !== requestId || saved.controller !== c.controller || saved.run_id !== scope.run_id || saved.root_task_id !== scope.root_task_id || !isDeepStrictEqual(original.scope, scope) || !original.selection || !isDeepStrictEqual(saved.selection, original.selection) || saved.child_request !== `${requestId}/native`) return fail('request_mismatch', 'The original start scope changed')
+  const child = db.getMutationReceipt(callerFingerprint, `${requestId}/native`)
+  if (!child?.receipt || child.state !== 'completed' || child.method !== 'orchestration.workerStart') return
+  const executor = getOrchestrationMutationExecutor(runtime)
+  const identity = (row: typeof parent) => ({ callerFingerprint, requestId: row.request_id, method: row.method, payloadHash: row.payload_hash })
+  if (executor.isExecuting(identity(parent)) || executor.isExecuting(identity(child))) return
+  const native = nativeObject(JSON.parse(child.receipt)), binding = structuredInputBindingSchema.parse(saved.swa_input_binding)
+  const dispatch = typeof native.dispatchId === 'string' ? db.getDispatchContextById(native.dispatchId) : undefined
+  const task = typeof native.taskId === 'string' ? db.getTask(native.taskId) : undefined
+  const paneKey = owner.caller_authority.paneKey, leaf = parsePaneKey(paneKey)?.leafId
+  const params = { from: leaf ? { paneLeafId: leaf } : { paneKey }, run: scope.run_id, parent: c.parent_task_id ?? scope.root_task_id, worktree: 'current', taskTitle: c.name, agent: original.selection.agent_id, model: original.selection.model, timeoutMs: 90_000, spec: workerTaskSpec(original) }
+  if (child.payload_hash !== hashCanonical({ method: child.method, params }) || native.state !== 'ready' || native.turnStart !== 'observed' || native.runId !== scope.run_id || !task || task.run_id !== scope.run_id || task.parent_id !== params.parent || task.spec !== params.spec || !dispatch || dispatch.task_id !== task.id || dispatch.run_id !== scope.run_id || dispatch.assignee_orca_session_id !== binding.session_id || binding.parent_request !== requestId || binding.child_request !== child.request_id || binding.dispatch_id !== dispatch.id || binding.agent !== original.selection.agent_id || !isDeepStrictEqual(native.swa_input_binding, binding) || nativeObject(native.mutation).requestId !== child.request_id) return fail('request_mismatch', 'The original native start receipt changed')
+  const input = await readNativeInputStatus(runtime, query.project.id, requestId)
+  if (input.state !== 'accepted' || !isDeepStrictEqual(input.binding, binding)) return
+  const result = { project_id: query.project.id, controller: c.controller, run_id: scope.run_id, root_task_id: scope.root_task_id, action: c.action, selection: original.selection, invocation: original, child_request: child.request_id, native }
+  // 只补齐原父回执；原子重读防止覆盖仍在执行或已经完成的请求。
+  db.db.exec('BEGIN IMMEDIATE')
+  try {
+    if (!isDeepStrictEqual(db.getMutationReceipt(callerFingerprint, requestId), parent) || !isDeepStrictEqual(db.getMutationReceipt(callerFingerprint, child.request_id), child) || executor.isExecuting(identity(parent)) || executor.isExecuting(identity(child))) return fail('operation_in_progress', 'The original start changed during observation')
+    db.completeMutationReceipt({ ...identity(parent), receipt: JSON.stringify(result) })
+    db.db.exec('COMMIT')
+  } catch (error) {
+    db.db.exec('ROLLBACK')
+    throw error
+  }
+  requestRunSettlement(runtime, scope)
+}
+
 export const SWA_METHODS = [
+  defineMethod({ name: 'swa.observeRequest', permission: 'workspace', params: wrapper, handler: async ({ invocation }, { runtime }) => {
+    if (invocation.command.action !== 'request.show') return fail('invalid_argument', 'Original request observation is required')
+    await observeOriginalStart(runtime, invocation)
+    return { request_id: invocation.command.request_id }
+  } }),
   defineMethod({ name: 'swa.collaborationRead', permission: 'workspace', params: wrapper, handler: ({ invocation }, { runtime }) => ({ native: collaborationRead(runtime.getOrchestrationDb(), invocation) }) }),
   defineMethod({ name: 'swa.collaborationWrite', permission: 'workspace', params: wrapper, handler: ({ invocation }, context) => {
     if (!context.orchestrationMutation) return fail('request_mismatch', 'The original durable collaboration request is required')

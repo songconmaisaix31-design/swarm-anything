@@ -537,7 +537,8 @@ export async function readNativeInputStatus(runtime: OrcaRuntimeService, project
     const replay = replayJournal(journalDB, binding.session_id)
     if (!replay || replay.damage || replay.newer) return fail('The original input journal is missing or damaged')
     const submission = replay.state.submissions.get(binding.operation_id)
-    if (submission && (submission.fence !== binding.runtime_fence || submission.clientMessageId !== binding.operation_id)) return fail('The original native input journal operation changed its identity')
+    const { from: _sender, ...body } = boundInputBody.parse(binding.body)
+    if (submission && (submission.fence !== binding.runtime_fence || submission.clientMessageId !== binding.operation_id || submission.payloadFingerprint !== agentSessionSendBodyFingerprint(binding.session_id, body))) return fail('The original native input journal operation changed its identity')
     const state = !submission ? 'unknown' : submission.dispatchState === 'pending' ? submission.handoverRecorded && submission.handedOverAt === undefined ? 'queued' : 'journaled' : submission.dispatchState
     return { request_id: binding.parent_request, native_request_id: binding.child_request, dispatch_id: binding.dispatch_id, agent: binding.agent, execution_mode: binding.execution_mode, session_id: binding.session_id, operation_id: binding.operation_id, client_message_id: submission?.clientMessageId, binding: receipt.swa_input_binding, state, reason: submission ? null : 'original_operation_not_observed_in_journal', submission: submission ?? null, source: { session_id: binding.session_id, epoch: replay.state.epoch, sequence: replay.state.lastSequence } }
   })

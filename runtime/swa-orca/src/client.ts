@@ -139,6 +139,7 @@ function nativeOutcomeError(action: string, native: Record<string, unknown> | un
 async function requestShow(client: RuntimeClient, invocation: Invocation) {
   const requestId = invocation.command.request_id
   if (!requestId) throw new Error('The original request ID is required')
+  await client.call('swa.observeRequest', { invocation })
   const response = await client.call('orchestration.requestShow', { request: requestId })
   const request = nativeObject(response.result)
   if (request.state === 'absent') return request

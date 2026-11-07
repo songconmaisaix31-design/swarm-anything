@@ -14,4 +14,12 @@ Windows Node 24.21 的 findPackageJSON 对真实 Pi CLI 返回带 `\\?\` 命名�
 
 仅对 Node 模块 API 返回的两个 manifest 路径使用内置 fileURLToPath/pathToFileURL 往返转换。该转换不解析文件系统链接，readNativePiFile 的全部重定向、权限和来源检查继续执行。实际 Windows 元数据验证确认：真实 CLI manifest 转换后通过，Pi AI 普通路径不变，既有 Junction 路径仍被原检查拒绝；1128 个固定官方源文件匹配。此修复尚待后继完整 Windows 包与本机实际 capabilities 验证。
 
-Pi 默认账户为空且目录为 Junction；npm Codex 0.164.0 使用 ChatGPT 登录，Claude Code 2.1.238 使用 AUTH_TOKEN，与现有受控执行合同不符。本轮保留这些配置，分别显示安装和可调用状态，不自动给其他 Agent 新增账号。原生模型、完整 Windows 退出和最终 WSL HUD 呈现继续验证。
+Pi 默认账户为空且目录为 Junction；npm Codex 0.164.0 使用 ChatGPT 登录，Claude Code 2.1.238 使用 AUTH_TOKEN，与现有受控执行合同不符。本轮保留这些配置，分别显示安装和可调用状态，不自动给其他 Agent 新增账号。
+
+## 原生启动回执
+
+首次 Windows OpenCode 任务已实际完成 DeepSeek HTTP 200、746 个输入 token 和 355 个输出 token，原生 session_message 包含真实 user、assistant 和 succeeded idle 行，工具数量为 0。Run 为 run_224416ea0021，Dispatch 为 ctx_48acedc134a1。首次启动时间超过 helper 观察期限，父请求 e3ef1259-38cc-5bc5-a2e7-fc8e11ee8e65 保留 pending，精确原生子请求已 completed/ready。FlowLens 因此保持待核对，不重发该任务。
+
+request.show 现在先通过 SWA 自身的 observeRequest 核对同一父子回执、历史 controller pane、完整 helper 参数、Task.spec、Dispatch/session、输入 binding 与真实 journal accepted/body fingerprint。事务内重读记录并排除在途执行后，只完成原 start 父回执；最终模型结果继续由原生 collector 验证。原生只读 orchestration.requestShow 保持原合同。独立只读审查通过，后继完整 Windows 构建和实际运行继续验证。
+
+服务重启后的旧 Worker runtime epoch 不会被修改；原任务回执恢复与最终结算分别记录。最终包使用不同内容的新任务检查完整 Windows 链路。
