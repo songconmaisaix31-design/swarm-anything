@@ -126,14 +126,27 @@ func readServiceDaemonRecord(data, install, revision string, historicalWindowsSo
 			return nil, errServiceOwnershipUnknown
 		}
 		prefix := `Local\SWAService`
-		if runtime.GOOS == "linux" {
+		if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 			prefix = "SWAService"
-			if owner.Platform != "linux" || owner.ServeStartTicks == "" || owner.DaemonStartTicks == "" || owner.BootID == "" || owner.OwnerUID == "" || owner.ServeCreatedAtMS != 0 || owner.DaemonCreatedAtMS != 0 || parsed.LinuxStartTicks != owner.DaemonStartTicks || parsed.BootID != owner.BootID {
+			if owner.Platform != runtime.GOOS || owner.ServeStartTicks == "" || owner.DaemonStartTicks == "" || owner.BootID == "" || owner.OwnerUID == "" || owner.ServeCreatedAtMS != 0 || owner.DaemonCreatedAtMS != 0 || parsed.LinuxStartTicks != owner.DaemonStartTicks || parsed.BootID != owner.BootID {
 				return nil, errServiceOwnershipUnknown
 			}
-			boot, err := uuid.Parse(owner.BootID)
-			if err != nil || boot.String() != owner.BootID {
-				return nil, errServiceOwnershipUnknown
+			if runtime.GOOS == "linux" {
+				boot, err := uuid.Parse(owner.BootID)
+				if err != nil || boot.String() != owner.BootID {
+					return nil, errServiceOwnershipUnknown
+				}
+			} else {
+				parts := strings.Split(owner.BootID, ":")
+				if len(parts) != 3 || parts[0] != "darwin-boottime" {
+					return nil, errServiceOwnershipUnknown
+				}
+				for index, part := range parts[1:] {
+					value, err := strconv.ParseUint(part, 10, 64)
+					if err != nil || strconv.FormatUint(value, 10) != part || index == 0 && value == 0 || index == 1 && value >= 1000000 {
+						return nil, errServiceOwnershipUnknown
+					}
+				}
 			}
 			for index, value := range []string{owner.ServeStartTicks, owner.DaemonStartTicks, owner.OwnerUID} {
 				number, err := strconv.ParseUint(value, 10, 64)

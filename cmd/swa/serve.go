@@ -67,8 +67,8 @@ func serve(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if ctx.Err() != nil {
 		return cancelled()
 	}
-	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
-		return output.failure("provider_unavailable", "此产品安装候选支持 Windows 和 Linux", "inspect_supported_platform", 4)
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		return output.failure("provider_unavailable", "此产品安装候选支持 Windows、Linux 和 macOS", "inspect_supported_platform", 4)
 	}
 	probe, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(*port))
 	if err != nil {

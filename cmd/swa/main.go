@@ -79,6 +79,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "darwin-process-identity" && nativeProcessIdentity != nil {
+		return nativeProcessIdentity(args[1:], stdout, stderr)
+	}
 	output := cliOutput{stdout: stdout, stderr: stderr}
 	if len(args) == 1 && args[0] == "--version" {
 		if _, err := fmt.Fprintln(stdout, version); err != nil {
