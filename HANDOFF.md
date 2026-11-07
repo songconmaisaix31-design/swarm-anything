@@ -1,6 +1,6 @@
 # 接管说明
 
-2026-11-07 macOS 后继：先读 [macOS arm64 移植第二轮](tasks/macos-arm64-port.md) 和 `MACOS-PORT-BRIEF-2.md`。当前分支 `codex/macos-arm64-port`；新验证安装 `~/Documents/SWA-macOS-validation/install-r2-fb41699e`，载荷源码 `fb41699e`。直接子进程身份停止、原生 Controller 和官方 Pi 模型目录已验证；正式 ProviderProcessTree/Pi 1.5.0 会话合同未完成，control unknown，正式 run 返回 4。实际官方模型返回 507 内存上限错误；直接 RPC 进程停止后 absent。整树退出 6 保留 unknown，不自动接管旧 daemon 记录。**原 127.0.0.1:8787 仍运行，PID 44967，数据根 `~/Documents/SWA-macOS-validation/fl-data-parent/d`；禁止停止或复用。** 第二轮独立 8788 服务已经结束。下一步处理完整原生会话与释放合同；模型资源问题未调整系统配置。按本任务授权只保留本地提交，不推送。
+2026-11-07 macOS 后继：先读 [macOS arm64 移植记录](tasks/macos-arm64-port.md)。当前分支 `codex/macos-arm64-port`；新验证安装 `~/Documents/SWA-macOS-validation/install-r2-fb41699e`，载荷源码 `fb41699e`。直接子进程身份停止、原生 Controller 和官方 Pi 模型目录已验证；正式 ProviderProcessTree/Pi 1.5.0 会话合同未完成，control unknown，正式 run 返回 4。实际官方模型返回 507 内存上限错误；直接 RPC 进程停止后 absent。整树退出 6 保留 unknown，不自动接管旧 daemon 记录。**原 127.0.0.1:8787 仍运行，PID 44967，数据根 `~/Documents/SWA-macOS-validation/fl-data-parent/d`；禁止停止或复用。** 第二轮独立 8788 服务已经结束。下一步处理完整原生会话与释放合同；模型资源问题未调整系统配置。按本任务授权只保留本地提交，不推送。
 
 2026-11-07 Windows 后继：先读 [FlowLens Windows 探测与运行](tasks/flowlens-windows-20261107.md)。实际安装源码为 `43b959c2`，完整 Windows CI、归档、官方安装、原数据目录重启均通过。Windows Codex 0.164.0 / gpt-6-luna 路由与 OpenCode 2.0.31 / DeepSeek 实际执行、两级 Task 完成、正式导出与释放通过。WSL 官方 IrisView 通过 computer use 完成原会话接续，实际源码说明正确，完成回复自动显示；原项目、历史、设备配对保留。其余 Windows 执行者的账号/版本合同与工具权限限制见任务页。
 

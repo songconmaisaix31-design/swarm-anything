@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { homedir } from 'node:os'
 import { createRequire } from 'node:module'
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,7 +20,7 @@ function load(mocks = {}, platform = 'darwin') {
   return module.exports
 }
 const table = 'provider  model              context  max-out  thinking  images\nomlx      CyberTiel-MLX-MTP   8.2K     4.1K     no        no\n'
-const input = { executable: '/Users/tester/.local/bin/pi', home: '/Users/tester', sourceHome: '/Users/tester/.pi/agent', version: '1.5.0' }
+const input = { executable: join(homedir(), '.local/bin/pi'), home: homedir(), sourceHome: join(homedir(), '.pi/agent'), version: '1.5.0' }
 const api = load()
 
 test('official table preserves only the approved exact model', () => {
@@ -37,7 +38,7 @@ test('probe invokes only official metadata with isolated environment and no auth
   let call
   const fs = require('node:fs')
   const fake = load({
-    'node:fs': { ...fs, realpathSync: path => path === input.executable ? '/Users/tester/.pi/agent/bin/pi' : fs.realpathSync(path), readFileSync: () => assert.fail('account content must not be read') },
+    'node:fs': { ...fs, realpathSync: path => path === input.executable ? join(homedir(), '.pi/agent/bin/pi') : fs.realpathSync(path), readFileSync: () => assert.fail('account content must not be read') },
     'node:child_process': { spawnSync(command, args, options) { call = { command, args, options }; return { status: 0, signal: null, stdout: table, stderr: '' } } }
   })
   const result = fake.observeDarwinPiConfiguration(input)

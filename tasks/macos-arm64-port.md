@@ -2,7 +2,7 @@
 
 ## 第二轮：Worker 生命周期与模型目录
 
-依据完整读取的 [MACOS-PORT-BRIEF-2](../MACOS-PORT-BRIEF-2.md)，在同一分支从 `f290e2602fca2ccfcad66c01fc8086c2042f5dfb` 继续，只做本地主题提交。现有 `127.0.0.1:8787` 服务及 `~/Documents/SWA-macOS-validation/fl-data-parent/d` 保持原状；验证使用新的安装、短数据根和 8788。
+按第二轮任务要求，在同一分支从 `f290e2602fca2ccfcad66c01fc8086c2042f5dfb` 继续，只做本地主题提交。现有 `127.0.0.1:8787` 服务及 `~/Documents/SWA-macOS-validation/fl-data-parent/d` 保持原状；验证使用新的安装、短数据根和 8788。
 
 修改范围为 Go Darwin 直接子进程监督器、Node 消费者、原生 Controller 身份、官方 CLI 模型发现、相关测试与说明。Go 和配置观察分别由原 Codex 子代理负责；独立 Reviewer 只读审查进程信号、管道失联与退出证据，主负责人处理消费者和实际安装验收。未使用外部 Agent 服务。
 
@@ -108,7 +108,7 @@ swa run --agent pi --model omlx/CyberTiel-MLX-MTP --project bb3d600e-ca79-428f-9
 
 ## 第一轮记录
 
-任务依据：完整读取的 [MACOS-PORT-BRIEF](../MACOS-PORT-BRIEF.md)。基线为 `d9d979303b074a021a8f7e13038b3e2e45615b9f`，工作分支 `codex/macos-arm64-port`。用户授权无人值守完成实现与本机验证；按任务要求分主题本地提交，不推送。
+任务依据：macOS arm64 移植任务说明（未随本分支提交）。基线为 `d9d979303b074a021a8f7e13038b3e2e45615b9f`，工作分支 `codex/macos-arm64-port`。用户授权无人值守完成实现与本机验证；按任务要求分主题本地提交，不推送。
 
 主负责人修改 Go 平台实现、测试和说明；Node Worker 修改 runtime 与 daemon 身份消费者；打包 Worker 修改 Darwin 构建、安装及检查脚本。进程与权限方案经过独立审查；审查中发现的 ACL 与注册前 fork 窗口修正由主负责人复核并纳入统一测试。使用当前 Codex 原生子代理及继承模型，无外部 Orca/模型账号调用。
 

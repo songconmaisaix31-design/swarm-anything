@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { readFileSync, mkdirSync, mkdtempSync, chmodSync, symlinkSync, realpathSync } from 'node:fs'
 import { join, delimiter } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { test } from 'node:test'
@@ -125,8 +126,8 @@ test('actual local Pi and ChatGPT Codex resolve and return versions in new priva
   const api = load(discoverySource, { platform: 'darwin', getuid: process.getuid, env })
   const resolver = load(resolutionSource)
   for (const agent of ['pi', 'codex']) {
-    const pathEnv = api.darwinDiscoveryDirectories(agent, '/Users/tester').join(delimiter)
-    const executable = realpathSync(resolver.resolveCliCommand(agent, { pathEnv, homePath: '/Users/tester' }))
+    const pathEnv = api.darwinDiscoveryDirectories(agent, homedir()).join(delimiter)
+    const executable = realpathSync(resolver.resolveCliCommand(agent, { pathEnv, homePath: homedir() }))
     const version = api.readDarwinDiscoveryVersion(executable)
     assert.ok(version, `${agent} CLI version remains unknown`)
     console.log(JSON.stringify({ agent, executable, version, configuration: 'unknown', authentication: 'unknown', worker_release: 'unknown' }))

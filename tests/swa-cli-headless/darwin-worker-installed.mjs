@@ -3,13 +3,14 @@ import { spawn, execFileSync, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
 
 const [installation, destination] = process.argv.slice(2)
 assert.ok(installation && destination)
 const install = await realpath(installation), output = resolve(destination)
 assert.ok(!output.includes('fl-data-parent') && output.length < 70)
-const endpoint = 'http://127.0.0.1:8788', protectedRoots = ['/Users/tester/.codex', '/Users/tester/.pi', '/Users/tester/.claude', '/Users/tester/.config/opencode']
+const endpoint = 'http://127.0.0.1:8788', protectedRoots = ['.codex', '.pi', '.claude', '.config/opencode'].map(name => join(homedir(), name))
 await mkdir(output, { mode: 0o700 })
 const projectRoot = join(output, 'project'), data = join(output, 'd')
 await mkdir(projectRoot, { mode: 0o700 })

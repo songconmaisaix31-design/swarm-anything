@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { mkdir, readFile, writeFile, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
@@ -13,20 +14,20 @@ await mkdir(output, { mode: 0o700 })
 process.env.SWA_INSTALL_ROOT = install
 process.env.SWA_EXECUTABLE = join(install, 'swa')
 const { startDarwinWorker } = createRequire(import.meta.url)(join(install, 'runtime/darwin-worker.cjs'))
-const launcher = await realpath('/Users/tester/.local/bin/pi')
-assert.equal(launcher, '/Users/tester/.pi/agent/bin/pi')
-const managedVersion = (await readFile('/Users/tester/.pi/agent/install/current-version', 'utf8')).trim()
+const launcher = await realpath(join(homedir(), '.local/bin/pi'))
+assert.equal(launcher, join(homedir(), '.pi/agent/bin/pi'))
+const managedVersion = (await readFile(join(homedir(), '.pi/agent/install/current-version'), 'utf8')).trim()
 assert.equal(managedVersion, '1.5.0')
-const officialCLI = await realpath('/Users/tester/.pi/agent/install/releases/1.5.0/node_modules/.bin/pi')
+const officialCLI = await realpath(join(homedir(), '.pi/agent/install/releases', managedVersion, 'node_modules/.bin/pi'))
 // 直接启动官方安装的 Node 入口，身份绑定后不再经历 launcher 的 exec 映像替换。
 const program = await realpath(join(install, 'node/node'))
 const home = join(output, 'home'), project = join(output, 'project')
 await mkdir(home, { mode: 0o700 }); await mkdir(project, { mode: 0o700 })
 const readme = '# Example\nfunction add(a, b) { return a + b; }\n'
 await writeFile(join(project, 'README.md'), readme)
-const env = { PATH: `${install}/node:/opt/homebrew/bin:/usr/bin:/bin`, HOME: home, USERPROFILE: home, TMPDIR: home, TMP: home, TEMP: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_CACHE_HOME: home, PI_CODING_AGENT_DIR: '/Users/tester/.pi/agent', PI_OFFLINE: '1', PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1', TERM: 'dumb' }
+const env = { PATH: `${install}/node:/opt/homebrew/bin:/usr/bin:/bin`, HOME: home, USERPROFILE: home, TMPDIR: home, TMP: home, TEMP: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home, XDG_CACHE_HOME: home, PI_CODING_AGENT_DIR: join(homedir(), '.pi/agent'), PI_OFFLINE: '1', PI_TELEMETRY: '0', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1', TERM: 'dumb' }
 assert.equal(execFileSync(program, [officialCLI, '--version'], { env, cwd: project, encoding: 'utf8', timeout: 20000 }).trim(), managedVersion)
-const args = ['--provider', 'omlx', '--model', 'CyberTiel-MLX-MTP', '--offline', '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-session', '--no-approve', '--system-prompt', '只根据用户给定的文本回答，不使用工具。']
+const args = ['--provider', process.env.SWA_TEST_PI_PROVIDER || 'omlx', '--model', process.env.SWA_TEST_PI_MODEL || 'CyberTiel-MLX-MTP', '--offline', '--no-tools', '--no-extensions', '--no-mcp', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-session', '--no-approve', '--system-prompt', '只根据用户给定的文本回答，不使用工具。']
 const query = pid => JSON.parse(execFileSync(join(install, 'swa'), ['darwin-process-identity', String(pid)], { encoding: 'utf8', timeout: 5000 }))
 const save = (name, value) => writeFile(join(output, name), JSON.stringify(value, null, 2) + '\n', { flag: 'wx' })
 const owned = new Set()
