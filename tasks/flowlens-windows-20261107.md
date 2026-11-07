@@ -34,8 +34,12 @@ request.show 现在先通过 SWA 自身的 observeRequest 核对同一父子回�
 
 通过 computer use 操作官方 IrisView 的应用输入面板，完成唤醒、选择 Windows OpenCode、提交公开项目任务、回到列表及打开完成任务。Run `run_e3c0db42ad8c`、Worker Task `task_d1be068bea37`、Dispatch `ctx_650bba4b3af3` 实际完成。DeepSeek 请求返回 HTTP 200，763 个输入 token、203 个输出 token，工具数量 0。原生会话 `ses_e4a4d1e15ffeccUi0rDwfVQw4s` 的 user、assistant、idle 消息均存在；Worker 与 root Task 已完成，资源正式释放，stdout 与 custody 正常关闭。正式导出和 Controller 关闭通过。
 
-任务原文只引用函数名称，关闭工具的模型没有收到函数正文，因而该轮回答不计为函数语义验收。后续通过同一模拟器会话提供公开项目实际源码，检查接续回答。
+任务原文只引用函数名称，关闭工具的模型没有收到函数正文，因而该轮回答不计为函数语义验收。后续通过同一模拟器会话提供公开项目实际源码，接续回答正确说明 `[-2,2]` 返回 `(0,nil)`、空输入返回 `(0,ErrEmptyInput)`，调用者检查错误；完成回复自动显示。
+
+接续对应 FlowLens turn `741432a9-dd8c-4da8-874c-ca7a92e3ca9f`、Run `run_48129c7a9184`、Dispatch `ctx_e99695d44b00`。原 parent `f2e619a5-3281-59a1-9c3f-857a4e4a19ee` 与原 `/native` 回执均完成，Worker `task_3c394eccefa2`、root `task_91b8190b649d` 均 completed。实际 OpenCode 会话为 `ses_e4a1b6770ffeON0CCZwQ4q3L9q`，DeepSeek HTTP 200，1666/90 token，工具数量 0。SQLite user `msg_1b5e5c712001cgthavyWuPnBiF`、assistant `msg_1b5e5c754001ix47X4dqNI56pg`、idle `msg_1b5e5e59b001Pv0KMjRihbkJAw` 均已逐项定位。journal completed，Worker succeeded/settled、资源 released/released，stdout 与 custody 正常关闭。正式导出及 Controller 关闭通过。该轮没有 event_id，真实 event 表为空。
+
+窗口正常关闭后，电脑桥和 SWA 通过标准输入 EOF 正常退出；原生 Job 连续两次只剩 serve 自身，启动器未报告退出错误。后续继续在原数据目录运行。
 
 启动器被强制结束后，原 serve 与 daemon 已退出，命名 Job 已销毁，原 daemon PID 记录仍存在。Windows 启动现在仅在旧安装来源有效、两项原进程创建身份均已退出，且全局与全部实际 Windows Session 对象目录均无同名 Job 时重新建立服务 Job。仍存在或无法查询的 Job 保持错误；原生 daemon 管理器继续按 PID 与 nonce 处理自己的遗留记录。已有 Task、输入、结果和 runtime epoch 不修改。
 
-`go test ./cmd/swa -run '^TestServiceJobNativeAbsence$' -count=1 -v` 已在本机 Windows 通过，实际创建、查询和关闭内核 Job；完整候选包及同目录重启验证继续进行。
+`go test ./cmd/swa -run '^TestServiceJobNativeAbsence$' -count=1 -v` 已在本机 Windows 通过，实际创建、查询和关闭内核 Job。`43b959c2` 的[完整 Windows 构建、归档、新安装与原生服务检查](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42369006864) 已通过。正式包经官方入口安装到新目录后，原 `service-interactive` 成功启动，新 daemon 的来源为该安装与该源码，原项目及 completed Task 保留。测试没有创建另一 Windows Session 的 Job，跨 Session 检测目前只有源码审查。

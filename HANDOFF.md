@@ -1,5 +1,7 @@
 # 接管说明
 
+2026-11-07 Windows 后继：先读 [FlowLens Windows 探测与运行](tasks/flowlens-windows-20261107.md)。实际安装源码为 `43b959c2`，完整 Windows CI、归档、官方安装、原数据目录重启均通过。Windows Codex 0.164.0 / gpt-6-luna 路由与 OpenCode 2.0.31 / DeepSeek 实际执行、两级 Task 完成、正式导出与释放通过。WSL 官方 IrisView 通过 computer use 完成原会话接续，实际源码说明正确，完成回复自动显示；原项目、历史、设备配对保留。其余 Windows 执行者的账号/版本合同与工具权限限制见任务页。
+
 2026-11-07 后继：先读 [FlowLens WSL 实际链路](tasks/flowlens-wsl-20261107.md)。分支 `codex/flowlens-opencode-observation-20261107` 的生产修复 `7cde18b1` 已完整构建、新安装并通过实际 OpenCode/DeepSeek 与官方 IrisView Linux 模拟器链路。最终运行 `live-1794039302390` 的 15 项检查通过，包含真实发现的官方图标映射、完成与接续、HUD 呈现、重启恢复、unknown 原 Worker 精确停止、处理中存档查询原停止回执、正式释放及服务退出。native oxlint 的 31 条已有诊断仍未解决；其余角色、项目工具和硬件范围保持各任务原有状态。
 
 2026-10-29 工具桥后继：先读 [Morphogenesis 工具桥任务](tasks/swa-morph-bridge-20261029.md) 和 SPEC §21.6。分支 `codex/morph-tool-bridge-20261029`，基于下方 PR #10 的 `733ee08f`；新增 Pi 固定研究工具和对应项目授权入口。源码和真实 stdio 调用已验证，下一步完成同一源码的构建安装检查。原生模型会话需配置独立账号及实际项目权限；运行中停止研究工具调用应停止对应 Worker。
