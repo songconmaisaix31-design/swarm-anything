@@ -32,11 +32,17 @@ v1 引用事件不会自动调用旧工具。独立插件的 v1 ingress、outbox
 
 ## 六步事实源
 
-1. SWA 保存原任务完成收据和验收通道，提供固定 completion 引用。
-2. Astrocyte 验证源方成败、轨迹及产物引用；不能跨进程传 SQLite 事务。
-3. Interpreter 只起草 quarantine 候选，未知模型操作保留原 ID。
-4. 人类在 Astrocyte 批准明确经验 revision。
-5. SWA 在获准项目内检索 approved 经验，仅持久记录使用的经验 ID/revision；交接内容按原执行权限提供。
-6. SWA 把后续完成引用送回 Astrocyte。Astrocyte 记录采用关系和实际结果，不由任务 completed 推断经验有益。
+六步名称沿用 [原任务 §3.2.1](../tasks/cognitive-stack-L1-L4.md#321-六步工程闭环2026-10-15-用户明确)。以下是独立插件下的职责和当前缺口，不是端到端完成记录。
+
+| 步骤 | 插件边界与当前状态 |
+| --- | --- |
+| 1. 保存验收结果 | SWA 保存原任务完成收据和实际完成通道；`runtime/swa-orca/src/task-result.ts::completeTaskResult` 已有结果保存。向 Astrocyte 提供固定 completion 引用尚未接通，执行完成不自动成为人工验收 |
+| 2. 保存可追溯证据 | SWA 已有轨迹、输入与导出核验。Astrocyte `internal/attention/app/experience_accepted.go` 保留 `ExperienceCompletionReader` 消费端口；独立来源适配器尚未实现，不能跨进程传 SQLite 事务 |
+| 3. 抽取经验候选 | Astrocyte 同文件保留 `CaptureCompletion` 与 Interpreter 端口，只允许起草 quarantine 候选。当前 MCP 未实例化该服务，真实模型起草未接通；未知模型操作必须保留原 ID |
+| 4. 用户审核批准 | Astrocyte `internal/attention/app/experience_service.go::ApproveExperience` 已有人类身份、版本与幂等规则；独立人类批准入口尚未装配，批准必须针对具体经验 revision |
+| 5. 新任务获取经验 | Astrocyte MCP `astrocyte.get_experiences` 已装配项目绑定的 approved-only 读取；SWA 调用、选定经验 ID/revision 与获准交接输入尚未接通 |
+| 6. 验证实际复用 | 后续任务结果应回流并关联实际采用的经验 revision；当前没有跨插件采用回流消费者。实际使用和避坑效果均保持未知，不由 completed 推断经验有益 |
+
+表内 Astrocyte 路径位于独立 [astrocyte-plugin](https://github.com/songconmaisaix31-design/astrocyte-plugin/tree/dc19b955f3481bdc9117db35e195a3d972367a13)。旧 `report_event` 的可信 outcome 固定为 `unknown`，不能通过模型自由填写 `raw.outcome` 形成任务完成事实。失败捕获规则和表结构存在不表示完成来源已装配。
 
 Attention Mirror 的准入事件只允许 SWA 幂等建立草稿；启动 Run 仍需当前人类批准的提案 revision 和项目执行权限。此跨插件消费者尚未由本模块实现。
