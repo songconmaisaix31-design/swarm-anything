@@ -75,13 +75,25 @@ test('an incomplete UTF-8 code point stays in the explicit tail without changing
   assert.equal(next.observation.incomplete_tail_bytes, 0)
 })
 
-test('changed prefixes, truncated originals, replaced paths and private-file changes fail', async () => {
+test('changed prefixes and truncation fail; open path replacement is refused or detected', async t => {
   const changed = Buffer.from(native)
   changed[1] ^= 1
   await assert.rejects(observe(await source(), duringRead(path => writeFile(path, changed))), /prefix_changed/)
   await assert.rejects(observe(await source(), duringRead(path => writeFile(path, native.subarray(0, native.length - 1)))), /truncated/)
   const replacement = await source()
-  await assert.rejects(observe(await source(), duringRead(path => rename(replacement, path))), /identity_changed/)
+  const original = await source()
+  if (process.platform === 'win32') {
+    const before = await lstat(original, { bigint: true })
+    assert.ok(before.ino > 0n)
+    await assert.rejects(observe(original, duringRead(path => rename(replacement, path))), { code: 'EPERM' })
+    const after = await lstat(original, { bigint: true })
+    assert.equal(after.dev, before.dev)
+    assert.equal(after.ino, before.ino)
+    assert.deepEqual(await readFile(original), native)
+    t.diagnostic('Windows refused replacement of the open file; original identity and bytes remain unchanged. Reader identity_changed was not exercised.')
+  } else {
+    await assert.rejects(observe(original, duringRead(path => rename(replacement, path))), /identity_changed/)
+  }
   if (process.platform === 'linux') await assert.rejects(observe(await source(), duringRead(path => chmod(path, 0o644))), /AssertionError/)
 })
 

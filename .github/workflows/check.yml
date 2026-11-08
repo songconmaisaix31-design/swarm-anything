@@ -68,6 +68,19 @@ jobs:
           cache: true
       - run: go mod download
       - run: pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filter @orca/process-host install --frozen-lockfile
+        if: runner.os != 'Windows'
+      - run: pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filter @orca/process-host --filter @orca/windows-security --filter @orca/windows-registry install --frozen-lockfile
+        if: runner.os == 'Windows'
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Windows'
+        id: windows_python
+        with:
+          python-version: '3.13'
+      - name: Build the locked Windows native check modules
+        if: runner.os == 'Windows'
+        env:
+          SWA_CHECK_PYTHON: ${{ steps.windows_python.outputs.python-path }}
+        run: node scripts/prepare-windows-check-native.mjs
       - run: pnpm check
       - run: pnpm check:race
         if: runner.os == 'Linux'

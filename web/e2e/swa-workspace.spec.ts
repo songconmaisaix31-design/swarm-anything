@@ -1,14 +1,23 @@
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { startS1Server } from '../../tests/s1/server.mjs';
+import type { S1Server } from '../../tests/s1/server.mjs';
 import { humanAPI } from '../../tests/s1/api.mjs';
 import type { components } from '../src/api/schema';
 
 type S = components['schemas'];
 
-test('真实服务未配置原生运行时时显示错误并阻止创建和附着', async ({ page }) => {
-  const server = await startS1Server({ browser: true, product: 'swa' });
-  try {
+const test = base.extend<{ ownedServer: S1Server }>({
+  // 启动包含冷构建，使用独立预算；每个测试仍取得自己的进程与 SQLite。
+  // eslint-disable-next-line no-empty-pattern
+  ownedServer: [async ({}, use, testInfo) => {
+    const server = await startS1Server({ browser: true, product: 'swa' });
+    try { await use(server); }
+    finally { await server.close({ primaryError: testInfo.error }); }
+  }, { timeout: 120_000 }],
+});
+
+test('真实服务未配置原生运行时时显示错误并阻止创建和附着', async ({ page, ownedServer: server }) => {
     const human = await humanAPI(server.apiURL);
     const { space } = await human.write('/project-spaces', { title: 'SWA 浏览器边界核查' }, { status: 201 });
     const { project } = await human.write('/local-projects', { root: fileURLToPath(new URL('../../', import.meta.url)), name: 'SWA 实际公开项目', space_id: space.id });
@@ -71,12 +80,9 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     expect(commands.every(command => ['status', 'role.list', 'conversation.list'].includes(command.action))).toBe(true);
     expect(apiPaths.some(path => /^\/api\/v1\/(materials|opportunities|cognition|works|missions|proposals)(\/|$)/.test(path))).toBe(false);
     expect(server.query('SELECT COUNT(*) AS count FROM orca_execution_links')[0].count).toBe(0);
-  } finally { await server.close(); }
 });
 
-test('项目控制许可保持真实初值，显式撤销和过期版本分别核验', async ({ page }) => {
-  const server = await startS1Server({ browser: true, product: 'swa' });
-  try {
+test('项目控制许可保持真实初值，显式撤销和过期版本分别核验', async ({ page, ownedServer: server }) => {
     const human = await humanAPI(server.apiURL);
     const { space } = await human.write('/project-spaces', { title: 'SWA 当前项目许可核查' }, { status: 201 });
     const { project } = await human.write('/local-projects', { root: fileURLToPath(new URL('../../', import.meta.url)), name: 'SWA 权限往返项目', space_id: space.id }) as S['LocalProjectResultV1'];
@@ -112,5 +118,4 @@ test('项目控制许可保持真实初值，显式撤销和过期版本分别�
     const current = (await human.get('/local-projects') as S['LocalProjectListV1']).items.find(item => item.id === project.id)!;
     expect(current.settings).toEqual(newer.project.settings);
     for (const table of ['local_agent_grants', 'local_agent_sessions', 'orca_execution_links']) expect(server.query(`SELECT COUNT(*) AS count FROM ${table}`)[0].count).toBe(0);
-  } finally { await server.close(); }
 });
