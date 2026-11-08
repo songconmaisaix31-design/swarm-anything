@@ -4,23 +4,25 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { nativeTestExternals, nonWindowsNativeExternals } from './native-test-externals.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const requireRuntime = createRequire(join(root, 'runtime/swa-orca/package.json'))
-const { buildSync } = requireRuntime('esbuild')
+const { build, stop } = requireRuntime('esbuild')
 await mkdir(join(root, '.verification/pi-final-block'), { recursive: true, mode: 0o700 })
 const directory = await mkdtemp(join(root, '.verification/pi-final-block/run-'))
 const dependencies = await realpath(join(root, 'runtime/swa-orca/node_modules'))
 await symlink(dependencies, join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
 assert.equal(await realpath(join(directory, 'node_modules')), dependencies)
 const output = join(directory, 'final-block.cjs')
-buildSync({
+try { await build({
   stdin: { contents: "export { readPiFinalBlock } from './runtime/swa-orca/src/pi-session-result';", resolveDir: root, loader: 'ts' },
   outfile: output, bundle: true, platform: 'node', format: 'cjs', target: 'node24', logLevel: 'silent',
   tsconfig: join(root, 'runtime/swa-orca/tsconfig.json'), nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'node_modules')],
   conditions: ['orca-source'], alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') },
-  external: ['electron', 'node-pty', '*.node', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree']
-})
+  external: ['electron', 'node-pty', '*.node', ...nonWindowsNativeExternals, '@vscode/windows-process-tree'],
+  plugins: [nativeTestExternals(requireRuntime)]
+}) } finally { stop() }
 const { readPiFinalBlock } = createRequire(output)(output)
 const actual = JSON.parse(await readFile(new URL('fixtures/pi-aba-final-close.json', import.meta.url), 'utf8'))
 

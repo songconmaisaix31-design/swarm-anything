@@ -59,3 +59,5 @@ SWA 只保存插件连接配置引用、当前项目绑定、对象 ID/revision 
 后续补丁把 owned server 启动与清理放入独立 120 秒 fixture，保留浏览器主体 30 秒与零重试；Windows 文件替换核查操作系统拒绝、原身份与字节不变，POSIX 仍要求 `identity_changed`。原生模块从当前 workspace 和锁定依赖真编译，保持生产安全模块与发布构建约束。新源码的实际结果以 PR 中绑定的准确 SHA / Actions 为准；原生安装工作流的 skipped 不计作安装验收。
 
 `3c5dba63` 的 [Actions 42492641581](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42492641581) 已证实 Windows 冻结安装和其原生编译完成；后续锁定 node-gyp 重建因脚本要求 VS2022、运行器只有 VS2026 18.11.12328.437 / v145 / SDK10.0.26100 而拒绝。已按实际工具链固定选择 VS2026；现有 node-gyp12.3.0 与发布规则均支持此版本，无自动回退。该修正仍须新提交 CI，不能用安装时的自动编译替代完整检查。
+
+`2ff97706` 的 [Actions 42493185050](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42493185050) 中，Ubuntu 完整检查（含浏览器）与双平台 foundation 成功，Windows 锁定工具链编译及产物核验成功。后续七项测试因临时 bundle 的原生包查找位置失败，未通过完整 Windows 检查。测试现于 Windows 直接引用同一 runtime 的真实包入口，保留原包相对 `.node` 语义；Linux 保留原打包方式。固定 Node24.16 的七文件定向复验 37 通过、1 原有跳过；Windows 实际加载与调用仍待新提交 CI。生产安全实现与业务断言未改变。

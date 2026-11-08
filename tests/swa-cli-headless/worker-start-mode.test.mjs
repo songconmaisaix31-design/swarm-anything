@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { nativeTestExternals, nonWindowsNativeExternals } from './native-test-externals.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const output = join(root, '.verification/worker-structured-mode-20261023')
@@ -39,9 +40,9 @@ try {
       "export { workerTaskSpec } from './runtime/swa-orca/src/collaboration-records';"
     ].join('\n'), resolveDir: root },
     bundle: true, platform: 'node', target: 'node24', format: 'cjs', outfile: bundle, conditions: ['orca-source'],
-    external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
+    external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', ...nonWindowsNativeExternals, '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
     banner: { js: 'var __swaModuleUrl = require("node:url").pathToFileURL(__filename).href;' }, define: { 'import.meta.url': '__swaModuleUrl', 'process.env.NODE_ENV': '"production"' }, logOverride: { 'empty-import-meta': 'error' },
-    plugins: [{ name: 'original-native-externals', setup(builder) { builder.onResolve({ filter: /\.node$/ }, args => ({ path: args.path, external: true })) } },
+    plugins: [nativeTestExternals(requireRuntime), { name: 'original-native-externals', setup(builder) { builder.onResolve({ filter: /\.node$/ }, args => ({ path: args.path, external: true })) } },
       { name: 'original-jsonc-esm', setup(builder) { builder.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') })) } },
       { name: 'constructed-permission-discovery', setup(builder) {
         builder.onResolve({ filter: /^\.\/agent-discovery$/ }, args => args.importer === join(root, 'runtime/swa-orca/src/agent-launch-admission.ts') ? { path: 'permission-discovery', namespace: 'constructed-rule' } : undefined)

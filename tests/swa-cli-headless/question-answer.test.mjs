@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { nativeTestExternals, nonWindowsNativeExternals } from './native-test-externals.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const requireRuntime = createRequire(join(root, 'runtime/swa-orca/package.json'))
@@ -30,9 +31,9 @@ try {
     "export { recoverSwaRequest } from './web/src/pages/swarm/swaObservation';",
     "export { readSwaRun } from './web/src/pages/swarm/swaRunView';"
   ].join('\n'), resolveDir: root }, platform: 'node', target: 'node24', format: 'cjs', bundle: true, outfile: bundle, conditions: ['orca-source'],
-    external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', '@orca/windows-security', '@orca/windows-registry', '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
+    external: ['electron', 'node-pty', '@parcel/watcher', 'fsevents', ...nonWindowsNativeExternals, '@vscode/windows-process-tree', '@anthropic-ai/claude-agent-sdk'],
     banner: { js: 'var __swaModuleUrl = require("node:url").pathToFileURL(__filename).href;' }, define: { 'import.meta.url': '__swaModuleUrl', 'process.env.NODE_ENV': '"production"' }, logOverride: { 'empty-import-meta': 'error' },
-    plugins: [{ name: 'original-native-externals', setup(builder) { builder.onResolve({ filter: /\.node$/ }, args => ({ path: args.path, external: true })) } },
+    plugins: [nativeTestExternals(requireRuntime), { name: 'original-native-externals', setup(builder) { builder.onResolve({ filter: /\.node$/ }, args => ({ path: args.path, external: true })) } },
       { name: 'original-jsonc-esm', setup(builder) { builder.onResolve({ filter: /^jsonc-parser$/ }, () => ({ path: join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') })) } }],
     nodePaths: [join(root, 'runtime/swa-orca/node_modules'), join(root, 'web/node_modules'), join(root, 'node_modules')], logLevel: 'error' })
 } finally { stop() }

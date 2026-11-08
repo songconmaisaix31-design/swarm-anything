@@ -5,15 +5,16 @@ import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { nativeTestExternals } from './native-test-externals.mjs'
 
 // 使用工作树真实源模块；空目录只验证元数据拒绝，不创建凭据或模型回执。
 const repository = fileURLToPath(new URL('../../', import.meta.url))
 const requireRuntime = createRequire(join(repository, 'runtime/swa-orca/package.json'))
-const { buildSync } = requireRuntime('esbuild')
+const { build, stop } = requireRuntime('esbuild')
 const parent = join(repository, '.verification/cloud-setup/opencode-stepfun-compatibility')
 await mkdir(parent, { recursive: true, mode: 0o700 })
 const directory = await mkdtemp(join(parent, 'policy-check-')), output = join(directory, 'policy.cjs')
-buildSync({ stdin: { contents: `export * from './native-opencode-policy'; export { requireNativePiSourceHome } from './native-pi-policy'; export { inspectNativeCodexAccountSource } from './native-codex-policy'; export { inspectNativeClaudeAccountSource } from './native-claude-policy';`, loader: 'ts', resolveDir: join(repository, 'runtime/swa-orca/src') }, outfile: output, bundle: true, platform: 'node', format: 'cjs', target: 'node24', tsconfig: join(repository, 'runtime/swa-orca/tsconfig.json'), nodePaths: [join(repository, 'runtime/swa-orca/node_modules'), join(repository, 'node_modules')], external: ['*.node'], alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') }, logLevel: 'silent' })
+try { await build({ stdin: { contents: `export * from './native-opencode-policy'; export { requireNativePiSourceHome } from './native-pi-policy'; export { inspectNativeCodexAccountSource } from './native-codex-policy'; export { inspectNativeClaudeAccountSource } from './native-claude-policy';`, loader: 'ts', resolveDir: join(repository, 'runtime/swa-orca/src') }, outfile: output, bundle: true, platform: 'node', format: 'cjs', target: 'node24', tsconfig: join(repository, 'runtime/swa-orca/tsconfig.json'), nodePaths: [join(repository, 'runtime/swa-orca/node_modules'), join(repository, 'node_modules')], external: ['*.node'], plugins: [nativeTestExternals(requireRuntime)], alias: { 'jsonc-parser': join(dirname(requireRuntime.resolve('jsonc-parser/package.json')), 'lib/esm/main.js') }, logLevel: 'silent' }) } finally { stop() }
 const { requireNativeOpenCodeSourceHome, nativeOpenCodePolicySchema, requireNativePiSourceHome, inspectNativeCodexAccountSource, inspectNativeClaudeAccountSource } = createRequire(output)(output)
 const privateDirectory = async path => {
   if (process.platform === 'linux') await mkdir(path, { mode: 0o700 })
