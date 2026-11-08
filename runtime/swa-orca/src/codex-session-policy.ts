@@ -179,7 +179,7 @@ export function createCodexSessionPolicy(input: {
       cwd = await realpath(directory)
       await provisionPrivateCodexAccount({ snapshot, sessionId, cwd, launcher: input.launcher, track, beforeInput: input.approveInitialization })
       requireNativeCodexPrivatePath(input.launcher.eventDirectory, true)
-      if (process.platform === 'linux') createPosixPrivateFile(tracePath, Buffer.alloc(0))
+      if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(tracePath, Buffer.alloc(0))
       else createFileWithDacl(toNamespacedPath(tracePath), `O:${currentUserSid()}D:P${[...new Set([currentUserSid(), 'S-1-5-18'])].map(sid => `(A;;FA;;;${sid})`).join('')}`, Buffer.alloc(0))
       traceIdentity = identity(lstatSync(tracePath))
     },

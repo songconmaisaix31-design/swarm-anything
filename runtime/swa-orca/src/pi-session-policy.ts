@@ -142,7 +142,7 @@ export async function createPiSessionPolicy(input: {
   // 实际launch的公开transport值只在assertSpawn后保存，绝不保存完整继承环境。
   let childEnvironment: Readonly<Record<string, string>> = env
   requireNativeCodexPrivatePath(input.launcher.eventDirectory, true)
-  if (process.platform === 'linux') createPosixPrivateFile(tracePath, Buffer.alloc(0))
+  if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(tracePath, Buffer.alloc(0))
   else {
     const user = currentUserSid(), trustees = [...new Set([user, 'S-1-5-18'])]
     createFileWithDacl(tracePath, `O:${user}D:P${trustees.map(sid => `(A;;FA;;;${sid})`).join('')}`, Buffer.alloc(0))

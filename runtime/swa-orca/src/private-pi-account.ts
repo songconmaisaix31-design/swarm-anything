@@ -12,7 +12,7 @@ import { parseStrictPiJson } from '../../../third_party/orca-v1.4.230/src/main/p
 const fullControl = 0x1f01ff
 const systemSid = 'S-1-5-18'
 const samePath = (left: string, right: string) => process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
-const environmentDirectories = process.platform === 'linux'
+const environmentDirectories = process.platform === 'linux' || process.platform === 'darwin'
   ? ['appdata', 'localappdata', 'temp', 'xdg-config', 'xdg-data', 'xdg-cache', 'xdg-state', 'xdg-runtime', 'xdg-config-dirs', 'xdg-data-dirs']
   : ['appdata', 'localappdata', 'temp']
 
@@ -26,7 +26,7 @@ async function actualDirectory(path: string) {
 }
 
 function security(path: string, directory: boolean) {
-  if (process.platform === 'linux') return requirePosixPrivatePath(path, directory)
+  if (process.platform === 'linux' || process.platform === 'darwin') return requirePosixPrivatePath(path, directory)
   if (process.platform !== 'win32') throw new Error('private_pi_security_unavailable')
   const user = currentUserSid()
   const acl = getDaclAces(toNamespacedPath(path))
@@ -139,7 +139,7 @@ export async function materializePrivatePiAccount(snapshot: NativePiLegacyPolicy
     security(home, true)
     if (value === null) { await requireAbsent(join(home, name)); continue }
     const bytes = Buffer.from(JSON.stringify(value) + '\n', 'utf8')
-    if (process.platform === 'linux') createPosixPrivateFile(join(home, name), bytes)
+    if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(join(home, name), bytes)
     else createFileWithDacl(toNamespacedPath(join(home, name)), acl, bytes)
   }
   await preparePrivatePiEnvironment(home)
@@ -186,7 +186,7 @@ export async function materializePrivatePiSessionAccount(snapshot: NativePiPerSe
     if (value === null) { await requireAbsent(join(home, name)); continue }
     const bytes = Buffer.from(JSON.stringify(value) + '\n')
     if (bytes.length > 64 * 1024) throw new Error('private_pi_projection_exceeds_bound')
-    if (process.platform === 'linux') createPosixPrivateFile(join(home, name), bytes)
+    if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(join(home, name), bytes)
     else createFileWithDacl(toNamespacedPath(join(home, name)), acl, bytes)
   }
   await preparePrivatePiEnvironment(home)
@@ -274,7 +274,7 @@ export function acquirePrivatePiSettingsGuardSync(settingsPath: string) {
 export function privatePiEnvironment(home: string, inherited: Readonly<Record<string, string>>) {
   const allowed = new Set(['SYSTEMROOT', 'WINDIR', 'SYSTEMDRIVE', 'COMSPEC', 'PATHEXT', 'PATH', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'OS', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'COLORTERM', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'])
   const env: Record<string, string> = {}
-  if (process.platform === 'linux') {
+  if (process.platform === 'linux' || process.platform === 'darwin') {
     requirePosixPrivatePath(home, true)
     for (const name of environmentDirectories) requirePosixPrivatePath(join(home, name), true)
     for (const [key, value] of Object.entries(inherited)) if (allowed.has(key) || ['http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'].includes(key)) env[key] = value

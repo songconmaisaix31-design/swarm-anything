@@ -30,7 +30,7 @@ function rejectWindowsReparse(path: string) {
 }
 
 export function requireNativeClaudePath(path: string, requirement: PathRequirement): void {
-  if (process.platform !== 'linux' && process.platform !== 'win32') fail('path_security_unavailable')
+  if (process.platform !== 'linux' && process.platform !== 'darwin' && process.platform !== 'win32') fail('path_security_unavailable')
   if (!isAbsolute(path) || !samePath(realpathSync.native(path), resolve(path))) fail('path_redirected')
   const target = resolve(path)
   for (let current = target; ; current = dirname(current)) {
@@ -41,7 +41,7 @@ export function requireNativeClaudePath(path: string, requirement: PathRequireme
   // Node 的链接属性不能覆盖所有 Windows reparse tag，系统属性检查必须覆盖完整祖先链。
   rejectWindowsReparse(path)
   if (!requirement.private) return
-  if (process.platform === 'linux') { requirePosixPrivatePath(path, requirement.directory); return }
+  if (process.platform === 'linux' || process.platform === 'darwin') { requirePosixPrivatePath(path, requirement.directory); return }
   const user = currentUserSid(), acl = getDaclAces(toNamespacedPath(path)), trustees = new Set([user, systemSid])
   // 原生文件可继承已验证私有父目录的 ACL；目录本身必须阻断继承。
   if (!acl || acl.ownerSid !== user || requirement.directory && !acl.protected || acl.aces.length !== trustees.size) fail('private_security_changed')
@@ -82,7 +82,7 @@ export function createPrivateClaudeDirectory(path: string): void {
 export function createPrivateClaudeFile(path: string, bytes: Uint8Array): void {
   if (!isAbsolute(path)) fail('path_redirected')
   const { parent, version } = parentIdentity(path)
-  if (process.platform === 'linux') createPosixPrivateFile(path, bytes)
+  if (process.platform === 'linux' || process.platform === 'darwin') createPosixPrivateFile(path, bytes)
   else if (process.platform === 'win32') {
     const user = currentUserSid(), trustees = [...new Set([user, systemSid])]
     const acl = `O:${user}D:P${trustees.map(sid => `(A;;FA;;;${sid})`).join('')}`

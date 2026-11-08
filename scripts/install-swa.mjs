@@ -5,7 +5,9 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, realpath } from 'node:fs/pr
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-if (process.platform !== 'linux' || process.arch !== 'x64' || !process.report.getReport().header.glibcVersionRuntime) throw new Error('This installer requires native Linux x64 glibc')
+const platform = process.platform === 'darwin' && process.arch === 'arm64' ? 'darwin-arm64'
+  : process.platform === 'linux' && process.arch === 'x64' && process.report.getReport().header.glibcVersionRuntime ? 'linux-x64-glibc' : null
+if (!platform) throw new Error('This installer requires native Linux x64 glibc or macOS arm64')
 const { values } = parseArgs({ options: { package: { type: 'string' }, destination: { type: 'string' }, 'protected-root': { type: 'string', multiple: true } }, allowPositionals: false })
 for (const path of [values.package, values.destination, ...(values['protected-root'] ?? [])]) if (!path || !isAbsolute(path)) throw new Error('Provide absolute package, destination and protected-root paths')
 if (!values.package || !values.destination || !values['protected-root']?.length) throw new Error('Package, new destination and explicit protected roots are required')
@@ -53,10 +55,14 @@ async function tree(path, tighten = false) {
   if (info.isDirectory()) for (const name of await readdir(path)) await tree(join(path, name), tighten)
 }
 await tree(source)
-assert.equal((await readFile(join(source, 'PLATFORM'), 'utf8')).trim(), 'linux-x64-glibc')
+assert.equal((await readFile(join(source, 'PLATFORM'), 'utf8')).trim(), platform)
 const node = join(source, 'node', 'node')
-// 与固定上游 Node 24.21.0 linux-x64-glibc 的可执行文件摘要相同。
-assert.equal(createHash('sha256').update(await readFile(node)).digest('hex'), '7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c')
+// 在执行包内代码前，核对固定上游 Node 24.21.0 的可执行文件摘要。
+const nodeHashes = {
+  'linux-x64-glibc': '7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c',
+  'darwin-arm64': 'e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b'
+}
+assert.equal(createHash('sha256').update(await readFile(node)).digest('hex'), nodeHashes[platform])
 const revision = (await readFile(join(source, 'VERSION'), 'utf8')).trim()
 assert.match(revision, /^[a-f0-9]{40}$/)
 const check = root => {
@@ -72,4 +78,4 @@ for (const name of await readdir(source)) await cp(join(source, name), join(dest
 await tree(destination, true)
 assert.equal((await lstat(destination)).mode & 0o777, 0o700)
 check(destination)
-console.log(JSON.stringify({ ok: true, install_root: destination, source_revision: revision, platform: 'linux-x64-glibc', owner_uid: uid, private_mode: '0700', service_started: false, path_modified: false }))
+console.log(JSON.stringify({ ok: true, install_root: destination, source_revision: revision, platform, owner_uid: uid, private_mode: '0700', service_started: false, path_modified: false }))
