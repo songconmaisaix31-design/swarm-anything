@@ -1,0 +1,14 @@
+{
+  "caller_id": "public-legacy-compatibility",
+  "content_sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+  "database_sha256": "e8074866965c35c4b09872df85bc788196c54b64dd7ed00c945517b8a2381ad3",
+  "material_id": "35942b54-445d-44e5-a89f-35c3cb121a27",
+  "original_reopen_replay": true,
+  "receipt_count": 2,
+  "reference_request_id": "4b8d839c-0d70-422a-b452-441aab57e653",
+  "source_locator": "https://github.com/songconmaisaix31-design/swarm-anything/blob/644bbe8701ae1b1c30b54f18621c28e03dbf6082/LICENSE",
+  "source_path": "LICENSE",
+  "source_revision": "644bbe8701ae1b1c30b54f18621c28e03dbf6082",
+  "space_id": "OPFZ54D3H7YKVQYD6XOJOKMMRM",
+  "space_version": 2
+}

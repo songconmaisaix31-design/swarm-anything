@@ -8,12 +8,12 @@ import { QueryState } from '../../components/QueryState';
 import { CommandState } from '../../components/CommandState';
 import { BrandIcon } from '../../components/BrandIcon';
 import { navigate } from '../../router';
-import { TextField, SelectField } from '../attention/FormControls';
+import { TextField, SelectField } from '../../components/FormControls';
 import { matchesQuery } from '../../utils/search';
 import { formatDateTime } from '../../utils/format';
 import type { components } from '../../api/schema';
 import styles from './LocalProjectsPanel.module.css';
-import formStyles from '../attention/AttentionPage.module.css';
+import formStyles from '../../components/FormControls.module.css';
 
 type Repository = components['schemas']['GitHubRepositoryV1'];
 const cloneLabels: Record<string, string> = { not_placed: '仅保存仓库信息', cloning: '正在克隆', ready: '代码已克隆', failed: '克隆失败', interrupted: '克隆中断，等待人工核对', unknown: '克隆结果未知' };

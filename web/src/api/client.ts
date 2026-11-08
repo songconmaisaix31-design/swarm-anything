@@ -1,5 +1,6 @@
-import createClient from 'openapi-fetch';
-import type { components, paths } from './schema';
+import type { components } from './schema';
+import { api, ApiError } from './transport';
+export { api, ApiError, createApiClient } from './transport';
 
 export type { components, operations, paths } from './schema';
 export type Health = components['schemas']['HealthV1'];
@@ -22,52 +23,6 @@ export type DistillerStatus = components['schemas']['DistillerStatusV1'];
 export type LocalAgent = components['schemas']['LocalAgentV1'];
 export type AgentObservation = components['schemas']['AgentObservationV1'];
 export type NativeCapabilityObservation = components['schemas']['NativeCapabilityObservationV1'];
-
-/** 使用生成类型；受保护读取先建立会话，命令不自动重发。 */
-export const createApiClient = (baseUrl = '/api/v1', fetchImpl?: typeof fetch) => {
-  const client = createClient<paths>({ baseUrl, ...(fetchImpl ? { fetch: fetchImpl } : {}) });
-  let bootstrap: Promise<void> | undefined;
-  const establishSession = async (request: Request) => {
-    const url = new URL(request.url);
-    url.pathname = `${url.pathname.slice(0, url.pathname.indexOf('/api/v1') + 7)}/auth/session`;
-    url.search = '';
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    try {
-      const response = await (fetchImpl ?? fetch)(new Request(url, { credentials: 'same-origin', signal: controller.signal }));
-      // 读取完整响应后清除计时器，让调用方立即获知会话结果。
-      await response.arrayBuffer();
-      if (!response.ok) throw new Error(`建立本地会话失败（HTTP ${response.status}）`);
-    } finally { clearTimeout(timeout); }
-  };
-  client.use({ async onRequest({ request }) {
-    const path = new URL(request.url).pathname;
-    if (request.method !== 'GET' || request.signal.aborted || request.headers.has('Authorization') ||
-      ['/auth/session', '/health', '/foundation'].some(suffix => path === `/api/v1${suffix}`)) return request;
-    bootstrap ??= establishSession(request).catch(error => { bootstrap = undefined; throw error; });
-    await bootstrap;
-    return request;
-  }, async onResponse({ request, response }) {
-    if (request.method !== 'GET' || request.headers.has('Authorization') || response.status !== 403 || request.url.endsWith('/auth/session')) return response;
-    const error = await response.clone().json() as ApiErrorBody;
-    if (!['local session required', 'local session expired'].includes(error?.error?.message ?? '')) return response;
-    // 服务重启或会话过期后只重新发送一次读取请求。
-    bootstrap = establishSession(request).catch(error => { bootstrap = undefined; throw error; });
-    await bootstrap;
-    return (fetchImpl ?? fetch)(request);
-  } });
-  return client;
-};
-export const api = createApiClient();
-
-export class ApiError extends Error {
-  constructor(readonly status: number, readonly detail: ApiErrorBody) {
-    super(detail.error.message);
-    this.name = 'ApiError';
-  }
-  get code() { return this.detail.error.code; }
-  get requestId() { return this.detail.error.request_id; }
-}
 
 type ReadOptions = { signal?: AbortSignal };
 export function createReadApi(client = api) {

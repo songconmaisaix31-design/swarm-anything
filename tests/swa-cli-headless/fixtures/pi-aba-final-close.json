@@ -1,0 +1,42 @@
+{
+  "source": {
+    "kind": "actual_native_and_journal_metadata_projection",
+    "report_sha256": "19dd1a0e50f0dd2d536c031d622ccfe858e3171ecec907b18b677b72830c99ad",
+    "body": "OMITTED_FROM_METADATA_FIXTURE"
+  },
+  "workers": [
+    {
+      "session_id": "d1f7707b-e449-4fd2-bb87-1aa33cd7d7c2",
+      "stop_reason": "stop",
+      "content": [{ "type": "thinking" }, { "type": "text" }],
+      "closes": [
+        { "provider_item": "message:4d625f5d-f349-4158-8d20-2803bd1edf4c:1:0:reasoning", "index": 0, "role": "reasoning" },
+        { "provider_item": "message:4d625f5d-f349-4158-8d20-2803bd1edf4c:1:1:assistant", "index": 1, "role": "assistant" }
+      ]
+    },
+    {
+      "session_id": "2c8e9ea0-5a8f-493e-afb9-c1cfeb7c4ebc",
+      "stop_reason": "stop",
+      "content": [{ "type": "thinking" }, { "type": "text" }],
+      "closes": [
+        { "provider_item": "message:09395858-991c-4ce0-85a6-2122f9aea9bf:1:0:reasoning", "index": 0, "role": "reasoning" },
+        { "provider_item": "message:09395858-991c-4ce0-85a6-2122f9aea9bf:1:1:assistant", "index": 1, "role": "assistant" }
+      ]
+    },
+    {
+      "session_id": "93f66989-c551-421b-8bed-93350926dd2b",
+      "stop_reason": "stop",
+      "content": [{ "type": "thinking" }, { "type": "text" }],
+      "closes": [
+        { "provider_item": "message:2d82bf5c-4896-4ed0-b688-2d554dee4e4b:1:0:reasoning", "index": 0, "role": "reasoning" },
+        { "provider_item": "message:2d82bf5c-4896-4ed0-b688-2d554dee4e4b:1:1:assistant", "index": 1, "role": "assistant" }
+      ]
+    },
+    {
+      "session_id": "5628976a-a8cf-4c68-a776-7a7b9b76377f",
+      "stop_reason": "error",
+      "content": [],
+      "closes": []
+    }
+  ]
+}

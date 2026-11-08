@@ -3,8 +3,7 @@ import { relayApi, type RelayReceipt, type RelayTaskView, type RelayTaskResult }
 import { useReadApi } from '../../hooks/useReadApi';
 import { QueryState } from '../../components/QueryState';
 import { Field } from '../../components/DetailPanel';
-import { EventTable } from '../cognition/shared';
-import { navigate } from '../../router';
+import { EventTable } from './relayEventTable';
 import { useRelayCommand } from './relayCommand';
 import { RelayIntentPanel } from './relayIntentPanel';
 import { relayActionLabel, relayDisplayState, relayElapsed, relayLivenessLabel, relayReceiptLabel, relayUnresolved, relaySingleInput } from './relayPresentation';
@@ -78,6 +77,6 @@ export function RelayTaskPanel({ taskID, onChanged }: { taskID: string; onChange
     <button type="button" className="ac-button secondary compact" disabled={pending || reconcile.uncertain || !permission?.allowed_actions.includes('reconcile') || task.stale || receipts.stale || projects.stale || !receipts.data || relayUnresolved(receipts.data?.receipts || [], 'reconcile_events')} onClick={() => { void reconcile.run(key => relayApi.reconcileEvents(taskID, key), changed); }}>核对事件接入</button>
     {reconcile.error && <p role="alert">{reconcile.error} · 操作 {reconcile.operationID}</p>}
     {reconcile.uncertain && <p role="alert">事件核对结果未知，不重复提交；请读取收据。</p>}
-    <button type="button" className="ac-button secondary compact" onClick={() => navigate('/cognition/today')}>在 Today 查看认知活动</button>
+    <p className="relay-note">认知活动由独立 Astrocyte 工作台提供，请在对应产品中查看。</p>
   </div>;
 }

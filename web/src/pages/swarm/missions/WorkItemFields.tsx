@@ -1,4 +1,4 @@
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import styles from './MissionWorkspace.module.css';
 
 export interface WorkItemDraft {

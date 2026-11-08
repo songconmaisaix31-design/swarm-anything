@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useReadApi } from '../../hooks/useReadApi';
 import { useCommand } from '../../hooks/useCommand';
 import { CommandState } from '../../components/CommandState';
-import { TextField } from '../attention/FormControls';
+import { TextField } from '../../components/FormControls';
 import { getProjectProgress, inferProjectProgress } from './progressClient';
 import { hasProgress, parseProgressFiles, PROGRESS_FILES_LIMIT, progressKindLabel, progressPercentLabel, progressSourceLabel, progressSourceSummary, progressStatusLabel } from './progressPresentation';
 import { formatDateTime } from '../../utils/format';
 import { ProjectManualProgressForm } from './ProjectManualProgressForm';
 import type { components } from '../../api/schema';
-import styles from '../attention/AttentionPage.module.css';
+import styles from '../../components/FormControls.module.css';
 
 type Project = components['schemas']['LocalProjectV1'];
 

@@ -1,0 +1,117 @@
+name: SWA main CI path evidence
+on:
+  push:
+    tags:
+      - 'ci/swa-windows-*-main-path-evidence-01'
+      - 'ci/swa-windows-*-main-path-check-01'
+permissions:
+  contents: read
+concurrency:
+  group: swa-main-ci-path-evidence-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows-path-regression:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-main-ci-path-check]') }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.2
+          cache: false
+      - name: Exercise only the fixed path and service regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $source = $env:GITHUB_SHA
+          if ($source -cnotmatch '^[0-9a-f]{40}$') { throw 'The fixed regression source is unavailable' }
+          $output = Join-Path $env:GITHUB_WORKSPACE '.verification/swa-ci/windows-path-check'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          function Invoke-FixedGoCheck([string]$Stage, [string]$Package, [string]$Pattern, [string[]]$Required, [string[]]$MaySkip) {
+            $raw = Join-Path $env:RUNNER_TEMP ('swa-path-check-' + $Stage + '.jsonl')
+            $errors = Join-Path $env:RUNNER_TEMP ('swa-path-check-' + $Stage + '.stderr')
+            & go test -count=1 -mod=readonly -timeout=60s -run $Pattern -json ('./' + $Package) 1> $raw 2> $errors
+            $exitCode = $LASTEXITCODE
+            $allowed = @($Required) + @($MaySkip)
+            $observed = @{}
+            foreach ($name in $allowed) { $observed[$name] = @{ started = 0; terminals = 0; outcome = 'NOT_OBSERVED' } }
+            $packageName = 'github.com/songconmaisaix31-design/Astrocyte/' + $Package
+            $packagePasses = 0
+            $captureValid = $true
+            foreach ($line in [System.IO.File]::ReadLines($raw)) {
+              if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              try { $event = $line | ConvertFrom-Json -ErrorAction Stop } catch { $captureValid = $false; break }
+              if ($event.Test) {
+                if ($event.Package -cne $packageName -or $event.Test -cnotin $allowed) { $captureValid = $false; continue }
+                if ($event.Action -ceq 'run') { $observed[$event.Test].started += 1 }
+                if ($event.Action -cin @('pass', 'fail', 'skip')) {
+                  $observed[$event.Test].terminals += 1
+                  $observed[$event.Test].outcome = $event.Action
+                }
+              } elseif ($event.Package -ceq $packageName -and $event.Action -ceq 'pass') {
+                $packagePasses += 1
+              }
+            }
+            $tests = @()
+            $passed = $exitCode -eq 0 -and $captureValid -and $packagePasses -eq 1
+            foreach ($name in $allowed) {
+              $value = $observed[$name]
+              $accepted = $value.started -eq 1 -and $value.terminals -eq 1 -and ($value.outcome -ceq 'pass' -or ($name -cin $MaySkip -and $value.outcome -ceq 'skip'))
+              if (-not $accepted) { $passed = $false }
+              $tests += @{ test = $name; starts = $value.started; terminals = $value.terminals; outcome = $value.outcome }
+            }
+            $record = @{ source_revision = $source; stage = $Stage; package = $Package; exit_code = $exitCode; capture_valid = $captureValid; package_passes = $packagePasses; passed = $passed; tests = $tests }
+            $json = $record | ConvertTo-Json -Depth 6 -Compress
+            if ([System.Text.Encoding]::UTF8.GetByteCount($json) -gt 3500) { throw 'The fixed regression projection exceeded its bound' }
+            [System.IO.File]::WriteAllText((Join-Path $output ($Stage + '.json')), $json)
+            $escaped = $json.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host ('::warning title=SWA main CI path regression::' + $escaped)
+            if (-not $passed) { throw 'The fixed regression failed or did not observe every required test' }
+          }
+          $phase = 'cli-paths'
+          try {
+            $required = @('TestWindowsPrivateDataDirectory', 'TestWindowsPrivateDataDirectory/fresh_nested_and_existing_private', 'TestWindowsPrivateDataDirectory/existing_extra_administrators_ace_unchanged', 'TestWindowsPrivateDataDirectory/ordinary_file_unchanged', 'TestWindowsPrivateDataDirectory/reparse_target_and_ancestor', 'TestWindowsPrivateDataDirectory/protected_roots_before_creation', 'TestRunExportPreflightUsesRealFilesystem')
+            Invoke-FixedGoCheck -Stage $phase -Package 'cmd/swa' -Pattern '^(TestWindowsPrivateDataDirectory|TestRunExportPreflightUsesRealFilesystem)$' -Required $required -MaySkip @('TestWindowsPrivateDataDirectory/existing_wrong_owner_unchanged')
+            $phase = 'service'
+            Invoke-FixedGoCheck -Stage $phase -Package 'cmd/swa-server' -Pattern '^TestSWAActualCompositionListenerAndShutdown$' -Required @('TestSWAActualCompositionListenerAndShutdown') -MaySkip @()
+          } catch {
+            Write-Host ('::error title=SWA fixed regression stopped::phase=' + $phase)
+            throw 'The fixed Windows regression stopped; see the bounded results'
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-main-ci-path-check-${{ github.sha }}
+          path: .verification/swa-ci/windows-path-check/*.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+  windows-path-boundary:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[swa-main-ci-path-evidence]') }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.2
+          cache: false
+      - name: Observe only the actual temporary path and pipe boundaries
+        shell: pwsh
+        run: |
+          go test -count=1 -mod=readonly -tags=swa_ci_path_evidence -timeout=60s -run '^TestWindowsCIPathBoundaryEvidence$' -v ./cmd/swa
+          if ($LASTEXITCODE -ne 0) { throw 'The fixed path boundary diagnostic failed; see the bounded observations' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swa-main-ci-path-evidence-${{ github.sha }}
+          path: cmd/swa/.verification/swa-ci/windows-path-boundary/result.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

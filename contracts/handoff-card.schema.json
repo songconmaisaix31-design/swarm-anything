@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swarm-anything.local/schemas/handoff-card/0.1",
+  "title": "Handoff Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "handoff_id", "session_id", "from_role", "to_role", "at", "card"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "handoff_id": {"$ref": "#/$defs/identifier"},
+    "session_id": {"$ref": "#/$defs/identifier"},
+    "from_role": {"$ref": "#/$defs/roleId"},
+    "to_role": {"$ref": "#/$defs/roleId"},
+    "at": {"type": "string", "format": "date-time"},
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_trace"],
+      "properties": {
+        "goal": {"$ref": "#/$defs/name"},
+        "done": {"$ref": "#/$defs/texts"},
+        "decisions": {"$ref": "#/$defs/texts"},
+        "artifacts": {"$ref": "#/$defs/texts"},
+        "todos": {"$ref": "#/$defs/texts"},
+        "source_trace": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "role", "msg_id"],
+            "properties": {
+              "field": {"enum": ["goal", "done", "decisions", "artifacts", "todos"]},
+              "role": {"$ref": "#/$defs/roleId"},
+              "msg_id": {"$ref": "#/$defs/identifier"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "\\S"},
+    "identifier": {"type": "string", "pattern": "^\\S+$"},
+    "roleId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)+$"},
+    "texts": {"type": "array", "items": {"$ref": "#/$defs/name"}}
+  }
+}

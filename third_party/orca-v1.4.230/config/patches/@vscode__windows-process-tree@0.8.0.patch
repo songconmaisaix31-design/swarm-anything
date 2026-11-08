@@ -1,0 +1,1575 @@
+diff --git a/binding.gyp b/binding.gyp
+index 11a5e71..1b2e74b 100644
+--- a/binding.gyp
++++ b/binding.gyp
+@@ -3,7 +3,6 @@
+     {
+       "target_name": "windows_process_tree",
+       "dependencies": [
+-        "<!(node -p \"require('node-addon-api').targets\"):node_addon_api_except",
+       ],
+       "conditions": [
+         ['OS=="win"', {
+@@ -12,15 +11,15 @@
+             "src/cpu_worker.cc",
+             "src/process.cc",
+             "src/process_worker.cc",
+-            "src/process_commandline.cc"
++            "src/process_commandline.cc",
++            "src/process_launch.cc"
+           ],
+-          "include_dirs": [],
++          "include_dirs": ["deps/node-addon-api"],
++          "defines": ["NAPI_CPP_EXCEPTIONS", "_HAS_EXCEPTIONS=1"],
+           "libraries": [ 'psapi.lib' ],
+-          "msvs_configuration_attributes": {
+-            "SpectreMitigation": "Spectre"
+-          },
+           "msvs_settings": {
+             "VCCLCompilerTool": {
++              "ExceptionHandling": 1,
+               "AdditionalOptions": [
+                 "/guard:cf",
+                 "/sdl",
+diff --git a/lib/index.js b/lib/index.js
+index e586cd6..0ee62c3 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -7,11 +7,14 @@
+ exports.getAllProcesses = exports.getProcessTree = exports.getProcessCpuUsage = exports.getProcessList = exports.filterProcessList = exports.buildProcessTree = exports.ProcessDataFlag = void 0;
+ const util_1 = require("util");
+ const native = process.platform === 'win32' ? require('../build/Release/windows_process_tree.node') : undefined;
++exports.getProcessCreationTime = native === undefined ? undefined : native.getProcessCreationTime;
++exports.supportedProcessDataFlags = native === undefined ? undefined : native.supportedProcessDataFlags;
+ var ProcessDataFlag;
+ (function (ProcessDataFlag) {
+     ProcessDataFlag[ProcessDataFlag["None"] = 0] = "None";
+     ProcessDataFlag[ProcessDataFlag["Memory"] = 1] = "Memory";
+     ProcessDataFlag[ProcessDataFlag["CommandLine"] = 2] = "CommandLine";
++    ProcessDataFlag[ProcessDataFlag["CreationTime"] = 4] = "CreationTime";
+ })(ProcessDataFlag = exports.ProcessDataFlag || (exports.ProcessDataFlag = {}));
+ // requestInProgress is used for any function that uses CreateToolhelp32Snapshot, as multiple calls
+ // to this cannot be done at the same time.
+@@ -66,11 +69,12 @@
+     // • the properties are inlined/splatted
+     // • the 'ppid' field is omitted
+     // • the depth of the tree is limited by `maxDepth`
+-    const buildNode = ({ info: { pid, name, memory, commandLine }, children }, depth) => ({
++    const buildNode = ({ info: { pid, name, memory, commandLine, creationTimeMs }, children }, depth) => ({
+         pid,
+         name,
+         memory,
+         commandLine,
++        creationTimeMs,
+         children: depth > 0 ? children.map(c => buildNode(c, depth - 1)) : [],
+     });
+     return buildNode(root, maxDepth);
+diff --git a/lib/index.ts b/lib/index.ts
+index 7b53aad..284dae1 100644
+--- a/lib/index.ts
++++ b/lib/index.ts
+@@ -6,12 +6,16 @@
+ import { promisify } from 'util';
+ 
+ const native = process.platform === 'win32' ? require('../build/Release/windows_process_tree.node') : undefined;
++export const getProcessCreationTime: ((pid: number) => number | undefined) | undefined = native?.getProcessCreationTime;
++/** The flag bits this compiled addon reports; undefined off win32. */
++export const supportedProcessDataFlags: number | undefined = native?.supportedProcessDataFlags;
+ import { IProcessInfo, IProcessTreeNode, IProcessCpuInfo } from '@vscode/windows-process-tree';
+ 
+ export enum ProcessDataFlag {
+   None = 0,
+   Memory = 1,
+-  CommandLine = 2
++  CommandLine = 2,
++  CreationTime = 4
+ }
+ 
+ type RequestCallback = (processList: IProcessInfo[]) => void;
+@@ -81,11 +85,12 @@
+   // • the properties are inlined/splatted
+   // • the 'ppid' field is omitted
+   // • the depth of the tree is limited by `maxDepth`
+-  const buildNode = ({ info: { pid, name, memory, commandLine }, children }: IProcessInfoNode, depth: number): IProcessTreeNode => ({
++  const buildNode = ({ info: { pid, name, memory, commandLine, creationTimeMs }, children }: IProcessInfoNode, depth: number): IProcessTreeNode => ({
+     pid,
+     name,
+     memory,
+     commandLine,
++    creationTimeMs,
+     children: depth > 0 ? children.map(c => buildNode(c, depth - 1)) : [],
+   });
+ 
+diff --git a/src/addon.cc b/src/addon.cc
+index 5253960..f146490 100644
+--- a/src/addon.cc
++++ b/src/addon.cc
+@@ -6,6 +6,7 @@
+ #include <napi.h>
+ #include "cpu_worker.h"
+ #include "process_worker.h"
++#include "process_launch.h"
+ 
+ void GetProcessList(const Napi::CallbackInfo& args) {
+   Napi::Env env(args.Env());
+@@ -50,9 +51,33 @@
+   worker->Queue();
+ }
+ 
++Napi::Value ReadProcessCreationTime(const Napi::CallbackInfo& args) {
++  Napi::Env env(args.Env());
++  if (args.Length() != 1 || !args[0].IsNumber()) {
++    return env.Undefined();
++  }
++  const double pid = args[0].As<Napi::Number>().DoubleValue();
++  if (!(pid >= 1 && pid <= MAXDWORD) || pid != static_cast<DWORD>(pid)) {
++    return env.Undefined();
++  }
++  ProcessInfo pinfo{};
++  pinfo.pid = static_cast<DWORD>(pid);
++  GetProcessCreationTime(pinfo);
++  if (pinfo.creationTimeMs == 0) {
++    return env.Undefined();
++  }
++  return Napi::Number::New(env, static_cast<double>(pinfo.creationTimeMs));
++}
++
+ Napi::Object Init(Napi::Env env, Napi::Object exports) {
++  exports.Set("getProcessCreationTime", Napi::Function::New(env, ReadProcessCreationTime));
+   exports.Set("getProcessList", Napi::Function::New(env, GetProcessList));
+   exports.Set("getProcessCpuUsage", Napi::Function::New(env, GetProcessCpuUsage));
++  exports.Set("spawnOutsideJob", Napi::Function::New(env, SpawnOutsideJob));
++  // Lets a caller prove THIS BINARY understands CREATIONTIME. The JS enum is
++  // patched source and says nothing about what the .node was compiled from.
++  exports.Set("supportedProcessDataFlags",
++              Napi::Number::New(env, MEMORY | COMMANDLINE | CREATIONTIME));
+   return exports;
+ }
+ 
+diff --git a/src/process.cc b/src/process.cc
+--- a/src/process.cc
++++ b/src/process.cc
+@@ -3,15 +3,149 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++#include <winsock2.h>
+ #include "process.h"
+ #include "process_commandline.h"
+ 
+ #include <tlhelp32.h>
+ #include <psapi.h>
+ #include <limits>
++#include <cstddef>
++#include <stdexcept>
++#include <winternl.h>
++#include <iphlpapi.h>
++// 仅隔离 C 头的三个 typedef 名称，SDK 声明和完整布局保持原样。
++#pragma push_macro("_SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION")
++#pragma push_macro("_SYSTEM_PERFORMANCE_INFORMATION")
++#pragma push_macro("_SYSTEM_INTERRUPT_INFORMATION")
++#undef _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION
++#undef _SYSTEM_PERFORMANCE_INFORMATION
++#undef _SYSTEM_INTERRUPT_INFORMATION
++#define _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION SwaPsutilSystemProcessorPerformanceInformation
++#define _SYSTEM_PERFORMANCE_INFORMATION SwaPsutilSystemPerformanceInformation
++#define _SYSTEM_INTERRUPT_INFORMATION SwaPsutilSystemInterruptInformation
++#include "psutil-ntextapi.h"
++#pragma pop_macro("_SYSTEM_INTERRUPT_INFORMATION")
++#pragma pop_macro("_SYSTEM_PERFORMANCE_INFORMATION")
++#pragma pop_macro("_SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION")
++
++namespace {
++
++[[noreturn]] void SnapshotFailure(const char* phase, const char* kind, ULONG code) {
++  throw std::runtime_error(std::string("NativeProcessSnapshotError phase=") + phase +
++                           "; kind=" + kind + "; code=" + std::to_string(code));
++}
++
++uint32_t GetNtProcessList(std::vector<ProcessInfo>& process_info) {
++  static_assert(sizeof(void*) == 8, "The identity snapshot supports Windows x64 only");
++  const auto module = GetModuleHandleW(L"ntdll.dll");
++  if (module == nullptr) {
++    const DWORD error = GetLastError();
++    SnapshotFailure("load-system-module", "Win32", error);
++  }
++  const auto query = reinterpret_cast<decltype(_NtQuerySystemInformation)>(
++      GetProcAddress(module, "NtQuerySystemInformation"));
++  if (query == nullptr) {
++    const DWORD error = GetLastError();
++    SnapshotFailure("resolve-api", "Win32", error);
++  }
++
++  constexpr size_t limit = 64 * 1024 * 1024;
++  std::vector<ULONGLONG> storage(0x4000 / sizeof(ULONGLONG));
++  ULONG returned = 0;
++  NTSTATUS status = 0;
++  bool complete = false;
++  for (unsigned attempt = 0; attempt < 4; attempt++) {
++    const size_t capacity = storage.size() * sizeof(ULONGLONG);
++    returned = 0;
++    status = query(SystemProcessInformation, storage.data(),
++                   static_cast<ULONG>(capacity), &returned);
++    if (status == STATUS_INFO_LENGTH_MISMATCH || status == STATUS_BUFFER_TOO_SMALL) {
++      if (returned > limit || capacity >= limit)
++        SnapshotFailure("buffer-limit", "NTSTATUS", static_cast<ULONG>(status));
++      const size_t geometric = capacity > limit / 2 ? limit : capacity * 2;
++      const size_t required = returned > geometric ? returned : geometric;
++      if (attempt == 3)
++        SnapshotFailure("buffer-attempts", "NTSTATUS", static_cast<ULONG>(status));
++      storage.resize((required + sizeof(ULONGLONG) - 1) / sizeof(ULONGLONG));
++      continue;
++    }
++    if (status < 0) SnapshotFailure("query", "NTSTATUS", static_cast<ULONG>(status));
++    if (returned == 0 || returned > capacity) SnapshotFailure("returned-length", "InvalidBuffer", returned);
++    complete = true;
++    break;
++  }
++  if (!complete) SnapshotFailure("buffer-attempts", "NTSTATUS", static_cast<ULONG>(status));
++
++  const auto bytes = reinterpret_cast<const unsigned char*>(storage.data());
++  const auto first = reinterpret_cast<uintptr_t>(bytes);
++  if (first > (std::numeric_limits<uintptr_t>::max)() - returned)
++    SnapshotFailure("buffer-address", "InvalidBuffer", returned);
++  const auto last = first + returned;
++  constexpr size_t header = offsetof(SYSTEM_PROCESS_INFORMATION, Threads);
++  std::vector<ProcessInfo> actual;
++  size_t offset = 0, nameBytes = 0;
++  for (;;) {
++    if (offset > returned || returned - offset < header || offset % alignof(SYSTEM_PROCESS_INFORMATION) != 0)
++      SnapshotFailure("record-header", "InvalidBuffer", static_cast<ULONG>(offset));
++    const auto record = reinterpret_cast<const SYSTEM_PROCESS_INFORMATION*>(bytes + offset);
++    const auto pid = reinterpret_cast<uintptr_t>(record->UniqueProcessId);
++    const auto ppid = reinterpret_cast<uintptr_t>(record->InheritedFromUniqueProcessId);
++    if (pid > (std::numeric_limits<DWORD>::max)() || ppid > (std::numeric_limits<DWORD>::max)())
++      SnapshotFailure("process-id", "InvalidBuffer", 0);
++
++    // 原接口省略 PID0；PPID0 和系统记录中的空名字均保持合法。
++    if (pid != 0) {
++      ProcessInfo pinfo{};
++      pinfo.pid = static_cast<DWORD>(pid);
++      pinfo.ppid = static_cast<DWORD>(ppid);
++      pinfo.creationTimeNtStatus = static_cast<ULONG>(status);
++      const auto& image = record->ImageName;
++      if (image.Length % sizeof(WCHAR) != 0 || image.Length > image.MaximumLength)
++        SnapshotFailure("image-length", "InvalidBuffer", image.Length);
++      if (image.Length != 0) {
++        const auto address = reinterpret_cast<uintptr_t>(image.Buffer);
++        if (address < first || address > last || address % alignof(WCHAR) != 0 || image.Length > last - address)
++          SnapshotFailure("image-address", "InvalidBuffer", image.Length);
++        const int characters = image.Length / static_cast<int>(sizeof(WCHAR));
++        const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
++            image.Buffer, characters, nullptr, 0, nullptr, nullptr);
++        if (length == 0) {
++          const DWORD error = GetLastError();
++          SnapshotFailure("image-conversion", "Win32", error);
++        }
++        if (nameBytes > limit - static_cast<size_t>(length))
++          SnapshotFailure("image-limit", "InvalidBuffer", 0);
++        nameBytes += static_cast<size_t>(length);
++        pinfo.snapshotName.resize(static_cast<size_t>(length));
++        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, image.Buffer,
++              characters, pinfo.snapshotName.data(), length, nullptr, nullptr) != length) {
++          const DWORD error = GetLastError();
++          SnapshotFailure("image-conversion", "Win32", error);
++        }
++      }
++      constexpr LONGLONG epoch = 116444736000000000LL;
++      if (record->CreateTime.QuadPart >= epoch)
++        pinfo.creationTimeMs = static_cast<ULONGLONG>((record->CreateTime.QuadPart - epoch) / 10000);
++      actual.push_back(std::move(pinfo));
++    }
++    if (record->NextEntryOffset == 0) break;
++    if (record->NextEntryOffset < header || record->NextEntryOffset > returned - offset ||
++        record->NextEntryOffset % alignof(SYSTEM_PROCESS_INFORMATION) != 0)
++      SnapshotFailure("record-offset", "InvalidBuffer", record->NextEntryOffset);
++    offset += record->NextEntryOffset;
++  }
++  if (actual.empty()) SnapshotFailure("empty-snapshot", "InvalidBuffer", 0);
++  process_info = std::move(actual);
++  return static_cast<uint32_t>(process_info.size());
++}
++
++}  // namespace
+ 
+ uint32_t GetRawProcessList(std::vector<ProcessInfo>& process_info,
+                            DWORD process_data_flags) {
++  // 仅 flags4 使用同批身份快照，其余调用保持原实现。
++  if (process_data_flags == CREATIONTIME) return GetNtProcessList(process_info);
+   // Fetch the PID and PPIDs
+   PROCESSENTRY32 process_entry = { 0 };
+   DWORD parent_pid = 0;
+@@ -21,7 +155,8 @@
+   if (Process32First(snapshot_handle, &process_entry)) {
+     do {
+       if (process_entry.th32ProcessID != 0) {
+-        ProcessInfo pinfo;
++        // Value-initialize: `memory` is otherwise stack garbage when the flag is unset.
++        ProcessInfo pinfo{};
+         pinfo.pid = process_entry.th32ProcessID;
+         pinfo.ppid = process_entry.th32ParentProcessID;
+ 
+@@ -33,23 +168,51 @@
+           GetProcessCommandLine(pinfo);
+         }
+ 
++        if (CREATIONTIME & process_data_flags) {
++          GetProcessCreationTime(pinfo);
++        }
++
+         strcpy(pinfo.name, process_entry.szExeFile);
+         process_info.push_back(std::move(pinfo));
+         process_count++;
+       }
+-    } while (process_count < 1024 && Process32Next(snapshot_handle, &process_entry));
++    } while (Process32Next(snapshot_handle, &process_entry));
+   }
+ 
+   CloseHandle(snapshot_handle);
+   return process_count;
+ }
+ 
++void GetProcessCreationTime(ProcessInfo& process_info) {
++  HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_info.pid);
++  if (hProcess == NULL) {
++    return;
++  }
++
++  FILETIME creationTime, exitTime, kernelTime, userTime;
++  if (GetProcessTimes(hProcess, &creationTime, &exitTime, &kernelTime, &userTime)) {
++    ULARGE_INTEGER timestamp;
++    timestamp.LowPart = creationTime.dwLowDateTime;
++    timestamp.HighPart = creationTime.dwHighDateTime;
++    constexpr ULONGLONG WINDOWS_EPOCH_OFFSET_100NS = 116444736000000000ULL;
++    constexpr ULONGLONG HUNDRED_NS_PER_MILLISECOND = 10000ULL;
++    if (timestamp.QuadPart >= WINDOWS_EPOCH_OFFSET_100NS) {
++      process_info.creationTimeMs =
++          (timestamp.QuadPart - WINDOWS_EPOCH_OFFSET_100NS) / HUNDRED_NS_PER_MILLISECOND;
++    }
++  }
++
++  CloseHandle(hProcess);
++}
++
+ void GetProcessMemoryUsage(ProcessInfo& process_info) {
+   DWORD pid = process_info.pid;
+   HANDLE hProcess;
+   PROCESS_MEMORY_COUNTERS pmc;
+ 
+-  hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid);
++  // PROCESS_VM_READ is never used here -- GetProcessMemoryInfo reads counters the
++  // kernel keeps, not the address space -- and acquiring it is what EDR scores.
++  hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+ 
+   if (hProcess == NULL) {
+     return;
+@@ -81,7 +244,8 @@
+   DWORD pid = cpu_info.pid;
+   HANDLE hProcess;
+ 
+-  hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid);
++  // GetProcessTimes needs no more than PROCESS_QUERY_LIMITED_INFORMATION.
++  hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+ 
+   if (hProcess == NULL) {
+     return;
+diff --git a/src/process.h b/src/process.h
+--- a/src/process.h
++++ b/src/process.h
+@@ -22,18 +22,24 @@
+   DWORD ppid;
+   DWORD memory; // Reported in bytes
+   std::string commandLine;
++  ULONGLONG creationTimeMs;
++  ULONG creationTimeNtStatus = 0;
++  std::string snapshotName;
+ };
+ 
+ enum ProcessDataFlags {
+   NONE = 0,
+   MEMORY = 1,
+-  COMMANDLINE = 2
++  COMMANDLINE = 2,
++  CREATIONTIME = 4
+ };
+ 
+ uint32_t GetRawProcessList(std::vector<ProcessInfo>& process_info, DWORD flags);
+ 
+ void GetProcessMemoryUsage(ProcessInfo& process_info);
+ 
++void GetProcessCreationTime(ProcessInfo& process_info);
++
+ void GetCpuUsage(Cpu& cpu_info, bool first_run);
+ 
+ #endif  // SRC_PROCESS_H_
+diff --git a/src/process_commandline.cc b/src/process_commandline.cc
+index 716051d..25907c0 100644
+--- a/src/process_commandline.cc
++++ b/src/process_commandline.cc
+@@ -7,61 +7,119 @@
+ #include "process_commandline.h"
+ #include <windows.h>
+ #include <winternl.h>
+-#include <iostream>
++#include <vector>
+ 
+-bool GetProcessCommandLine(ProcessInfo& process_info) {
+-  HINSTANCE ntdll = GetModuleHandleW(L"ntdll.dll");
++namespace {
++
++// Windows 8.1 and later hand back a process's command line as a UNICODE_STRING
++// the kernel builds, needing only PROCESS_QUERY_LIMITED_INFORMATION.
++//
++// There is deliberately no PEB fallback. Reading the command line out of the
++// target's address space -- opening it for VM reads and then chaining
++// memory reads across every pid on a timer -- is the credential-dumping
++// primitive this reader exists to not perform, so it is absent from the binary
++// rather than one anomalous NTSTATUS away. Electron's floor is Windows 10, so
++// every OS Orca supports has this class; if a hooked ntdll refuses it anyway,
++// the command line comes back empty, which callers already handle, instead of
++// silently reinstating the primitive on exactly the instrumented machines this
++// reader was written for.
++const ULONG kProcessCommandLineInformation = 60;
++
++const NTSTATUS kStatusInfoLengthMismatch = static_cast<NTSTATUS>(0xC0000004L);
++const NTSTATUS kStatusBufferTooSmall = static_cast<NTSTATUS>(0xC0000023L);
++
++// A command line is a UNICODE_STRING, whose Length is a USHORT, so the kernel
++// can never need more than the header plus 64 KiB. Refusing anything larger
++// keeps a bogus size from throwing bad_alloc out of a scan that has already
++// walked most of the table.
++const ULONG kMaxCommandLineBytes = sizeof(UNICODE_STRING) + 0xFFFF + sizeof(wchar_t);
++
++// winternl.h's PROCESSINFOCLASS does not name class 60 and its enumerator range
++// stops far short of it, so the class travels as a ULONG rather than a cast enum.
++typedef NTSTATUS(NTAPI* NtQueryInformationProcessFn)(HANDLE, ULONG, PVOID, ULONG, PULONG);
++
++// ntdll ships no import library for this entry point; it has to be resolved.
++NtQueryInformationProcessFn ResolveNtQueryInformationProcess() {
++  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+   if (!ntdll) {
++    return nullptr;
++  }
++  return reinterpret_cast<NtQueryInformationProcessFn>(
++      GetProcAddress(ntdll, "NtQueryInformationProcess"));
++}
++
++NtQueryInformationProcessFn NtQueryInformationProcessEntry() {
++  static NtQueryInformationProcessFn entry = ResolveNtQueryInformationProcess();
++  return entry;
++}
++
++bool StoreCommandLineUtf8(ProcessInfo& process_info, const wchar_t* data, size_t wide_length) {
++  if (wide_length == 0) {
++    return false;
++  }
++  int length = static_cast<int>(wide_length);
++  int charcount = WideCharToMultiByte(CP_UTF8, 0, data, length, NULL, 0, NULL, NULL);
++  if (!charcount) {
+     return false;
+   }
++  process_info.commandLine.resize(static_cast<size_t>(charcount));
++  WideCharToMultiByte(CP_UTF8, 0, data, length, &process_info.commandLine[0], charcount, NULL,
++                      NULL);
++  return true;
++}
++
++}  // namespace
+ 
+-  decltype(NtQueryInformationProcess)* nt_query_information_process =
+-      reinterpret_cast<decltype(NtQueryInformationProcess)*>(
+-          GetProcAddress(ntdll, "NtQueryInformationProcess"));
++bool GetProcessCommandLine(ProcessInfo& process_info) {
++  NtQueryInformationProcessFn query = NtQueryInformationProcessEntry();
++  if (!query) {
++    return false;
++  }
+ 
+-  if (!nt_query_information_process) {
++  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_info.pid);
++  if (process == NULL) {
+     return false;
+   }
+ 
+-  PROCESS_BASIC_INFORMATION pbi{};
+-  PEB peb = {NULL};
+-  RTL_USER_PROCESS_PARAMETERS process_parameters = {NULL};
++  ULONG size = 0;
++  NTSTATUS status = query(process, kProcessCommandLineInformation, nullptr, 0, &size);
++  if (NT_SUCCESS(status)) {
++    // Nothing was written, so there is no command line to read.
++    CloseHandle(process);
++    return false;
++  }
++  if (status != kStatusInfoLengthMismatch && status != kStatusBufferTooSmall) {
++    CloseHandle(process);
++    return false;
++  }
++  if (size < sizeof(UNICODE_STRING) || size > kMaxCommandLineBytes) {
++    CloseHandle(process);
++    return false;
++  }
+ 
+-  // Get process handle
+-  DWORD pid = process_info.pid;
+-  HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+-  if (hProcess == INVALID_HANDLE_VALUE) {
++  std::vector<unsigned char> buffer(size);
++  status = query(process, kProcessCommandLineInformation, &buffer[0], size, &size);
++  CloseHandle(process);
++  if (!NT_SUCCESS(status)) {
+     return false;
+   }
+ 
+-  // Get Process Environment Block (PEB)
+-  NTSTATUS status = nt_query_information_process(hProcess, ProcessBasicInformation, &pbi, sizeof(pbi), nullptr);
+-  if (NT_SUCCESS(status) && pbi.PebBaseAddress) {
+-    // Read PEB
+-    if (ReadProcessMemory(hProcess, pbi.PebBaseAddress, &peb, sizeof(peb), nullptr)) {
+-      // Read the processs parameters
+-      if (ReadProcessMemory(hProcess, peb.ProcessParameters, &process_parameters, sizeof(RTL_USER_PROCESS_PARAMETERS), nullptr)) {
+-        if (process_parameters.CommandLine.Length > 0) {
+-          std::wstring buffer;
+-          buffer.resize(process_parameters.CommandLine.Length / sizeof(wchar_t));
+-          if (ReadProcessMemory(hProcess, process_parameters.CommandLine.Buffer, &buffer[0], process_parameters.CommandLine.Length, nullptr)) {
+-            int wide_length = static_cast<int>(buffer.length());
+-            int charcount = WideCharToMultiByte(CP_UTF8, 0, buffer.data(), wide_length,
+-                                      NULL, 0, NULL, NULL);
+-            if (charcount) {
+-              process_info.commandLine.resize(static_cast<size_t>(charcount));
+-              WideCharToMultiByte(CP_UTF8, 0, buffer.data(), wide_length,
+-                                  &process_info.commandLine[0], charcount,
+-                                  NULL, NULL);
+-            }
+-            CloseHandle(hProcess);
+-            return true;
+-          }
+-        }
+-      }
+-    }
++  // Header and characters arrive in one allocation, but treat the header as
++  // untrusted: a hooked ntdll is the case this reader is written for, and an
++  // unchecked Buffer/Length here would be an over-read encoded straight into JS.
++  // Bound against buffer.size(), never `size` -- the second query overwrote it.
++  const UNICODE_STRING* command_line = reinterpret_cast<const UNICODE_STRING*>(&buffer[0]);
++  const unsigned char* begin = &buffer[0];
++  const unsigned char* end = begin + buffer.size();
++  const unsigned char* chars = reinterpret_cast<const unsigned char*>(command_line->Buffer);
++  if (chars == nullptr || chars < begin + sizeof(UNICODE_STRING) || chars > end ||
++      command_line->Length > static_cast<ULONG>(end - chars)) {
++    return false;
+   }
+ 
+-  CloseHandle(hProcess);
+-  return false;
++  // True only when a command line was actually stored, so "empty" and "not
++  // recovered" stay the same answer they were before this reader replaced the
++  // PEB read. `src/process.cc` discards the result either way.
++  return StoreCommandLineUtf8(process_info, command_line->Buffer,
++                              command_line->Length / sizeof(wchar_t));
+ }
+diff --git a/src/process_launch.cc b/src/process_launch.cc
+new file mode 100644
+index 0000000..e3141c5
+--- /dev/null
++++ b/src/process_launch.cc
+@@ -0,0 +1,140 @@
++// Orca: start a detached process outside the caller's job object.
++//
++// Win32-OpenSSH puts every session's shell in a job with KILL_ON_JOB_CLOSE, so
++// anything a session starts dies when the session ends. The same job carries
++// BREAKAWAY_OK, so CREATE_BREAKAWAY_FROM_JOB lets a standard user start a
++// process that outlives it -- which Node cannot ask for: libuv never passes it.
++
++#include "process_launch.h"
++
++#include <windows.h>
++#include <string>
++#include <vector>
++
++namespace {
++
++class OwnedHandle {
++ public:
++  explicit OwnedHandle(HANDLE handle) : handle_(handle) {}
++  ~OwnedHandle() {
++    if (valid()) {
++      CloseHandle(handle_);
++    }
++  }
++  OwnedHandle(const OwnedHandle&) = delete;
++  OwnedHandle& operator=(const OwnedHandle&) = delete;
++  bool valid() const { return handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE; }
++  HANDLE get() const { return handle_; }
++
++ private:
++  HANDLE handle_;
++};
++
++std::wstring ToWide(const Napi::Value& value) {
++  const std::u16string text = value.As<Napi::String>().Utf16Value();
++  return std::wstring(text.begin(), text.end());
++}
++
++HANDLE OpenInheritable(const std::wstring& path, DWORD access, DWORD disposition) {
++  SECURITY_ATTRIBUTES attributes{};
++  attributes.nLength = sizeof(attributes);
++  attributes.bInheritHandle = TRUE;
++  return CreateFileW(path.c_str(), access,
++                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
++                     &attributes, disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
++}
++
++Napi::Object Failure(Napi::Env env, const char* reason, const char* step, DWORD code) {
++  Napi::Object result = Napi::Object::New(env);
++  result.Set("ok", false);
++  result.Set("reason", reason);
++  result.Set("step", step);
++  result.Set("code", static_cast<double>(code));
++  return result;
++}
++
++}  // namespace
++
++// spawnOutsideJob(application, commandLine, cwd, stdoutPath, stderrPath)
++Napi::Value SpawnOutsideJob(const Napi::CallbackInfo& args) {
++  Napi::Env env(args.Env());
++  if (args.Length() != 5) {
++    throw Napi::TypeError::New(env, "spawnOutsideJob expects five string arguments.");
++  }
++  for (size_t index = 0; index < args.Length(); index++) {
++    if (!args[index].IsString()) {
++      throw Napi::TypeError::New(env, "spawnOutsideJob expects five string arguments.");
++    }
++  }
++  const std::wstring application = ToWide(args[0]);
++  const std::wstring command_line = ToWide(args[1]);
++  const std::wstring cwd = ToWide(args[2]);
++  // CreateProcessW may write into the command-line buffer.
++  std::vector<wchar_t> command_buffer(command_line.begin(), command_line.end());
++  command_buffer.push_back(L'\0');
++
++  OwnedHandle input(OpenInheritable(L"NUL", GENERIC_READ, OPEN_EXISTING));
++  if (!input.valid()) {
++    return Failure(env, "failed", "open-stdin", GetLastError());
++  }
++  OwnedHandle output(OpenInheritable(ToWide(args[3]), GENERIC_WRITE, CREATE_ALWAYS));
++  if (!output.valid()) {
++    return Failure(env, "failed", "open-stdout", GetLastError());
++  }
++  OwnedHandle error_output(OpenInheritable(ToWide(args[4]), GENERIC_WRITE, CREATE_ALWAYS));
++  if (!error_output.valid()) {
++    return Failure(env, "failed", "open-stderr", GetLastError());
++  }
++
++  // Inherit exactly these three: an inherited SSH channel pipe would hold the
++  // launching session open for the relay's whole life.
++  HANDLE inherited[3] = {input.get(), output.get(), error_output.get()};
++  SIZE_T attribute_size = 0;
++  InitializeProcThreadAttributeList(nullptr, 1, 0, &attribute_size);
++  std::vector<unsigned char> attribute_storage(attribute_size);
++  auto* attribute_list =
++      reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attribute_storage.data());
++  if (!InitializeProcThreadAttributeList(attribute_list, 1, 0, &attribute_size)) {
++    return Failure(env, "failed", "attribute-list", GetLastError());
++  }
++  if (!UpdateProcThreadAttribute(attribute_list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
++                                 inherited, sizeof(inherited), nullptr, nullptr)) {
++    const DWORD code = GetLastError();
++    DeleteProcThreadAttributeList(attribute_list);
++    return Failure(env, "failed", "handle-list", code);
++  }
++
++  STARTUPINFOEXW startup{};
++  startup.StartupInfo.cb = sizeof(startup);
++  startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
++  startup.StartupInfo.hStdInput = input.get();
++  startup.StartupInfo.hStdOutput = output.get();
++  startup.StartupInfo.hStdError = error_output.get();
++  startup.lpAttributeList = attribute_list;
++  PROCESS_INFORMATION info{};
++  // CREATE_NO_WINDOW keeps one hidden console for the relay's console
++  // children, as the cmd.exe that WMI used to start it did.
++  const DWORD flags = CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP |
++                      CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
++  const BOOL created = CreateProcessW(
++      application.c_str(), command_buffer.data(), nullptr, nullptr, TRUE, flags, nullptr,
++      cwd.empty() ? nullptr : cwd.c_str(), &startup.StartupInfo, &info);
++  const DWORD create_error = created ? ERROR_SUCCESS : GetLastError();
++  DeleteProcThreadAttributeList(attribute_list);
++  if (!created) {
++    BOOL caller_in_job = FALSE;
++    IsProcessInJob(GetCurrentProcess(), nullptr, &caller_in_job);
++    const bool denied = create_error == ERROR_ACCESS_DENIED && caller_in_job;
++    return Failure(env, denied ? "breakaway-denied" : "failed", "create-process", create_error);
++  }
++  BOOL child_in_job = FALSE;
++  IsProcessInJob(info.hProcess, nullptr, &child_in_job);
++  CloseHandle(info.hThread);
++  CloseHandle(info.hProcess);
++
++  Napi::Object result = Napi::Object::New(env);
++  result.Set("ok", true);
++  result.Set("pid", static_cast<double>(info.dwProcessId));
++  result.Set("inJob", child_in_job != FALSE);
++  return result;
++}
+diff --git a/src/process_launch.h b/src/process_launch.h
+new file mode 100644
+index 0000000..88872a1
+--- /dev/null
++++ b/src/process_launch.h
+@@ -0,0 +1,10 @@
++// Orca: start a detached process outside the caller's job object.
++
++#ifndef SRC_PROCESS_LAUNCH_H_
++#define SRC_PROCESS_LAUNCH_H_
++
++#include <napi.h>
++
++Napi::Value SpawnOutsideJob(const Napi::CallbackInfo& args);
++
++#endif  // SRC_PROCESS_LAUNCH_H_
+diff --git a/src/process_worker.cc b/src/process_worker.cc
+--- a/src/process_worker.cc
++++ b/src/process_worker.cc
+@@ -43,8 +43,29 @@
+           Napi::String::New(env, pinfo.commandLine));
+     }
+ 
++    if ((CREATIONTIME & process_data_flags_) && pinfo.creationTimeMs != 0) {
++      object.Set("creationTimeMs",
++                 Napi::Number::New(env, static_cast<double>(pinfo.creationTimeMs)));
++    }
++
++    if (process_data_flags_ == CREATIONTIME) {
++      object.Set("name", Napi::String::New(env, pinfo.snapshotName));
++      object.Set("creationTimeDiagnosticVersion", Napi::Number::New(env, 2));
++      object.Set("creationTimeProvider", Napi::String::New(env, "NtQuerySystemInformation"));
++      object.Set("creationTimeNtStatus", Napi::Number::New(env, pinfo.creationTimeNtStatus));
++      object.Set("creationTimeSnapshotComplete", Napi::Boolean::New(env, true));
++    }
+     result.Set(i, object);
+   }
+ 
+   Callback().Call({result});
+ }
++
++void GetProcessesWorker::OnError(const Napi::Error& error) {
++  if (process_data_flags_ != CREATIONTIME) {
++    Napi::AsyncWorker::OnError(error);
++    return;
++  }
++  Napi::HandleScope scope(Env());
++  Callback().Call({Env().Undefined()});
++}
+diff --git a/src/process_worker.h b/src/process_worker.h
+--- a/src/process_worker.h
++++ b/src/process_worker.h
+@@ -16,6 +16,7 @@
+   ~GetProcessesWorker();
+ 
+   void Execute() override;
+   void OnOK() override;
++  void OnError(const Napi::Error& error) override;
+ 
+  private:
+diff --git a/typings/windows-process-tree.d.ts b/typings/windows-process-tree.d.ts
+--- a/typings/windows-process-tree.d.ts
++++ b/typings/windows-process-tree.d.ts
+@@ -7,9 +7,18 @@
+   export enum ProcessDataFlag {
+     None = 0,
+     Memory = 1,
+-    CommandLine = 2
++    CommandLine = 2,
++    CreationTime = 4
+   }
+ 
++  /**
++   * The flag bits the compiled addon actually understands, or undefined off
++   * win32. `ProcessDataFlag` above is source; this is what the binary reports,
++   * so it is the only way to tell a patched build from a stale prebuilt.
++   */
++  export const supportedProcessDataFlags: number | undefined;
++  export const getProcessCreationTime: ((pid: number) => number | undefined) | undefined;
++
+   export interface IProcessInfo {
+     pid: number;
+     ppid: number;
+@@ -24,6 +33,13 @@
+      * The string returned is at most 512 chars, strings exceeding this length are truncated.
+      */
+     commandLine?: string;
++
++    /** Process creation time in Unix milliseconds. */
++    creationTimeMs?: number;
++    creationTimeDiagnosticVersion?: 2;
++    creationTimeProvider?: 'NtQuerySystemInformation';
++    creationTimeNtStatus?: number;
++    creationTimeSnapshotComplete?: boolean;
+   }
+ 
+   export interface IProcessCpuInfo extends IProcessInfo {
+@@ -35,6 +51,7 @@
+     name: string;
+     memory?: number;
+     commandLine?: string;
++    creationTimeMs?: number;
+     children: IProcessTreeNode[];
+   }
+ 
+diff --git a/src/psutil-ntextapi.h b/src/psutil-ntextapi.h
+new file mode 100644
+--- /dev/null
++++ b/src/psutil-ntextapi.h
+@@ -0,0 +1,715 @@
++/*
++ * Copyright (c) 2009, Jay Loden, Giampaolo Rodola'. All rights reserved.
++ * Use of this source code is governed by a BSD-style license that can be
++ * found in the LICENSE file.
++ * Define Windows structs and constants which are considered private.
++ */
++
++// clang-format off
++#if !defined(__NTEXTAPI_H__)
++#define __NTEXTAPI_H__
++#include <winternl.h>
++#include <iphlpapi.h>
++
++typedef LONG NTSTATUS;
++
++// https://github.com/ajkhoury/TestDll/blob/master/nt_ddk.h
++#define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
++#define STATUS_BUFFER_TOO_SMALL ((NTSTATUS)0xC0000023L)
++#define STATUS_ACCESS_DENIED ((NTSTATUS)0xC0000022L)
++#define STATUS_NOT_FOUND ((NTSTATUS)0xC0000225L)
++#define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)
++
++// WtsApi32.h
++#define WTS_CURRENT_SERVER_HANDLE  ((HANDLE)NULL)
++#define WINSTATIONNAME_LENGTH    32
++#define DOMAIN_LENGTH            17
++#define USERNAME_LENGTH          20
++
++// ================================================================
++// Enums
++// ================================================================
++
++#undef  SystemExtendedHandleInformation
++#define SystemExtendedHandleInformation 64
++#undef  MemoryWorkingSetInformation
++#define MemoryWorkingSetInformation 0x1
++#undef  ObjectNameInformation
++#define ObjectNameInformation 1
++#undef  ProcessIoPriority
++#define ProcessIoPriority 33
++#undef  ProcessWow64Information
++#define ProcessWow64Information 26
++#undef  SystemProcessIdInformation
++#define SystemProcessIdInformation 88
++
++// process suspend() / resume()
++typedef enum _KTHREAD_STATE {
++    Initialized,
++    Ready,
++    Running,
++    Standby,
++    Terminated,
++    Waiting,
++    Transition,
++    DeferredReady,
++    GateWait,
++    MaximumThreadState
++} KTHREAD_STATE, *PKTHREAD_STATE;
++
++typedef enum _KWAIT_REASON {
++    Executive,
++    FreePage,
++    PageIn,
++    PoolAllocation,
++    DelayExecution,
++    Suspended,
++    UserRequest,
++    WrExecutive,
++    WrFreePage,
++    WrPageIn,
++    WrPoolAllocation,
++    WrDelayExecution,
++    WrSuspended,
++    WrUserRequest,
++    WrEventPair,
++    WrQueue,
++    WrLpcReceive,
++    WrLpcReply,
++    WrVirtualMemory,
++    WrPageOut,
++    WrRendezvous,
++    WrKeyedEvent,
++    WrTerminated,
++    WrProcessInSwap,
++    WrCpuRateControl,
++    WrCalloutStack,
++    WrKernel,
++    WrResource,
++    WrPushLock,
++    WrMutex,
++    WrQuantumEnd,
++    WrDispatchInt,
++    WrPreempted,
++    WrYieldExecution,
++    WrFastMutex,
++    WrGuardedMutex,
++    WrRundown,
++    WrAlertByThreadId,
++    WrDeferredPreempt,
++    MaximumWaitReason
++} KWAIT_REASON, *PKWAIT_REASON;
++
++// users()
++typedef enum _WTS_INFO_CLASS {
++    WTSInitialProgram,
++    WTSApplicationName,
++    WTSWorkingDirectory,
++    WTSOEMId,
++    WTSSessionId,
++    WTSUserName,
++    WTSWinStationName,
++    WTSDomainName,
++    WTSConnectState,
++    WTSClientBuildNumber,
++    WTSClientName,
++    WTSClientDirectory,
++    WTSClientProductId,
++    WTSClientHardwareId,
++    WTSClientAddress,
++    WTSClientDisplay,
++    WTSClientProtocolType,
++    WTSIdleTime,
++    WTSLogonTime,
++    WTSIncomingBytes,
++    WTSOutgoingBytes,
++    WTSIncomingFrames,
++    WTSOutgoingFrames,
++    WTSClientInfo,
++    WTSSessionInfo,
++    WTSSessionInfoEx,
++    WTSConfigInfo,
++    WTSValidationInfo,   // Info Class value used to fetch Validation Information through the WTSQuerySessionInformation
++    WTSSessionAddressV4,
++    WTSIsRemoteSession
++} WTS_INFO_CLASS;
++
++typedef enum _WTS_CONNECTSTATE_CLASS {
++    WTSActive,              // User logged on to WinStation
++    WTSConnected,           // WinStation connected to client
++    WTSConnectQuery,        // In the process of connecting to client
++    WTSShadow,              // Shadowing another WinStation
++    WTSDisconnected,        // WinStation logged on without client
++    WTSIdle,                // Waiting for client to connect
++    WTSListen,              // WinStation is listening for connection
++    WTSReset,               // WinStation is being reset
++    WTSDown,                // WinStation is down due to error
++    WTSInit,                // WinStation in initialization
++} WTS_CONNECTSTATE_CLASS;
++
++// ================================================================
++// Structs.
++// ================================================================
++
++// cpu_stats(), per_cpu_times()
++typedef struct {
++    LARGE_INTEGER IdleTime;
++    LARGE_INTEGER KernelTime;
++    LARGE_INTEGER UserTime;
++    LARGE_INTEGER DpcTime;
++    LARGE_INTEGER InterruptTime;
++    ULONG InterruptCount;
++} _SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
++
++// cpu_stats()
++typedef struct {
++    LARGE_INTEGER IdleProcessTime;
++    LARGE_INTEGER IoReadTransferCount;
++    LARGE_INTEGER IoWriteTransferCount;
++    LARGE_INTEGER IoOtherTransferCount;
++    ULONG IoReadOperationCount;
++    ULONG IoWriteOperationCount;
++    ULONG IoOtherOperationCount;
++    ULONG AvailablePages;
++    ULONG CommittedPages;
++    ULONG CommitLimit;
++    ULONG PeakCommitment;
++    ULONG PageFaultCount;
++    ULONG CopyOnWriteCount;
++    ULONG TransitionCount;
++    ULONG CacheTransitionCount;
++    ULONG DemandZeroCount;
++    ULONG PageReadCount;
++    ULONG PageReadIoCount;
++    ULONG CacheReadCount;
++    ULONG CacheIoCount;
++    ULONG DirtyPagesWriteCount;
++    ULONG DirtyWriteIoCount;
++    ULONG MappedPagesWriteCount;
++    ULONG MappedWriteIoCount;
++    ULONG PagedPoolPages;
++    ULONG NonPagedPoolPages;
++    ULONG PagedPoolAllocs;
++    ULONG PagedPoolFrees;
++    ULONG NonPagedPoolAllocs;
++    ULONG NonPagedPoolFrees;
++    ULONG FreeSystemPtes;
++    ULONG ResidentSystemCodePage;
++    ULONG TotalSystemDriverPages;
++    ULONG TotalSystemCodePages;
++    ULONG NonPagedPoolLookasideHits;
++    ULONG PagedPoolLookasideHits;
++    ULONG AvailablePagedPoolPages;
++    ULONG ResidentSystemCachePage;
++    ULONG ResidentPagedPoolPage;
++    ULONG ResidentSystemDriverPage;
++    ULONG CcFastReadNoWait;
++    ULONG CcFastReadWait;
++    ULONG CcFastReadResourceMiss;
++    ULONG CcFastReadNotPossible;
++    ULONG CcFastMdlReadNoWait;
++    ULONG CcFastMdlReadWait;
++    ULONG CcFastMdlReadResourceMiss;
++    ULONG CcFastMdlReadNotPossible;
++    ULONG CcMapDataNoWait;
++    ULONG CcMapDataWait;
++    ULONG CcMapDataNoWaitMiss;
++    ULONG CcMapDataWaitMiss;
++    ULONG CcPinMappedDataCount;
++    ULONG CcPinReadNoWait;
++    ULONG CcPinReadWait;
++    ULONG CcPinReadNoWaitMiss;
++    ULONG CcPinReadWaitMiss;
++    ULONG CcCopyReadNoWait;
++    ULONG CcCopyReadWait;
++    ULONG CcCopyReadNoWaitMiss;
++    ULONG CcCopyReadWaitMiss;
++    ULONG CcMdlReadNoWait;
++    ULONG CcMdlReadWait;
++    ULONG CcMdlReadNoWaitMiss;
++    ULONG CcMdlReadWaitMiss;
++    ULONG CcReadAheadIos;
++    ULONG CcLazyWriteIos;
++    ULONG CcLazyWritePages;
++    ULONG CcDataFlushes;
++    ULONG CcDataPages;
++    ULONG ContextSwitches;
++    ULONG FirstLevelTbFills;
++    ULONG SecondLevelTbFills;
++    ULONG SystemCalls;
++} _SYSTEM_PERFORMANCE_INFORMATION;
++
++// cpu_stats()
++typedef struct {
++    ULONG ContextSwitches;
++    ULONG DpcCount;
++    ULONG DpcRate;
++    ULONG TimeIncrement;
++    ULONG DpcBypassCount;
++    ULONG ApcBypassCount;
++} _SYSTEM_INTERRUPT_INFORMATION;
++
++typedef struct _SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX {
++    PVOID Object;
++    HANDLE UniqueProcessId;
++    HANDLE HandleValue;
++    ULONG GrantedAccess;
++    USHORT CreatorBackTraceIndex;
++    USHORT ObjectTypeIndex;
++    ULONG HandleAttributes;
++    ULONG Reserved;
++} SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX, *PSYSTEM_HANDLE_TABLE_ENTRY_INFO_EX;
++
++typedef struct _SYSTEM_HANDLE_INFORMATION_EX {
++    ULONG_PTR NumberOfHandles;
++    ULONG_PTR Reserved;
++    SYSTEM_HANDLE_TABLE_ENTRY_INFO_EX Handles[1];
++} SYSTEM_HANDLE_INFORMATION_EX, *PSYSTEM_HANDLE_INFORMATION_EX;
++
++typedef struct _CLIENT_ID2 {
++    HANDLE UniqueProcess;
++    HANDLE UniqueThread;
++} CLIENT_ID2, *PCLIENT_ID2;
++
++#define CLIENT_ID CLIENT_ID2
++#define PCLIENT_ID PCLIENT_ID2
++
++typedef struct _SYSTEM_THREAD_INFORMATION2 {
++    LARGE_INTEGER KernelTime;
++    LARGE_INTEGER UserTime;
++    LARGE_INTEGER CreateTime;
++    ULONG WaitTime;
++    PVOID StartAddress;
++    CLIENT_ID ClientId;
++    LONG Priority;
++    LONG BasePriority;
++    ULONG ContextSwitches;
++    ULONG ThreadState;
++    KWAIT_REASON WaitReason;
++} SYSTEM_THREAD_INFORMATION2, *PSYSTEM_THREAD_INFORMATION2;
++
++#define SYSTEM_THREAD_INFORMATION SYSTEM_THREAD_INFORMATION2
++#define PSYSTEM_THREAD_INFORMATION PSYSTEM_THREAD_INFORMATION2
++
++typedef struct _SYSTEM_PROCESS_INFORMATION2 {
++    ULONG NextEntryOffset;
++    ULONG NumberOfThreads;
++    LARGE_INTEGER SpareLi1;
++    LARGE_INTEGER SpareLi2;
++    LARGE_INTEGER SpareLi3;
++    LARGE_INTEGER CreateTime;
++    LARGE_INTEGER UserTime;
++    LARGE_INTEGER KernelTime;
++    UNICODE_STRING ImageName;
++    LONG BasePriority;
++    HANDLE UniqueProcessId;
++    HANDLE InheritedFromUniqueProcessId;
++    ULONG HandleCount;
++    ULONG SessionId;
++    ULONG_PTR PageDirectoryBase;
++    SIZE_T PeakVirtualSize;
++    SIZE_T VirtualSize;
++    DWORD PageFaultCount;
++    SIZE_T PeakWorkingSetSize;
++    SIZE_T WorkingSetSize;
++    SIZE_T QuotaPeakPagedPoolUsage;
++    SIZE_T QuotaPagedPoolUsage;
++    SIZE_T QuotaPeakNonPagedPoolUsage;
++    SIZE_T QuotaNonPagedPoolUsage;
++    SIZE_T PagefileUsage;
++    SIZE_T PeakPagefileUsage;
++    SIZE_T PrivatePageCount;
++    LARGE_INTEGER ReadOperationCount;
++    LARGE_INTEGER WriteOperationCount;
++    LARGE_INTEGER OtherOperationCount;
++    LARGE_INTEGER ReadTransferCount;
++    LARGE_INTEGER WriteTransferCount;
++    LARGE_INTEGER OtherTransferCount;
++    SYSTEM_THREAD_INFORMATION Threads[1];
++} SYSTEM_PROCESS_INFORMATION2, *PSYSTEM_PROCESS_INFORMATION2;
++
++#define SYSTEM_PROCESS_INFORMATION SYSTEM_PROCESS_INFORMATION2
++#define PSYSTEM_PROCESS_INFORMATION PSYSTEM_PROCESS_INFORMATION2
++
++// cpu_freq()
++typedef struct _PROCESSOR_POWER_INFORMATION {
++   ULONG Number;
++   ULONG MaxMhz;
++   ULONG CurrentMhz;
++   ULONG MhzLimit;
++   ULONG MaxIdleState;
++   ULONG CurrentIdleState;
++} PROCESSOR_POWER_INFORMATION, *PPROCESSOR_POWER_INFORMATION;
++
++#ifndef __IPHLPAPI_H__
++typedef struct in6_addr {
++    union {
++        UCHAR Byte[16];
++        USHORT Word[8];
++    } u;
++} IN6_ADDR, *PIN6_ADDR, FAR *LPIN6_ADDR;
++#endif
++
++// PEB / cmdline(), cwd(), environ()
++typedef struct {
++    BYTE Reserved1[16];
++    PVOID Reserved2[5];
++    UNICODE_STRING CurrentDirectoryPath;
++    PVOID CurrentDirectoryHandle;
++    UNICODE_STRING DllPath;
++    UNICODE_STRING ImagePathName;
++    UNICODE_STRING CommandLine;
++    LPCWSTR env;
++} RTL_USER_PROCESS_PARAMETERS_, *PRTL_USER_PROCESS_PARAMETERS_;
++
++// users()
++typedef struct _WTS_SESSION_INFOW {
++    DWORD SessionId;             // session id
++    LPWSTR pWinStationName;      // name of WinStation this session is
++                                 // connected to
++    WTS_CONNECTSTATE_CLASS State; // connection state (see enum)
++} WTS_SESSION_INFOW, * PWTS_SESSION_INFOW;
++
++#define PWTS_SESSION_INFO PWTS_SESSION_INFOW
++
++typedef struct _WTS_CLIENT_ADDRESS {
++    DWORD AddressFamily;  // AF_INET, AF_INET6, AF_IPX, AF_NETBIOS, AF_UNSPEC
++    BYTE  Address[20];    // client network address
++} WTS_CLIENT_ADDRESS, * PWTS_CLIENT_ADDRESS;
++
++typedef struct _WTSINFOW {
++    WTS_CONNECTSTATE_CLASS State; // connection state (see enum)
++    DWORD SessionId;             // session id
++    DWORD IncomingBytes;
++    DWORD OutgoingBytes;
++    DWORD IncomingFrames;
++    DWORD OutgoingFrames;
++    DWORD IncomingCompressedBytes;
++    DWORD OutgoingCompressedBytes;
++    WCHAR WinStationName[WINSTATIONNAME_LENGTH];
++    WCHAR Domain[DOMAIN_LENGTH];
++    WCHAR UserName[USERNAME_LENGTH + 1];// name of WinStation this session is
++                                 // connected to
++    LARGE_INTEGER ConnectTime;
++    LARGE_INTEGER DisconnectTime;
++    LARGE_INTEGER LastInputTime;
++    LARGE_INTEGER LogonTime;
++    LARGE_INTEGER CurrentTime;
++
++} WTSINFOW, * PWTSINFOW;
++
++#define PWTSINFO PWTSINFOW
++
++// cpu_count_cores()
++#if (_WIN32_WINNT < 0x0601)  // Windows < 7 (Vista and XP)
++typedef struct _SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX {
++    LOGICAL_PROCESSOR_RELATIONSHIP Relationship;
++    DWORD Size;
++    _ANONYMOUS_UNION
++    union {
++        PROCESSOR_RELATIONSHIP Processor;
++        NUMA_NODE_RELATIONSHIP NumaNode;
++        CACHE_RELATIONSHIP Cache;
++        GROUP_RELATIONSHIP Group;
++    } DUMMYUNIONNAME;
++} SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, \
++    *PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX;
++#endif
++
++// memory_uss()
++typedef struct _MEMORY_WORKING_SET_BLOCK {
++    ULONG_PTR Protection : 5;
++    ULONG_PTR ShareCount : 3;
++    ULONG_PTR Shared : 1;
++    ULONG_PTR Node : 3;
++#ifdef _WIN64
++    ULONG_PTR VirtualPage : 52;
++#else
++    ULONG VirtualPage : 20;
++#endif
++} MEMORY_WORKING_SET_BLOCK, *PMEMORY_WORKING_SET_BLOCK;
++
++// memory_uss()
++typedef struct _MEMORY_WORKING_SET_INFORMATION {
++    ULONG_PTR NumberOfEntries;
++    MEMORY_WORKING_SET_BLOCK WorkingSetInfo[1];
++} MEMORY_WORKING_SET_INFORMATION, *PMEMORY_WORKING_SET_INFORMATION;
++
++// memory_uss()
++typedef struct _PSUTIL_PROCESS_WS_COUNTERS {
++    SIZE_T NumberOfPages;
++    SIZE_T NumberOfPrivatePages;
++    SIZE_T NumberOfSharedPages;
++    SIZE_T NumberOfShareablePages;
++} PSUTIL_PROCESS_WS_COUNTERS, *PPSUTIL_PROCESS_WS_COUNTERS;
++
++// exe()
++typedef struct _SYSTEM_PROCESS_ID_INFORMATION {
++    HANDLE ProcessId;
++    UNICODE_STRING ImageName;
++} SYSTEM_PROCESS_ID_INFORMATION, *PSYSTEM_PROCESS_ID_INFORMATION;
++
++// ====================================================================
++// PEB structs for cmdline(), cwd(), environ()
++// ====================================================================
++
++#ifdef _WIN64
++typedef struct {
++    BYTE Reserved1[2];
++    BYTE BeingDebugged;
++    BYTE Reserved2[21];
++    PVOID LoaderData;
++    PRTL_USER_PROCESS_PARAMETERS_ ProcessParameters;
++    // more fields...
++} PEB_;
++
++// When we are a 64 bit process accessing a 32 bit (WoW64)
++// process we need to use the 32 bit structure layout.
++typedef struct {
++    USHORT Length;
++    USHORT MaxLength;
++    DWORD Buffer;
++} UNICODE_STRING32;
++
++typedef struct {
++    BYTE Reserved1[16];
++    DWORD Reserved2[5];
++    UNICODE_STRING32 CurrentDirectoryPath;
++    DWORD CurrentDirectoryHandle;
++    UNICODE_STRING32 DllPath;
++    UNICODE_STRING32 ImagePathName;
++    UNICODE_STRING32 CommandLine;
++    DWORD env;
++} RTL_USER_PROCESS_PARAMETERS32;
++
++typedef struct {
++    BYTE Reserved1[2];
++    BYTE BeingDebugged;
++    BYTE Reserved2[1];
++    DWORD Reserved3[2];
++    DWORD Ldr;
++    DWORD ProcessParameters;
++    // more fields...
++} PEB32;
++#else  // ! _WIN64
++typedef struct {
++    BYTE Reserved1[2];
++    BYTE BeingDebugged;
++    BYTE Reserved2[1];
++    PVOID Reserved3[2];
++    PVOID Ldr;
++    PRTL_USER_PROCESS_PARAMETERS_ ProcessParameters;
++    // more fields...
++} PEB_;
++
++// When we are a 32 bit (WoW64) process accessing a 64 bit process
++// we need to use the 64 bit structure layout and a special function
++// to read its memory.
++typedef NTSTATUS (NTAPI *_NtWow64ReadVirtualMemory64)(
++    HANDLE ProcessHandle,
++    PVOID64 BaseAddress,
++    PVOID Buffer,
++    ULONG64 Size,
++    PULONG64 NumberOfBytesRead);
++
++typedef struct {
++    PVOID Reserved1[2];
++    PVOID64 PebBaseAddress;
++    PVOID Reserved2[4];
++    PVOID UniqueProcessId[2];
++    PVOID Reserved3[2];
++} PROCESS_BASIC_INFORMATION64;
++
++typedef struct {
++    USHORT Length;
++    USHORT MaxLength;
++    PVOID64 Buffer;
++} UNICODE_STRING64;
++
++typedef struct {
++    BYTE Reserved1[16];
++    PVOID64 Reserved2[5];
++    UNICODE_STRING64 CurrentDirectoryPath;
++    PVOID64 CurrentDirectoryHandle;
++    UNICODE_STRING64 DllPath;
++    UNICODE_STRING64 ImagePathName;
++    UNICODE_STRING64 CommandLine;
++    PVOID64 env;
++} RTL_USER_PROCESS_PARAMETERS64;
++
++typedef struct {
++    BYTE Reserved1[2];
++    BYTE BeingDebugged;
++    BYTE Reserved2[21];
++    PVOID64 LoaderData;
++    PVOID64 ProcessParameters;
++    // more fields...
++} PEB64;
++#endif  // _WIN64
++
++// ================================================================
++// Type defs for modules loaded at runtime.
++// ================================================================
++
++BOOL (WINAPI *_GetLogicalProcessorInformationEx) (
++    LOGICAL_PROCESSOR_RELATIONSHIP relationship,
++    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer,
++    PDWORD ReturnLength);
++
++#define GetLogicalProcessorInformationEx _GetLogicalProcessorInformationEx
++
++BOOLEAN (WINAPI * _WinStationQueryInformationW) (
++    HANDLE ServerHandle,
++    ULONG SessionId,
++    WINSTATIONINFOCLASS WinStationInformationClass,
++    PVOID pWinStationInformation,
++    ULONG WinStationInformationLength,
++    PULONG pReturnLength);
++
++#define WinStationQueryInformationW _WinStationQueryInformationW
++
++NTSTATUS (NTAPI *_NtQueryInformationProcess) (
++    HANDLE ProcessHandle,
++    DWORD ProcessInformationClass,
++    PVOID ProcessInformation,
++    DWORD ProcessInformationLength,
++    PDWORD ReturnLength);
++
++#define NtQueryInformationProcess _NtQueryInformationProcess
++
++NTSTATUS (NTAPI *_NtQuerySystemInformation) (
++    ULONG SystemInformationClass,
++    PVOID SystemInformation,
++    ULONG SystemInformationLength,
++    PULONG ReturnLength);
++
++#define NtQuerySystemInformation _NtQuerySystemInformation
++
++NTSTATUS (NTAPI *_NtSetInformationProcess) (
++    HANDLE ProcessHandle,
++    DWORD ProcessInformationClass,
++    PVOID ProcessInformation,
++    DWORD ProcessInformationLength);
++
++#define NtSetInformationProcess _NtSetInformationProcess
++
++PSTR (NTAPI * _RtlIpv4AddressToStringA) (
++    struct in_addr *Addr,
++    PSTR S);
++
++#define RtlIpv4AddressToStringA _RtlIpv4AddressToStringA
++
++PSTR (NTAPI * _RtlIpv6AddressToStringA) (
++    struct in6_addr *Addr,
++    PSTR P);
++
++#define RtlIpv6AddressToStringA _RtlIpv6AddressToStringA
++
++DWORD (WINAPI * _GetExtendedTcpTable) (
++    PVOID pTcpTable,
++    PDWORD pdwSize,
++    BOOL bOrder,
++    ULONG ulAf,
++    TCP_TABLE_CLASS TableClass,
++    ULONG Reserved);
++
++#define GetExtendedTcpTable _GetExtendedTcpTable
++
++DWORD (WINAPI * _GetExtendedUdpTable) (
++    PVOID pUdpTable,
++    PDWORD pdwSize,
++    BOOL bOrder,
++    ULONG ulAf,
++    UDP_TABLE_CLASS TableClass,
++    ULONG Reserved);
++
++#define GetExtendedUdpTable _GetExtendedUdpTable
++
++DWORD (CALLBACK *_GetActiveProcessorCount) (
++    WORD GroupNumber);
++
++#define GetActiveProcessorCount _GetActiveProcessorCount
++
++BOOL(CALLBACK *_WTSQuerySessionInformationW) (
++    HANDLE hServer,
++    DWORD SessionId,
++    WTS_INFO_CLASS WTSInfoClass,
++    LPWSTR* ppBuffer,
++    DWORD* pBytesReturned
++    );
++
++#define WTSQuerySessionInformationW _WTSQuerySessionInformationW
++
++BOOL(CALLBACK *_WTSEnumerateSessionsW)(
++    HANDLE hServer,
++    DWORD Reserved,
++    DWORD Version,
++    PWTS_SESSION_INFO* ppSessionInfo,
++    DWORD* pCount
++    );
++
++#define WTSEnumerateSessionsW _WTSEnumerateSessionsW
++
++VOID(CALLBACK *_WTSFreeMemory)(
++    IN PVOID pMemory
++    );
++
++#define WTSFreeMemory _WTSFreeMemory
++
++ULONGLONG (CALLBACK *_GetTickCount64) (
++    void);
++
++#define GetTickCount64 _GetTickCount64
++
++VOID(CALLBACK *_QueryInterruptTime) (
++    PULONGLONG lpInterruptTime
++);
++
++#define QueryInterruptTime _QueryInterruptTime
++
++NTSTATUS (NTAPI *_NtQueryObject) (
++    HANDLE Handle,
++    OBJECT_INFORMATION_CLASS ObjectInformationClass,
++    PVOID ObjectInformation,
++    ULONG ObjectInformationLength,
++    PULONG ReturnLength);
++
++#define NtQueryObject _NtQueryObject
++
++NTSTATUS (WINAPI *_RtlGetVersion) (
++    PRTL_OSVERSIONINFOW lpVersionInformation
++);
++
++#define RtlGetVersion _RtlGetVersion
++
++NTSTATUS (WINAPI *_NtResumeProcess) (
++    HANDLE hProcess
++);
++
++#define NtResumeProcess _NtResumeProcess
++
++NTSTATUS (WINAPI *_NtSuspendProcess) (
++    HANDLE hProcess
++);
++
++#define NtSuspendProcess _NtSuspendProcess
++
++NTSTATUS (NTAPI *_NtQueryVirtualMemory) (
++    HANDLE ProcessHandle,
++    PVOID BaseAddress,
++    int MemoryInformationClass,
++    PVOID MemoryInformation,
++    SIZE_T MemoryInformationLength,
++    PSIZE_T ReturnLength
++);
++
++#define NtQueryVirtualMemory _NtQueryVirtualMemory
++
++ULONG (WINAPI *_RtlNtStatusToDosErrorNoTeb) (
++    NTSTATUS status
++);
++
++#define RtlNtStatusToDosErrorNoTeb _RtlNtStatusToDosErrorNoTeb
++
++#endif // __NTEXTAPI_H__
++// clang-format on
+diff --git a/psutil-LICENSE b/psutil-LICENSE
+new file mode 100644
+--- /dev/null
++++ b/psutil-LICENSE
+@@ -0,0 +1,29 @@
++BSD 3-Clause License
++
++Copyright (c) 2009, Jay Loden, Dave Daeschler, Giampaolo Rodola
++All rights reserved.
++
++Redistribution and use in source and binary forms, with or without modification,
++are permitted provided that the following conditions are met:
++
++ * Redistributions of source code must retain the above copyright notice, this
++   list of conditions and the following disclaimer.
++
++ * Redistributions in binary form must reproduce the above copyright notice,
++   this list of conditions and the following disclaimer in the documentation
++   and/or other materials provided with the distribution.
++
++ * Neither the name of the psutil authors nor the names of its contributors
++   may be used to endorse or promote products derived from this software without
++   specific prior written permission.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
++ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
++ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

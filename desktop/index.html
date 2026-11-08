@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Swarm Anything</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script defer src="./renderer.js"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div class="brand"><span class="mark" aria-hidden="true">S</span><span>Swarm Anything</span></div>
+        <span class="local-badge"><span aria-hidden="true"></span>本地工作台</span>
+      </header>
+
+      <main>
+        <div class="introduction">
+          <div>
+            <p class="eyebrow">AGENT DIRECTORY</p>
+            <h1>本机 Agent</h1>
+            <p class="lead">发现已安装的 CLI，选择项目并验证连接。</p>
+          </div>
+          <div class="actions">
+            <button id="refresh" type="button">刷新清单</button>
+            <button id="probe" type="button" class="primary">探测版本</button>
+          </div>
+        </div>
+
+        <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+
+        <div class="workspace">
+          <section class="panel directory" aria-labelledby="directory-title">
+            <div class="panel-title"><h2 id="directory-title">Agent 清单</h2><span id="count" class="count">载入中</span></div>
+            <ul id="agents" class="agent-list"></ul>
+          </section>
+
+          <section class="panel details" aria-labelledby="agent-name">
+            <div class="panel-title"><p class="eyebrow">连接详情</p></div>
+            <div class="details-body">
+              <h2 id="agent-name" class="agent-name">选择 Agent</h2>
+              <dl class="facts">
+                <div><dt>发现状态</dt><dd id="installed">—</dd></div>
+                <div><dt>版本</dt><dd id="version">—</dd></div>
+                <div><dt>配置状态</dt><dd id="configured">—</dd></div>
+                <div><dt>启动状态</dt><dd id="startable">—</dd></div>
+                <div><dt>适配器</dt><dd id="adapter">—</dd></div>
+              </dl>
+              <div class="project">
+                <div>
+                  <h3>项目目录</h3>
+                  <p id="project-path">尚未选择目录</p>
+                </div>
+                <button id="choose-project" type="button">选择目录</button>
+              </div>
+              <div class="connect">
+                <button id="connect" type="button" class="primary" disabled>验证连接</button>
+                <p id="connection" role="status" aria-live="polite"></p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

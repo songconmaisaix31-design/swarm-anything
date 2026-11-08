@@ -3,7 +3,7 @@ import { workspaceContextApi, type WorkspaceContextPacketResult } from '../../..
 import type { ApprovalGrant } from '../../../api/proposals';
 import { usePersistentCommand } from '../../../hooks/usePersistentCommand';
 import { CommandState } from '../../../components/CommandState';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import { commandError } from '../../../utils/commandError';
 import { ContextPacketReference } from './ContextPacketReference';
 import { lines } from './proposalDraft';

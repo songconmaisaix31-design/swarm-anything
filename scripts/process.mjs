@@ -146,8 +146,8 @@ export async function goFiles(dir = root) {
   return files;
 }
 
-export async function checkGofmt(go) {
-  const files = await goFiles();
+export async function checkGofmt(go, directories = [root]) {
+  const files = [...new Set((await Promise.all(directories.map(directory => goFiles(isAbsolute(directory) ? directory : join(root, directory))))).flat())];
   if (!files.length) throw new Error('No Go files; W1 backend is pending');
   const executable = join(go, '..', process.platform === 'win32' ? 'gofmt.exe' : 'gofmt');
   // 分批检查全部 Go 文件，保持命令长度在 Windows 限制以内。

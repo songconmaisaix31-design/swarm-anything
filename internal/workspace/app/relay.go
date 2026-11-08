@@ -273,7 +273,7 @@ func (s *relayService) permission(ctx context.Context, c domain.Caller, t domain
 	if p.Settings.Revision != t.SettingsRevision || RelayPermissionLevel(p.Settings) != t.PermissionLevel {
 		return p, relayError(apierrors.ApprovalRevoked, "project permission changed; review a new intent")
 	}
-	if p.Settings.ExternalModelCLI != t.Agent || !has(p.Settings.AllowedActions, action) {
+	if !p.Settings.AllowsExternalModelCLI(t.Agent) || !has(p.Settings.AllowedActions, action) {
 		return p, relayError(apierrors.ApprovalRequired, "project permission does not cover the Agent and action")
 	}
 	// Human controls keep the existing native human policy. Agent tokens cannot

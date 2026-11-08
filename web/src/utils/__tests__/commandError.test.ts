@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { ApiError } from '../../api/client';
+import { ApiError } from '../../api/transport';
 import { commandError } from '../commandError';
 
 it('makes unknown delivery a human reconciliation step and keeps diagnostics separate', () => {

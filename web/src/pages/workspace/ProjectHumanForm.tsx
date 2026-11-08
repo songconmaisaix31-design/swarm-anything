@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
-import { TextField } from '../attention/FormControls';
-import formStyles from '../attention/AttentionPage.module.css';
+import { TextField } from '../../components/FormControls';
+import formStyles from '../../components/FormControls.module.css';
 
 export interface ProjectHumanFields { notes: string; review: string; group: string; intent: string; archived: boolean; revision: number }
 export function ProjectHumanForm({ human, disabled, onSave }: { human: ProjectHumanFields; disabled: boolean; onSave: (fields: ProjectHumanFields, acceptSaved: (saved: ProjectHumanFields) => void) => void }) {

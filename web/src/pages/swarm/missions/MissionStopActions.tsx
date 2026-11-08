@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import styles from './MissionWorkspace.module.css';
 
 export function MissionStopActions({ state, disabled, pending, onPause, onCancel }: { state: string; disabled: boolean; pending: boolean; onPause: (reason: string) => void; onCancel: (reason: string) => void }) {

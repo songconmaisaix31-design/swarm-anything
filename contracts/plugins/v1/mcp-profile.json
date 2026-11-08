@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "contract_version": "1",
+  "protocol": "MCP",
+  "connection_scope": "one authenticated project and principal per connection",
+  "reference_schema": "https://swa.local/contracts/plugins/v1/reference.schema.json",
+  "event_schema": "https://swa.local/contracts/plugins/v1/event.schema.json",
+  "legacy_astrocyte": {
+    "tools": ["astrocyte.get_attention_state", "astrocyte.explain_focus", "astrocyte.get_experiences", "astrocyte.report_event", "astrocyte.veto"],
+    "wire_compatibility": "existing tool names, input and output shapes retained",
+    "report_event_retry": "legacy random origin key; query original outcome instead of blind retry",
+    "human_experience_approval": "not available to Agent MCP connections"
+  },
+  "event_receipt": {
+    "status": "recorded",
+    "meaning": "SWA saved the source reference; no approval, remote consumption or execution is implied"
+  },
+  "capability_rule": "A saved connection is configuration metadata. Probe and actual invocation are separate checks; no executable or account is inferred from configuration_ref."
+}

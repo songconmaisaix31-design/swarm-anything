@@ -1,4 +1,4 @@
-import { ApiError } from '../api/client';
+import { ApiError } from '../api/transport';
 
 const guidance: Record<string, string> = {
   scope_denied: '当前项目未允许此操作，请检查项目权限后再提交。',

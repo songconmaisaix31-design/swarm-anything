@@ -1,6 +1,6 @@
 import type { RelayFacts } from '../../api/relay';
 import { Field } from '../../components/DetailPanel';
-import { formatDate } from '../cognition/format';
+import { formatDate } from './relayEventFormat';
 
 const kindLabels: Record<RelayFacts['facts'][number]['kind'], string> = {
   action_claimed: '动作执行权已记录', action_result: '动作结果', observation_rejected: '观察拒绝',

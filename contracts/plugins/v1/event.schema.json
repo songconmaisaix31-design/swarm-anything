@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swa.local/contracts/plugins/v1/event.schema.json",
+  "title": "Reference-only plugin event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "event_id", "project_id", "occurred_at", "correlation_id", "causation_id", "object_ref"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "source": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "event_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "project_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "causation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "object_ref": {"$ref": "./reference.schema.json"}
+  }
+}

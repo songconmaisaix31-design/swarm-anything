@@ -8,7 +8,7 @@ import { StatusBadge } from '../../../components/StatusBadge';
 import { QueryState } from '../../../components/QueryState';
 import { CommandState } from '../../../components/CommandState';
 import { commandError } from '../../../utils/commandError';
-import { TextField } from '../../attention/FormControls';
+import { TextField } from '../../../components/FormControls';
 import { ContextPacketWorkspace } from './ContextPacketWorkspace';
 import styles from './ProposalWorkspace.module.css';
 

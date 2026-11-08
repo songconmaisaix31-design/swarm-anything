@@ -58,7 +58,7 @@ func ValidateProjectActionScope(project domain.LocalProject, scope ProjectAction
 		}
 	}
 	for _, target := range scope.ExternalTargets {
-		if target == "" || project.Settings.ExternalModelCLI == "" || target != project.Settings.ExternalModelCLI {
+		if !project.Settings.AllowsExternalModelCLI(target) {
 			return projectError(apierrors.ScopeDenied, "external target is not the approved native model CLI")
 		}
 	}

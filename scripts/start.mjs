@@ -1,12 +1,13 @@
 import { join } from 'node:path';
 import { root, requireFile, start, stop } from './process.mjs';
-import { summarizeEnvironment } from './summarize.mjs';
 
-const filename = process.platform === 'win32' ? 'dist/astrocyte.exe' : 'dist/astrocyte';
+const filename = process.platform === 'win32' ? 'dist/swa-server.exe' : 'dist/swa-server';
 await requireFile(filename);
+const env = { ...process.env, SWA_DATA_DIR: process.env.SWA_DATA_DIR ?? join(root, '.verification', 'swa-local-data'), SWA_WEB_DIR: process.env.SWA_WEB_DIR ?? join(root, 'web', 'dist') };
+for (const name of ['ASTROCYTE_DATA_DIR', 'ASTROCYTE_WEB_DIR']) delete env[name];
 const child = start(join(root, filename), [], {
   detached: process.platform !== 'win32',
-  env: { ...await summarizeEnvironment(), ASTROCYTE_WEB_DIR: process.env.ASTROCYTE_WEB_DIR ?? join(root, 'web', 'dist') },
+  env,
 });
 let stopping = false;
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => {

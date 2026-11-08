@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import type { RelaySessionEvents, RelaySessionCoverage } from '../src/api/relaySession';
 import type { RelayEvent } from '../src/api/relay';
-import { formatDate, formatNumber } from '../src/pages/cognition/format';
+import { formatDate, formatNumber } from '../src/pages/workspace/relayEventFormat';
 
 type Facts = { task_id: string; events: RelayEvent[]; native_session_event_ids: string[]; forbidden_canaries: string[]; coverage: RelaySessionCoverage[] };
 test('原task真实18ID只读DOM、分页、原档覆盖与权限拒绝恢复', async ({ page }) => {

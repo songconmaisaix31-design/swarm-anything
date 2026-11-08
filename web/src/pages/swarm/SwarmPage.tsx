@@ -12,6 +12,7 @@ import { matchesQuery } from '../../utils/search';
 import { MissionList } from './missions/MissionRecords';
 import { MissionDetailWorkspace } from './missions/MissionDetailWorkspace';
 import { MissionCreateWorkspace } from './missions/MissionCreateWorkspace';
+import { SwaWorkspace } from './SwaWorkspace';
 import { ArtifactCollection, MissionEventCollection, WorkItemCollection } from './missions/MissionCollections';
 import { useMissionCollections } from './missions/useMissionCollections';
 import styles from './SwarmPage.module.css';
@@ -29,6 +30,7 @@ export function SwarmPage({ query }: { query: string }) {
   const count = (value: number) => missions.loading && !missions.data ? '加载中…' : missions.error && !missions.data ? '无法获取' : value;
   return <PageFrame section="swarm" title="蜂群空间" subtitle="查看批准范围内的任务、执行记录和待验收产物。" onRefresh={() => { missions.retry(); records.retry(); }} rail={<RailSummary title="执行概览" rows={[{ label: '任务', value: count(items.length) }, { label: '工作项', value: count(workItemCount) }, { label: '产物引用', value: '按任务查看' }]} note="提交产物后等待人工验收；当前授权由服务逐次核查。" />}>
     <div className={styles.grid}>
+      <SwaWorkspace />
       <DevelopmentSpacePanel query={query} />
       <div><button className="ac-button compact" type="button" disabled={missions.loading || missions.stale || !missions.data} onClick={() => setSelected({ kind: 'create' })}>从批准建立任务</button></div>
       <details className="ac-secondary-records" open={items.length > 0}><summary>已有任务记录 · {missions.data ? items.length : '未知'} 项</summary>
