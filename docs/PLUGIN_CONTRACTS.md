@@ -36,7 +36,7 @@ v1 引用事件不会自动调用旧工具。独立插件的 v1 ingress、outbox
 
 | 步骤 | 插件边界与当前状态 |
 | --- | --- |
-| 1. 保存验收结果 | SWA 保存原任务完成收据和实际完成通道；`runtime/swa-orca/src/task-result.ts::completeTaskResult` 已有结果保存。向 Astrocyte 提供固定 completion 引用尚未接通，执行完成不自动成为人工验收 |
+| 1. 保存验收结果 | SWA `runtime/swa-orca/src/run-settlement.ts::installRunSettlement` 保存执行结果和完成回执，`acceptance` 为 `unreviewed`；`task-result.ts::completeTaskResult` 收集并核验已有记录。原六步要求的验证／人工验收通道与向 Astrocyte 提供的固定 completion 引用尚未接通 |
 | 2. 保存可追溯证据 | SWA 已有轨迹、输入与导出核验。Astrocyte `internal/attention/app/experience_accepted.go` 保留 `ExperienceCompletionReader` 消费端口；独立来源适配器尚未实现，不能跨进程传 SQLite 事务 |
 | 3. 抽取经验候选 | Astrocyte 同文件保留 `CaptureCompletion` 与 Interpreter 端口，只允许起草 quarantine 候选。当前 MCP 未实例化该服务，真实模型起草未接通；未知模型操作必须保留原 ID |
 | 4. 用户审核批准 | Astrocyte `internal/attention/app/experience_service.go::ApproveExperience` 已有人类身份、版本与幂等规则；独立人类批准入口尚未装配，批准必须针对具体经验 revision |
