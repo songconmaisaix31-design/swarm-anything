@@ -17,9 +17,22 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/swahttp"
 )
 
+func installedWebTempDir(t *testing.T) string {
+	t.Helper()
+	created := t.TempDir()
+	path, err := filepath.EvalSymlinks(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != created {
+		t.Logf("temporary Web root resolved from %q to %q", created, path)
+	}
+	return path
+}
+
 func installedWebInput(t *testing.T) (string, string) {
 	t.Helper()
-	install := t.TempDir()
+	install := installedWebTempDir(t)
 	web := filepath.Join(install, "web")
 	for _, path := range []string{filepath.Join(web, "assets"), filepath.Join(web, ".vite")} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
@@ -144,7 +157,7 @@ func TestInstalledWebDirectoryRejectsUntrustedInputs(t *testing.T) {
 			manifest := filepath.Join(web, ".vite", "manifest.json")
 			switch name {
 			case "wrong-root":
-				web = t.TempDir()
+				web = installedWebTempDir(t)
 			case "missing-edition":
 				remove(filepath.Join(install, "EDITION"))
 			case "cli-edition":
@@ -171,9 +184,9 @@ func TestInstalledWebDirectoryRejectsUntrustedInputs(t *testing.T) {
 				remove(filepath.Join(web, "assets", "index.js"))
 				link(filepath.Join(install, "EDITION"), filepath.Join(web, "assets", "index.js"))
 			case "symlink-directory":
-				link(t.TempDir(), filepath.Join(web, "alias"))
+				link(installedWebTempDir(t), filepath.Join(web, "alias"))
 			case "symlink-install":
-				alias := filepath.Join(t.TempDir(), "alias")
+				alias := filepath.Join(installedWebTempDir(t), "alias")
 				link(install, alias)
 				install, web = alias, filepath.Join(alias, "web")
 			}

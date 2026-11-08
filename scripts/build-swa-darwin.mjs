@@ -103,8 +103,8 @@ if (values.edition === 'combined') {
   await cp(join(root, 'web', 'dist'), join(output, 'web'), { recursive: true, errorOnExist: true, force: false })
   await copyWebLicenses(join(root, 'web'), output, pnpm)
 }
-for (const [name, entry] of [['swa', './cmd/swa'], ['server', './cmd/swa-server']]) run(go, ['build', '-mod=readonly', '-p=4', '-trimpath', ...(name === 'swa' ? ['-ldflags=-X main.version=' + revision] : []), '-o', join(output, name), entry])
-console.log(JSON.stringify({ stage: 'go-licenses', ...await copyGoLicenses(go, [join(output, 'swa'), join(output, 'server')], output) }))
+for (const [name, entry] of [['swa', './cmd/swa'], ['server', './cmd/swa-server'], ['swarm', './cmd/swarm']]) run(go, ['build', '-mod=readonly', '-p=4', '-trimpath', ...(name !== 'server' ? ['-ldflags=-X main.version=' + revision] : []), '-o', join(output, name), entry])
+console.log(JSON.stringify({ stage: 'go-licenses', ...await copyGoLicenses(go, [join(output, 'swa'), join(output, 'server'), join(output, 'swarm')], output) }))
 for (const [from, to] of [['LICENSE', 'LICENSE'], ['THIRD_PARTY_SWA.md', 'THIRD_PARTY_SWA.md'], ['third_party/orca-v1.4.230/LICENSE', 'ORCA_LICENSE'], ['scripts/install-swa.mjs', 'install-swa.mjs'], ['runtime/swa-orca/USAGE.md', 'USAGE.md']]) await copyFile(join(root, from), join(output, to))
 await mkdir(join(output, 'scripts'))
 for (const file of ['check-swa-runtime.mjs', 'check-swa-darwin-native.mjs', 'swa-package-config.mjs']) await copyFile(join(root, 'scripts', file), join(output, 'scripts', file))

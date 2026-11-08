@@ -1,0 +1,110 @@
+connection:
+  parameters:
+    - {name: id, in: path, required: true, schema: {type: string}}
+    - {name: plugin, in: path, required: true, schema: {type: string}}
+  get:
+    operationId: getPluginConnectionV1
+    x-s1-supported: true
+    summary: Read the current human-configured plugin connection reference
+    tags: [workspace]
+    security: [{HumanSession: []}]
+    responses:
+      '200':
+        description: Plugin connection metadata without content or credentials
+        content:
+          application/json:
+            schema: {$ref: './connection.schema.json'}
+      '403': {description: Current human session or project access required}
+      '404': {description: Project or plugin connection not found}
+  put:
+    operationId: configurePluginConnectionV1
+    x-s1-supported: true
+    summary: Save a project plugin connection using an expected version
+    description: Human session and CSRF required. This operation registers references only; it does not launch a plugin or authorize execution. After an uncertain response, GET the saved version before another update.
+    tags: [workspace]
+    security: [{HumanSession: []}]
+    parameters:
+      - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [connection, expected_version]
+            properties:
+              connection: {$ref: './connection.schema.json'}
+              expected_version: {type: integer, minimum: 0}
+    responses:
+      '200':
+        description: Saved connection
+        content:
+          application/json:
+            schema: {$ref: './connection.schema.json'}
+      '400': {description: Invalid command or unsupported content}
+      '403': {description: 'Human session, CSRF or project access required'}
+      '409': {description: Version changed; inspect current connection}
+references:
+  parameters:
+    - {name: id, in: path, required: true, schema: {type: string}}
+    - {name: plugin, in: path, required: true, schema: {type: string}}
+  post:
+    operationId: rememberPluginReferenceV1
+    x-s1-supported: true
+    summary: Remember a fixed plugin object ID and revision
+    description: Does not fetch or store object content and does not assert that the object is approved. Repeating the same reference is harmless.
+    tags: [workspace]
+    security: [{HumanSession: []}]
+    parameters:
+      - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: './reference.schema.json'}
+    responses:
+      '200':
+        description: Saved fixed reference
+        content:
+          application/json:
+            schema: {$ref: './reference.schema.json'}
+      '400': {description: Invalid reference or body fields}
+      '403': {description: 'Human session, CSRF or current project/plugin permission required'}
+      '404': {description: Project or plugin connection not found}
+events:
+  parameters:
+    - {name: id, in: path, required: true, schema: {type: string}}
+    - {name: plugin, in: path, required: true, schema: {type: string}}
+  post:
+    operationId: recordPluginReferenceEventV1
+    x-s1-supported: true
+    summary: Record a stable reference event without executing or delivering it
+    description: Same source/event_id and content returns the original recorded receipt; different content conflicts. recorded means SWA persisted the reference, not that a plugin consumed it or a proposal was approved.
+    tags: [workspace]
+    security: [{HumanSession: []}]
+    parameters:
+      - {name: X-CSRF-Token, in: header, required: true, schema: {type: string}}
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: './event.schema.json'}
+    responses:
+      '200': {description: Original reference event and recorded receipt}
+      '400': {description: Invalid envelope or forbidden content fields}
+      '403': {description: 'Human session, CSRF or current project/plugin permission required'}
+      '409': {description: Source/event identity already refers to other content}
+  get:
+    operationId: getPluginReferenceEventV1
+    x-s1-supported: true
+    summary: Query an original event receipt after an uncertain response
+    tags: [workspace]
+    security: [{HumanSession: []}]
+    parameters:
+      - {name: source, in: query, required: true, schema: {type: string}}
+      - {name: event_id, in: query, required: true, schema: {type: string}}
+    responses:
+      '200': {description: Original reference event and recorded receipt}
+      '403': {description: Current human project/plugin permission required}
+      '404': {description: Original reference event not found}

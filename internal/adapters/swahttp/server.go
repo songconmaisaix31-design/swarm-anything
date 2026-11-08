@@ -13,6 +13,7 @@ import (
 
 	"github.com/songconmaisaix31-design/Astrocyte/internal/apierrors"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/foundation"
+	pluginapp "github.com/songconmaisaix31-design/Astrocyte/internal/plugins/app"
 	workspace "github.com/songconmaisaix31-design/Astrocyte/internal/workspace/app"
 )
 
@@ -21,6 +22,7 @@ type Services struct {
 	LocalProjects workspace.LocalProjects
 	ProjectSpaces workspace.ProjectSpaces
 	OrcaExecution workspace.OrcaExecution
+	Plugins       *pluginapp.Service
 }
 type Config struct {
 	Port               int
@@ -52,6 +54,7 @@ func NewServer(cfg Config) *Server {
 	h.registerProjects(mux)
 	h.registerSpaces(mux)
 	h.registerCommands(mux)
+	h.registerPlugins(mux)
 	guard := newSessionGuard(cfg)
 	mux.HandleFunc("GET /api/v1/auth/session", guard.bootstrap)
 	for _, path := range []string{"/api/", "/api"} {

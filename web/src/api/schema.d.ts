@@ -1,5 +1,76 @@
 // Generated from contracts/openapi.yaml. Run pnpm generate; do not edit.
 export interface paths {
+    "/local-projects/{id}/plugins/{plugin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        /** Read the current human-configured plugin connection reference */
+        get: operations["getPluginConnectionV1"];
+        /**
+         * Save a project plugin connection using an expected version
+         * @description Human session and CSRF required. This operation registers references only; it does not launch a plugin or authorize execution. After an uncertain response, GET the saved version before another update.
+         */
+        put: operations["configurePluginConnectionV1"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/local-projects/{id}/plugins/{plugin}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remember a fixed plugin object ID and revision
+         * @description Does not fetch or store object content and does not assert that the object is approved. Repeating the same reference is harmless.
+         */
+        post: operations["rememberPluginReferenceV1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/local-projects/{id}/plugins/{plugin}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        /** Query an original event receipt after an uncertain response */
+        get: operations["getPluginReferenceEventV1"];
+        put?: never;
+        /**
+         * Record a stable reference event without executing or delivering it
+         * @description Same source/event_id and content returns the original recorded receipt; different content conflicts. recorded means SWA persisted the reference, not that a plugin consumed it or a proposal was approved.
+         */
+        post: operations["recordPluginReferenceEventV1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/local-projects/{id}/orca/commands": {
         parameters: {
             query?: never;
@@ -7745,6 +7816,44 @@ export interface components {
             expected_revision: number;
             hidden: boolean;
         };
+        /** Project-bound plugin connection v1 */
+        "connection.schema": {
+            /** @constant */
+            schema_version: 1;
+            project_id: string;
+            plugin_id: string;
+            /** @enum {unknown} */
+            transport: "stdio" | "streamable-http";
+            configuration_ref: string;
+            /** @constant */
+            contract_version: "1";
+            scopes: ("references.read" | "events.record")[];
+            version: number;
+        };
+        /** Plugin object reference v1 */
+        "reference.schema": {
+            /** @constant */
+            schema_version: 1;
+            plugin_id: string;
+            project_id: string;
+            /** @enum {unknown} */
+            kind: "material" | "opportunity" | "experience" | "knowledge" | "completion" | "proposal" | "event";
+            object_id: string;
+            revision: number;
+        };
+        /** Reference-only plugin event v1 */
+        "event.schema": {
+            /** @constant */
+            schema_version: 1;
+            source: string;
+            event_id: string;
+            project_id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            correlation_id: string;
+            causation_id: string;
+            object_ref: components["schemas"]["reference.schema"];
+        };
         roleDefinition: {
             name: string;
             responsibilities: string;
@@ -8286,6 +8395,232 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPluginConnectionV1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plugin connection metadata without content or credentials */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["connection.schema"];
+                };
+            };
+            /** @description Current human session or project access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project or plugin connection not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    configurePluginConnectionV1: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    connection: components["schemas"]["connection.schema"];
+                    expected_version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved connection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["connection.schema"];
+                };
+            };
+            /** @description Invalid command or unsupported content */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Human session, CSRF or project access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Version changed; inspect current connection */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rememberPluginReferenceV1: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["reference.schema"];
+            };
+        };
+        responses: {
+            /** @description Saved fixed reference */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["reference.schema"];
+                };
+            };
+            /** @description Invalid reference or body fields */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Human session, CSRF or current project/plugin permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project or plugin connection not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPluginReferenceEventV1: {
+        parameters: {
+            query: {
+                source: string;
+                event_id: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original reference event and recorded receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Current human project/plugin permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Original reference event not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recordPluginReferenceEventV1: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path: {
+                id: string;
+                plugin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["event.schema"];
+            };
+        };
+        responses: {
+            /** @description Original reference event and recorded receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid envelope or forbidden content fields */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Human session, CSRF or current project/plugin permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Source/event identity already refers to other content */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     executeOrcaCommand: {
         parameters: {
             query?: never;

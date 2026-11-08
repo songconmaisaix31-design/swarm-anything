@@ -19,6 +19,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/swahttp"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/swastore"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/foundation"
+	pluginapp "github.com/songconmaisaix31-design/Astrocyte/internal/plugins/app"
 	workspace "github.com/songconmaisaix31-design/Astrocyte/internal/workspace/app"
 	migrations "github.com/songconmaisaix31-design/Astrocyte/migrations/swa"
 )
@@ -130,6 +131,10 @@ func runProduct(parent context.Context, logger *slog.Logger) error {
 	}
 	spaces := workspace.NewProjectSpaceService(swastore.NewProjectSpaceRepository(db), workspace.ProjectSpaceOptions{})
 	projects := workspace.NewLocalProjectService(db, nil, projectfiles.Files{}, nil)
+	plugins, err := pluginapp.NewService(db, db)
+	if err != nil {
+		return err
+	}
 	execution, err := composeExecution(db, projects)
 	if err != nil {
 		return err
@@ -143,7 +148,7 @@ func runProduct(parent context.Context, logger *slog.Logger) error {
 	if origin := os.Getenv("SWA_ALLOWED_ORIGIN"); origin != "" {
 		origins = append(origins, origin)
 	}
-	server := swahttp.NewServer(swahttp.Config{Port: port, Logger: logger, WebDir: webDir, AllowedOrigins: origins, SWAOwnerCapability: owner, Services: swahttp.Services{Foundation: foundation.NewSWAService(version, execution != nil), LocalProjects: projects, ProjectSpaces: spaces, OrcaExecution: execution}})
+	server := swahttp.NewServer(swahttp.Config{Port: port, Logger: logger, WebDir: webDir, AllowedOrigins: origins, SWAOwnerCapability: owner, Services: swahttp.Services{Foundation: foundation.NewSWAService(version, execution != nil), LocalProjects: projects, ProjectSpaces: spaces, OrcaExecution: execution, Plugins: plugins}})
 	listener, err := bindHTTPListener(port)
 	if err != nil {
 		return err

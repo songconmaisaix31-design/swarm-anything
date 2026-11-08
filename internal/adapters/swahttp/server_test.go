@@ -17,6 +17,7 @@ import (
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/projectfiles"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/adapters/swastore"
 	"github.com/songconmaisaix31-design/Astrocyte/internal/foundation"
+	pluginapp "github.com/songconmaisaix31-design/Astrocyte/internal/plugins/app"
 	workspace "github.com/songconmaisaix31-design/Astrocyte/internal/workspace/app"
 	migrations "github.com/songconmaisaix31-design/Astrocyte/migrations/swa"
 )
@@ -44,7 +45,11 @@ func actualServer(t *testing.T, web string) *actualHTTP {
 		t.Fatal(err)
 	}
 	projects := workspace.NewLocalProjectService(db, nil, projectfiles.Files{}, nil)
-	server := NewServer(Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: web, Services: Services{Foundation: foundation.NewSWAService(2, false), LocalProjects: projects, ProjectSpaces: workspace.NewProjectSpaceService(swastore.NewProjectSpaceRepository(db), workspace.ProjectSpaceOptions{})}})
+	plugins, err := pluginapp.NewService(db, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(Config{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), WebDir: web, Services: Services{Foundation: foundation.NewSWAService(2, false), LocalProjects: projects, ProjectSpaces: workspace.NewProjectSpaceService(swastore.NewProjectSpaceRepository(db), workspace.ProjectSpaceOptions{}), Plugins: plugins}})
 	actual := httptest.NewServer(server.server.Handler)
 	t.Cleanup(actual.Close)
 	jar, err := cookiejar.New(nil)

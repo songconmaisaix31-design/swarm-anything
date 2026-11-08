@@ -3,9 +3,12 @@ module github.com/songconmaisaix31-design/Astrocyte
 go 1.27.2
 
 require (
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/procfs v0.22.0
+	github.com/sourcegraph/jsonrpc2 v0.2.1
 	golang.org/x/sys v0.49.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )
 

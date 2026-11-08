@@ -1,5 +1,13 @@
 # SWA（Swarm Anything）
 
+> **[Anything Universe](https://github.com/songconmaisaix31-design#anything-universe)** · *Tools for agents. Room for anything.*
+>
+> Agent 组队与执行入口：面向本机异构 CLI Agent 的 Swarm CLI，持续开发中。
+>
+> 同系列：[mcpet](https://github.com/songconmaisaix31-design/mcpet) · [blockchain-anything](https://github.com/songconmaisaix31-design/blockchain-anything)
+
+当前统一开发主线为 `integration/unified-candidate-20261108`，执行内核为 `cmd/swa`。本机 Agent 扫描、ACP 握手、角色资产和桌面复用同一主线。Astrocyte 与 Attention Mirror 已拆为独立插件，Morphogenesis 保持独立；本候选仅登记插件连接、固定引用与事件回执，真实传输和六步经验消费者待接入。决定、来源 SHA、证据适用范围和统一候选验收见 [本轮任务](tasks/unified-candidate-20261108.md)。
+
 SWA 将已有的 Agent CLI 组织到同一个工作空间。你可以定义角色，指定 Agent 与模型，启动 Worker，并在 CLI 或网页中查看任务、交接和成果。
 
 ## 产品范围

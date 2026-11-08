@@ -147,14 +147,14 @@ for (const [index, name] of nativePackages.entries()) {
 }
 delete environment._CL_
 const go = await findGo()
-for (const [name, entry] of [['swa.exe', './cmd/swa'], ['server.exe', './cmd/swa-server']]) {
+for (const [name, entry] of [['swa.exe', './cmd/swa'], ['server.exe', './cmd/swa-server'], ['swarm.exe', './cmd/swarm']]) {
   const args = ['build', '-mod=readonly', '-p=4', '-trimpath']
-  if (name === 'swa.exe') args.push('-ldflags=-X main.version=' + revision)
+  if (name !== 'server.exe') args.push('-ldflags=-X main.version=' + revision)
   run(go, [...args, '-o', join(output, name), entry])
 }
 run(go, ['build', '-mod=readonly', '-p=4', '-trimpath', '-o', join(runtime, 'controller-fault.exe'), './tests/swa-cli-headless/controller-fault'])
 run(go, ['build', '-mod=readonly', '-p=4', '-trimpath', '-o', join(runtime, 'cli-fault-control.exe'), './tests/swa-cli-headless/cli-fault-control'])
-console.log(JSON.stringify({ stage: 'go-licenses', ...await copyGoLicenses(go, [join(output, 'swa.exe'), join(output, 'server.exe')], output) }))
+console.log(JSON.stringify({ stage: 'go-licenses', ...await copyGoLicenses(go, [join(output, 'swa.exe'), join(output, 'server.exe'), join(output, 'swarm.exe')], output) }))
 for (const [source, target] of [['LICENSE', 'LICENSE'], ['THIRD_PARTY_SWA.md', 'THIRD_PARTY_SWA.md'], ['third_party/orca-v1.4.230/LICENSE', 'ORCA_LICENSE'], ['scripts/install-swa.ps1', 'install-swa.ps1'], ['runtime/swa-orca/USAGE.md', 'USAGE.md']]) await copyFile(join(root, source), join(output, target))
 await mkdir(join(output, 'scripts'))
 for (const file of ['check-swa-runtime.mjs', 'swa-package-config.mjs']) await copyFile(join(root, 'scripts', file), join(output, 'scripts', file))

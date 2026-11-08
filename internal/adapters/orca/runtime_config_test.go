@@ -42,9 +42,22 @@ func TestRuntimeResponseBoundsKeepOrdinaryCallsSmall(t *testing.T) {
 	}
 }
 
+func runtimeTempDir(t *testing.T) string {
+	t.Helper()
+	created := t.TempDir()
+	path, err := filepath.EvalSymlinks(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != created {
+		t.Logf("temporary runtime root resolved from %q to %q", created, path)
+	}
+	return path
+}
+
 func codexSourceConfig(t *testing.T) Config {
 	t.Helper()
-	root := t.TempDir()
+	root := runtimeTempDir(t)
 	directory := func(name string) string {
 		path := filepath.Join(root, name)
 		if err := os.Mkdir(path, 0o700); err != nil {
@@ -70,7 +83,7 @@ func codexSourceConfig(t *testing.T) Config {
 
 func TestRuntimeClaudeAPIKeyHomeIsExplicitAndFiltersInheritance(t *testing.T) {
 	config := codexSourceConfig(t)
-	for _, selected := range []string{"", t.TempDir()} {
+	for _, selected := range []string{"", runtimeTempDir(t)} {
 		config.ClaudeAPIKeyHome = selected
 		native, err := New(config)
 		if err != nil {
@@ -104,7 +117,7 @@ func TestRuntimeClaudeAPIKeyHomeIsExplicitAndFiltersInheritance(t *testing.T) {
 
 func TestRuntimePassesOnlyExplicitProjectToolchainEnvironment(t *testing.T) {
 	config := codexSourceConfig(t)
-	roots, err := json.Marshal([]string{t.TempDir()})
+	roots, err := json.Marshal([]string{runtimeTempDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +150,7 @@ func TestRuntimePassesOnlyExplicitProjectToolchainEnvironment(t *testing.T) {
 
 func TestRuntimeAPIKeyHomesAreMutuallyIsolated(t *testing.T) {
 	config := codexSourceConfig(t)
-	parent := t.TempDir()
+	parent := runtimeTempDir(t)
 	child := filepath.Join(parent, "child")
 	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)
@@ -160,9 +173,9 @@ func TestRuntimeAPIKeyHomesAreMutuallyIsolated(t *testing.T) {
 
 func TestRuntimeOpenCodeSourceIsExplicitAndIndependent(t *testing.T) {
 	config := codexSourceConfig(t)
-	t.Setenv("SWA_OPENCODE_API_KEY_HOME", filepath.Join(t.TempDir(), "inherited-unselected"))
+	t.Setenv("SWA_OPENCODE_API_KEY_HOME", filepath.Join(runtimeTempDir(t), "inherited-unselected"))
 	t.Setenv("OPENCODE_AUTH_CONTENT", "ordinary-environment-filter-marker")
-	for _, selected := range []string{"", t.TempDir()} {
+	for _, selected := range []string{"", runtimeTempDir(t)} {
 		config.OpenCodeAPIKeyHome = selected
 		native, err := New(config)
 		if err != nil {
@@ -185,7 +198,7 @@ func TestRuntimeOpenCodeSourceIsExplicitAndIndependent(t *testing.T) {
 			t.Fatal("OpenCode 来源环境必须唯一")
 		}
 	}
-	parent := t.TempDir()
+	parent := runtimeTempDir(t)
 	child := filepath.Join(parent, "child")
 	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)
@@ -220,7 +233,7 @@ func TestRuntimeClaudeAPIKeyHomeRejectsOrdinaryAndDefaultAccountRoots(t *testing
 
 func TestRuntimeCodexAPIKeyHomeIsExplicitAndFiltersInheritance(t *testing.T) {
 	config := codexSourceConfig(t)
-	for _, selected := range []string{"", t.TempDir()} {
+	for _, selected := range []string{"", runtimeTempDir(t)} {
 		config.CodexAPIKeyHome = selected
 		native, err := New(config)
 		if err != nil {
@@ -290,7 +303,7 @@ func TestRuntimeCodexAPIKeyHomeRejectsInvalidAndOverlappingPaths(t *testing.T) {
 
 func TestRuntimeCodexAPIKeyHomeRejectsLinkedSourceAndAncestor(t *testing.T) {
 	config := codexSourceConfig(t)
-	target := t.TempDir()
+	target := runtimeTempDir(t)
 	child := filepath.Join(target, "plain")
 	if err := os.Mkdir(child, 0o700); err != nil {
 		t.Fatal(err)

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swa.local/contracts/plugins/v1/reference.schema.json",
+  "title": "Plugin object reference v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plugin_id", "project_id", "kind", "object_id", "revision"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plugin_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "project_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "kind": {"enum": ["material", "opportunity", "experience", "knowledge", "completion", "proposal", "event"]},
+    "object_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+    "revision": {"type": "integer", "minimum": 1}
+  }
+}

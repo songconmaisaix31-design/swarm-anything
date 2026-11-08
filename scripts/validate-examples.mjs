@@ -19,8 +19,17 @@ for (const [name, definition] of Object.entries(normalized)) {
     count++;
   }
 }
-for (const [path, methods] of Object.entries(spec.paths)) {
+const pluginPathItems = parse(await readFile(new URL('../contracts/plugins/v1/http.yaml', import.meta.url), 'utf8'));
+for (const [path, rawMethods] of Object.entries(spec.paths)) {
+  let methods = rawMethods;
+  if (methods.$ref) {
+    const prefix = './plugins/v1/http.yaml#/';
+    if (!methods.$ref.startsWith(prefix)) throw new Error(`Unresolved path item: ${methods.$ref}`);
+    methods = pluginPathItems[methods.$ref.slice(prefix.length)];
+    if (!methods) throw new Error(`Missing path item: ${rawMethods.$ref}`);
+  }
   for (const [method, operation] of Object.entries(methods)) {
+    if (!['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'].includes(method)) continue;
     for (const message of [operation.requestBody, ...Object.values(operation.responses)]) {
       for (const media of Object.values(message?.content ?? {})) {
         if (media.example === undefined) continue;

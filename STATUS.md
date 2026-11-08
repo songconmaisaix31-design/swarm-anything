@@ -1,5 +1,9 @@
 # 当前状态
 
+2026-11-08：统一集成线为 `integration/unified-candidate-20261108`，从 FlowLens `62f9dea` 复用执行内核和原证据引用，接入角色资产、扫描、ACP 与桌面。`cmd/swarm` 只管理资产/发现，Run/Task/Worker 仍由 `cmd/swa` 执行。人类插件连接、固定引用和事件回执通过当前服务公开接口保存；不复制正文，不自动批准或执行。Astrocyte 与 Attention Mirror 已提取到独立仓，详见 [本轮任务](tasks/unified-candidate-20261108.md) 和 [v1 契约](docs/PLUGIN_CONTRACTS.md)。
+
+本次 Linux 已通过 Go vet、相关服务/存储/角色测试、HTTP/SQLite 插件边界、架构与精确依赖检查、264 个 OpenAPI 示例/生成一致性、runtime 类型和 Go/Web 构建。完整 `pnpm check` 在 `TestLinuxServiceRealProcessTree` 因当前 PID namespace 与 `/proc` 不一致失败；当前机器无原生 Agent/账号，未形成同候选模型/原会话/安装验收。Windows 路径测试已规范化真实临时根，未修改生产拒绝门，远端结果待检查。本版本保持开发候选，未发布。
+
 2026-11-07 [macOS 第二轮](tasks/macos-arm64-port.md)：新安装 `fb41699e` 的身份绑定直接子进程监督器、真实 Controller PTY、Pi 官方模型目录与隔离 8788 检查已执行；Go 全回归、Darwin 18 项、Node 17 项、Pi 来源 8 项、Controller 2 项、安装消费者 5 项通过。Pi `configured:available`、模型目录 verified，正式 control 保持 unknown；`swa run` 实际返回 4/unsupported_capability，未形成成功 Run/导出/产品 Worker 停止。直接 Pi 模型调用实际返回 507（20.77 GB 模型超过约 13.1 GB 动态上限）；另一次真实 RPC 的身份拒绝、正确停止与 absent 核验通过。整树 unknown/退出 6 保持。旧 8787 和其数据未改动；新验证服务已结束。仅本地提交，具体输出见任务页。
 
 2026-11-07 [macOS arm64 移植](tasks/macos-arm64-port.md)：`4178cb19` 原生候选构建、新目录安装、readiness 和 Pi/Codex 实际能力发现通过；Go build/vet/目标包测试、Darwin 5 项、Node Darwin 8 项及 Pi 来源 8 项通过。SIGINT 后已观察后代与四个主要进程已核验退出，整树完整性无法证明，服务退出 6；因此尚未满足全部移植完成标准。Worker/模型/完整释放能力保持 unknown，不推送、不发布。实际目录和日志见任务页。

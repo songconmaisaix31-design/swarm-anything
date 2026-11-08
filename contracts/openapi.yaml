@@ -51,6 +51,12 @@ tags:
   - name: relay
     description: Human confirmed Works Relay access layer
 paths:
+  /local-projects/{id}/plugins/{plugin}:
+    $ref: './plugins/v1/http.yaml#/connection'
+  /local-projects/{id}/plugins/{plugin}/references:
+    $ref: './plugins/v1/http.yaml#/references'
+  /local-projects/{id}/plugins/{plugin}/events:
+    $ref: './plugins/v1/http.yaml#/events'
   /local-projects/{id}/orca/commands:
     post:
       operationId: executeOrcaCommand
