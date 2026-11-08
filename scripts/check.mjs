@@ -3,7 +3,7 @@ import { findGo, checkGofmt, createCheckOutputDirectory, run, runTool, root } fr
 const arguments_ = process.argv.slice(2);
 if (arguments_.some(argument => argument !== '--race') || arguments_.length > 1) throw new Error('Only --race is supported');
 const race = arguments_[0] === '--race';
-const packages = ['./cmd/swa', './cmd/swa-server', './cmd/swarm', './internal/swarm/domain', './internal/adapters/rolecards', './internal/adapters/agentcli', './internal/apierrors', './internal/foundation', './internal/adapters/projectfiles', './internal/adapters/sqlitebase', './internal/adapters/swahttp', './internal/adapters/swastore'];
+const packages = ['./cmd/swa', './cmd/swa-server', './cmd/swarm', './internal/swarm/domain', './internal/plugins/domain', './internal/plugins/app', './internal/adapters/rolecards', './internal/adapters/agentcli', './internal/apierrors', './internal/foundation', './internal/adapters/projectfiles', './internal/adapters/sqlitebase', './internal/adapters/swahttp', './internal/adapters/swastore'];
 const workspaceTests = '^Test(MultiAgent|OrcaDelivery|OrcaQuestionAnswer|OrcaCapabilitiesRejectBeforeNativeSQLite|OrcaHandoff|OrcaTaskSpec|RunCommandScopeAndRoleValidation|RunSubmissionRequestIdentity|RunRolePreservesFixedSpecification|RoleAndDiscussionDoNotAcceptExecutionAuthority|RunSubmissionDetectsSameSizeSameTimeInputChanges|CodexNativeLaunchContract|ClaudeNativeLaunchContract|PiPerSessionNative|OpenCodeStepFunAccountWireIsStrict|ProjectAction)';
 const orcaTests = '^Test(Runtime|InstalledWebDirectory)';
 const installedTests = '^TestOrcaCLIReal(InstalledController|HTTPAuthorityBoundary)$';
