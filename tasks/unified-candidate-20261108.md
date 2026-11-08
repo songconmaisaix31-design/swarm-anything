@@ -57,3 +57,5 @@ SWA 只保存插件连接配置引用、当前项目绑定、对象 ID/revision 
 统一候选与最新验证入口为 [SWA PR #17](https://github.com/songconmaisaix31-design/swarm-anything/pull/17)。源码 `0d2f45d545a50a6f3601038c403d06a11c1b03f0` 的 [Actions 42491600389](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42491600389) 中，两平台 foundation、Ubuntu `pnpm check` / `check:race` / `build` 已通过。Windows 原 Orca 路径专项已通过；完整检查暴露未准备 Windows 原生安全模块、打开文件替换被操作系统以 `EPERM` 拒绝的测试差异。Ubuntu 浏览器首次冷 Go 构建约 28.8 秒耗尽测试主体 30 秒；实际页面导航内容正确。这些失败不能计作完整检查通过。
 
 后续补丁把 owned server 启动与清理放入独立 120 秒 fixture，保留浏览器主体 30 秒与零重试；Windows 文件替换核查操作系统拒绝、原身份与字节不变，POSIX 仍要求 `identity_changed`。原生模块从当前 workspace 和锁定依赖真编译，保持生产安全模块与发布构建约束。新源码的实际结果以 PR 中绑定的准确 SHA / Actions 为准；原生安装工作流的 skipped 不计作安装验收。
+
+`3c5dba63` 的 [Actions 42492641581](https://github.com/songconmaisaix31-design/swarm-anything/actions/runs/42492641581) 已证实 Windows 冻结安装和其原生编译完成；后续锁定 node-gyp 重建因脚本要求 VS2022、运行器只有 VS2026 18.11.12328.437 / v145 / SDK10.0.26100 而拒绝。已按实际工具链固定选择 VS2026；现有 node-gyp12.3.0 与发布规则均支持此版本，无自动回退。该修正仍须新提交 CI，不能用安装时的自动编译替代完整检查。

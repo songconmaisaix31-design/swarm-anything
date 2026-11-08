@@ -79,7 +79,7 @@ for (const [name, binaryName] of [
   console.log(JSON.stringify({ check: 'windows-native-build', package: packageName, node: process.version, python: pythonVersion.stdout.trim(), node_gyp: gypMetadata.version, node_addon_api: addon.version, source }));
   const devdir = join(work, name);
   mkdirSync(devdir);
-  const buildArgs = [gyp, 'rebuild', '--target=24.16.0', '--arch=x64', '--msvs-version=2022', `--python=${python}`, `--devdir=${devdir}`];
+  const buildArgs = [gyp, 'rebuild', '--target=24.16.0', '--arch=x64', '--msvs-version=2026', `--python=${python}`, `--devdir=${devdir}`];
   const probe = spawnSync(process.execPath, ['-e', 'const [library,...args]=process.argv.slice(1);const gyp=require(library)();gyp.parseArgv([process.execPath,...args]);console.log(JSON.stringify({target:gyp.opts.target,arch:gyp.opts.arch,msvs_version:gyp.opts["msvs-version"],python:gyp.opts.python,devdir:gyp.opts.devdir,nodedir:gyp.opts.nodedir??null,dist_url:gyp.opts["dist-url"]??null}))', gypLibrary, ...buildArgs], {
     cwd: source,
     env: buildEnv,
@@ -90,7 +90,7 @@ for (const [name, binaryName] of [
   if (probe.error) throw probe.error;
   if (probe.status !== 0) throw new Error(`${packageName} effective node-gyp option probe failed`);
   const effectiveGyp = JSON.parse(probe.stdout);
-  if (effectiveGyp.target !== '24.16.0' || effectiveGyp.arch !== 'x64' || effectiveGyp.msvs_version !== '2022' || effectiveGyp.python !== python || effectiveGyp.devdir !== devdir || effectiveGyp.nodedir !== null || effectiveGyp.dist_url !== null) {
+  if (effectiveGyp.target !== '24.16.0' || effectiveGyp.arch !== 'x64' || effectiveGyp.msvs_version !== '2026' || effectiveGyp.python !== python || effectiveGyp.devdir !== devdir || effectiveGyp.nodedir !== null || effectiveGyp.dist_url !== null) {
     throw new Error(`${packageName} effective node-gyp options differ from the fixed build inputs`);
   }
   console.log(JSON.stringify({ check: 'windows-native-effective-options', package: packageName, ...effectiveGyp }));
