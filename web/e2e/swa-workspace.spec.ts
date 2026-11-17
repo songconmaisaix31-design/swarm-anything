@@ -50,7 +50,9 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     await workspace.getByLabel('提示词正文', { exact: true }).fill('先核对验收条件。\n再给出证据。');
     await workspace.getByRole('button', { name: '保存为提示词模板', exact: true }).click();
     await workspace.getByRole('button', { name: '套用到本次输入', exact: true }).click();
-    await workspace.getByLabel('本次输入预览', { exact: true }).fill('本次只核对集成证据。\n');
+    const preview = workspace.getByRole('textbox', { name: '本次输入预览', exact: true });
+    await expect(preview).toHaveValue('先核对验收条件。\n再给出证据。');
+    await preview.fill('本次只核对集成证据。\n');
     const pendingDownload = page.waitForEvent('download');
     await workspace.getByRole('button', { name: '下载本次输入', exact: true }).click();
     const input = await pendingDownload;
