@@ -98,6 +98,7 @@ app.whenReady().then(() => {
     if (!projectPath) throw new Error('请先选择项目目录。');
     return callSwarm(['agents', 'connect', id, '--project', projectPath, '--json']);
   });
+  handle('swarm:diagnose-tabbit', () => callSwarm(['agents', 'diagnose', 'tabbit', '--json']));
 
   createWindow();
   app.on('activate', () => {

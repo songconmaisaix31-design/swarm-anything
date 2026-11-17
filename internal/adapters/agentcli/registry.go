@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -17,6 +18,10 @@ type Entry struct {
 	DisplayName string   `json:"display_name"`
 	Command     string   `json:"command"`
 	ACPArgs     []string `json:"acp_args"`
+
+	aliases          []string
+	defaultPaths     func() []string
+	skipVersionProbe bool
 }
 
 func LegacyEntries() []Entry {
@@ -38,10 +43,17 @@ func builtinEntries() []Entry {
 	return append(LegacyEntries(),
 		Entry{ID: "dsh", DisplayName: "DeepSeek Harness", Command: "dsh", ACPArgs: []string{"--profile", "acp"}},
 		Entry{ID: "muse", DisplayName: "Muse Code", Command: "muse"},
+		Entry{ID: "qoder", DisplayName: "Qoder", Command: "qodercli", ACPArgs: []string{"--acp"}, aliases: []string{"qoder"}},
+		Entry{ID: "qoder-cn", DisplayName: "Qoder CN", Command: "qoderclicn", ACPArgs: []string{"--acp"}, aliases: []string{"qodercn"}},
+		Entry{ID: "trae", DisplayName: "TRAE CN", Command: "traecli", ACPArgs: []string{"acp", "serve"}},
+		Entry{ID: "codebuddy", DisplayName: "CodeBuddy Code", Command: "codebuddy", ACPArgs: []string{"--acp"}},
+		Entry{ID: "workbuddy", DisplayName: "WorkBuddy"},
+		Entry{ID: "tabbit", DisplayName: "Tabbit", Command: "tabbit-cli", defaultPaths: tabbitDefaultPaths, skipVersionProbe: true},
 	)
 }
 
 var entryID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,47}$`)
+var errUnverifiedCLI = errors.New("尚未核实此 Agent 的官方 CLI")
 
 func LoadRegistry() ([]Entry, error) {
 	path := os.Getenv("SWA_AGENT_REGISTRY")
@@ -122,6 +134,49 @@ func Resolve(command string) (string, error) {
 		return "", errors.New("Agent 可执行文件需要可信的绝对路径")
 	}
 	return path, nil
+}
+
+// ResolveEntry 只在命令不存在时继续查同一 Agent 的候选入口。
+func ResolveEntry(entry Entry) (string, error) {
+	return resolveEntry(entry, Resolve)
+}
+
+func resolveEntry(entry Entry, lookup func(string) (string, error)) (string, error) {
+	if entry.Command == "" {
+		return "", errUnverifiedCLI
+	}
+	path, err := lookup(entry.Command)
+	if err == nil || !cliNotFound(err) {
+		return path, err
+	}
+	candidates := entry.aliases
+	if entry.defaultPaths != nil {
+		candidates = append(append([]string(nil), candidates...), entry.defaultPaths()...)
+	}
+	for _, candidate := range candidates {
+		path, err := lookup(candidate)
+		if err == nil || !cliNotFound(err) {
+			return path, err
+		}
+	}
+	return "", err
+}
+
+func cliNotFound(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist)
+}
+
+func tabbitDefaultPaths() []string {
+	if runtime.GOOS == "windows" {
+		if root := os.Getenv("LOCALAPPDATA"); filepath.IsAbs(root) {
+			return []string{filepath.Join(root, "Tabbit", "LocalAgent", "bin", "tabbit-cli.exe")}
+		}
+		return nil
+	}
+	if home, err := os.UserHomeDir(); err == nil && filepath.IsAbs(home) {
+		return []string{filepath.Join(home, ".local", "bin", "tabbit-cli")}
+	}
+	return nil
 }
 
 func unsafePath(path string) bool {

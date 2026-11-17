@@ -20,6 +20,8 @@ var version = "development"
 
 const usage = `swarm agents list [--probe] [--json]
 swarm agents connect ID --project DIR [--json]
+swarm agents diagnose tabbit [--json]
+swarm agents quota ID --magpie-port PORT [--json]
 swarm roles list [--roles-dir DIR] [--json]
 swarm roles show ID [--roles-dir DIR] [--json]
 swarm roles validate FILE [--json]
@@ -34,7 +36,7 @@ FILE 使用 YAML 或 JSON；FILE 为 - 时从标准输入读取。
 roles new 缺少必要信息时逐项询问；--json 模式需要明确提供全部必要信息。
 roles edit 不带修改参数时逐项询问，空输入保持原值。
 swarm 管理本地发现和可移植角色资产；任务执行、项目权限、运行角色与恢复沿用 swa。
-角色卡不会建立项目授权，agents connect 仅进行 ACP 握手。
+角色卡不会建立项目授权，agents connect 仅进行 ACP 握手，diagnose tabbit 不执行网页任务。
 `
 
 func main() {

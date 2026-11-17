@@ -56,6 +56,8 @@ func executeAgents(args []string, stdout io.Writer) error {
 			if entries[i].ACPArgs != nil {
 				item.Adapter = "acp"
 				item.NativeAdapterRegistered = true
+			} else if entries[i].ID == "tabbit" {
+				item.Adapter = "browser-cli"
 			}
 			items = append(items, item)
 		}
@@ -105,6 +107,68 @@ func executeAgents(args []string, stdout io.Writer) error {
 			return err
 		}
 		return fmt.Errorf("未登记 Agent %q", args[1])
+	case "diagnose":
+		if len(args) < 2 || args[1] != "tabbit" {
+			return fmt.Errorf("agents diagnose 仅支持 tabbit")
+		}
+		if err := flags.Parse(args[2:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 {
+			return fmt.Errorf("agents diagnose tabbit 不接收多余参数")
+		}
+		entries, err := agentcli.LoadRegistry()
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.ID != "tabbit" {
+				continue
+			}
+			if err := agentcli.DiagnoseTabbit(ctx, entry); err != nil {
+				return &apierrors.ServiceError{Code: apierrors.ProviderUnavailable, Message: err.Error(), RequiredAction: "检查 Tabbit 官方本机启动器"}
+			}
+			if *asJSON {
+				return encode(struct {
+					SchemaVersion int    `json:"schema_version"`
+					AgentID       string `json:"agent_id"`
+					State         string `json:"state"`
+				}{SchemaVersion: 1, AgentID: entry.ID, State: "diagnose_exit_ok"})
+			}
+			_, err = fmt.Fprintln(stdout, "Tabbit CLI 诊断成功退出。尚未验证网页任务。")
+			return err
+		}
+		return fmt.Errorf("未登记 Tabbit")
+	case "quota":
+		port := flags.Int("magpie-port", 0, "已运行的本机 Magpie 端口")
+		if len(args) < 2 {
+			return fmt.Errorf("agents quota 需要 Agent ID")
+		}
+		if err := flags.Parse(args[2:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 || *port < 1 || *port > 65535 {
+			return fmt.Errorf("agents quota 需要 --magpie-port（1–65535）")
+		}
+		quota, err := agentcli.ReadMagpieQuota(ctx, args[1], *port)
+		if err != nil {
+			return &apierrors.ServiceError{Code: apierrors.ProviderUnavailable, Message: err.Error(), RequiredAction: "检查已运行的本机 Magpie 及对应账号的缓存"}
+		}
+		if quota.Provider == "" {
+			return fmt.Errorf("该 Agent 没有已登记的 Magpie 额度来源")
+		}
+		if *asJSON {
+			return encode(struct {
+				SchemaVersion int `json:"schema_version"`
+				agentcli.MagpieQuota
+			}{SchemaVersion: 1, MagpieQuota: quota})
+		}
+		if quota.State == "unknown" {
+			_, err = fmt.Fprintln(stdout, "没有可核实的 Magpie 缓存额度。")
+		} else {
+			_, err = fmt.Fprintf(stdout, "已读取 %s 的 Magpie 缓存。使用 --json 查看额度、单位和观察时间。\n", quota.Provider)
+		}
+		return err
 	default:
 		return fmt.Errorf("未知 agents 命令，请运行 swarm --help")
 	}

@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-17 [免费额度 Agent 接入候选](tasks/free-agent-integrations-20261117.md)：沿用桌面与 `swarm` 的本机扫描、ACP 握手和进程回收，加入 Qoder、TRAE CN、CodeBuddy Code 与 Tabbit 浏览器诊断，WorkBuddy 桌面单列。可显式读取 Magpie 本机缓存，不把缓存视为运行预算。Linux 已用官方 Qoder 1.1.90 与 CodeBuddy Code 2.184.0 核实 ACP v1 握手；模型、原会话续接、TRAE 真机、Tabbit Browser 及真实账号额度待验。新条目未启用 `swa run`，签到由官方客户端或已配置的外部工具处理。
+
 2026-11-08：统一集成线为 `integration/unified-candidate-20261108`，从 FlowLens `62f9dea` 复用执行内核和原证据引用，接入角色资产、扫描、ACP 与桌面。`cmd/swarm` 只管理资产/发现，Run/Task/Worker 仍由 `cmd/swa` 执行。人类插件连接、固定引用和事件回执通过当前服务公开接口保存；不复制正文，不自动批准或执行。Astrocyte 与 Attention Mirror 已提取到独立仓，详见 [本轮任务](tasks/unified-candidate-20261108.md) 和 [v1 契约](docs/PLUGIN_CONTRACTS.md)。
 
 本次 Linux 已通过 Go vet、相关服务/存储/角色测试、HTTP/SQLite 插件边界、架构与精确依赖检查、264 个 OpenAPI 示例/生成一致性、runtime 类型和 Go/Web 构建。完整 `pnpm check` 在 `TestLinuxServiceRealProcessTree` 因当前 PID namespace 与 `/proc` 不一致失败；当前机器无原生 Agent/账号，未形成同候选模型/原会话/安装验收。Windows 路径测试已规范化真实临时根，未修改生产拒绝门，远端结果待检查。本版本保持开发候选，未发布。
