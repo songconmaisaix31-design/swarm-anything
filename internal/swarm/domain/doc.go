@@ -1,5 +1,2 @@
-// Package domain defines the swarm bounded context's domain model.
-//
-// The swarm context owns Mission, WorkItem, Lease, Attempt, Artifact
-// and Experience aggregates.
+// Package domain defines the portable role cards and handoff cards used by swarm.
 package domain

@@ -24,13 +24,10 @@ if (!graph.size) throw new Error('No Go packages; backend owner work is pending'
 const io = /^(database(?:\/|$)|net(?:\/(?!url$)|$)|os(?:\/|$)|io(?:\/|$)|bufio$|syscall$|log(?:\/|$)|modernc\.org\/|golang\.org\/x\/sys)/;
 const issues = [];
 const checkedLayers = [];
-const checkedJudgment = [];
 for (const [name, imports] of graph) {
   const relative = name.startsWith(moduleName + '/') ? name.slice(moduleName.length + 1) : name;
   const layer = relative.match(/^internal\/(attention|workspace|swarm|workbench|plugins)\/(domain|app)(?:\/|$)/);
-  const judgment = /^internal\/judgment(?:\/|$)/.test(relative);
   if (layer) checkedLayers.push(relative);
-  if (judgment) checkedJudgment.push(relative);
   for (const dependency of imports) {
     const internal = dependency.startsWith(moduleName + '/') ? dependency.slice(moduleName.length + 1) : '';
     if (layer) {
@@ -42,13 +39,6 @@ for (const [name, imports] of graph) {
       if (level === 'domain') {
         if (internal && !internal.startsWith(`internal/${context}/domain`)) issues.push(`${relative} imports outside its Domain: ${dependency}`);
         if (!internal && dependency.includes('.')) issues.push(`${relative} imports an unapproved external dependency: ${dependency}`);
-      }
-    }
-    if (judgment) {
-      if (io.test(dependency)) issues.push(`${relative} imports I/O: ${dependency}`);
-      // 共享判断契约复用现有 Workspace 值类型和错误类型，禁止依赖应用服务或 adapter。
-      if (internal && internal !== 'internal/apierrors' && internal !== 'internal/workspace/domain' && !/^internal\/judgment(?:\/|$)/.test(internal)) {
-        issues.push(`${relative} imports outside the shared judgment contract: ${dependency}`);
       }
     }
     if (/^internal\/adapters\/(httpapi|swahttp|mcp)(?:\/|$)/.test(relative) &&
@@ -70,4 +60,3 @@ for (const dependency of swa.stdout.trim().split(/\r?\n/)) {
 if (issues.length) throw new Error(`Architecture violations:\n${issues.join('\n')}`);
 console.log(`Go import graph (${swaOnly ? 'SWA entry dependencies' : 'all packages'}): ${graph.size} packages satisfy Domain/app/context/transport boundaries`);
 console.log(`Checked Domain/app packages: ${checkedLayers.join(', ')}`);
-console.log(`Checked shared judgment packages: ${checkedJudgment.join(', ')}`);

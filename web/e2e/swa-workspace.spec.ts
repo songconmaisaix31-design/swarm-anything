@@ -12,7 +12,7 @@ const test = base.extend<{ ownedServer: S1Server }>({
   // 启动包含冷构建，使用独立预算；每个测试仍取得自己的进程与 SQLite。
   // eslint-disable-next-line no-empty-pattern
   ownedServer: [async ({}, use, testInfo) => {
-    const server = await startS1Server({ browser: true, product: 'swa' });
+    const server = await startS1Server({ browser: true });
     try { await use(server); }
     finally { await server.close({ primaryError: testInfo.error }); }
   }, { timeout: 120_000 }],

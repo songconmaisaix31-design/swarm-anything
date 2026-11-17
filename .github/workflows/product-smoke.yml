@@ -1,0 +1,47 @@
+name: SWA product smoke
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  packaged-workbench:
+    name: Account-free product (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.2
+          cache: true
+      - name: Install locked product build tools
+        run: pnpm --filter swarm-anything --filter @swa/web install --frozen-lockfile
+      - name: Build the product on the target operating system
+        run: pnpm build
+      - name: Run the built server, CLI and workbench without provider accounts
+        run: pnpm test:product
+      - name: Install Chromium for workbench checks
+        run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Exercise workbench interactions against the account-free local server
+        run: pnpm --dir web exec playwright test --config e2e/swa-workspace.config.ts --workers=1
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: product-browser-${{ matrix.os }}
+          path: |
+            web/playwright-report
+            web/test-results
+            .verification/product-smoke-*/*.log
+          if-no-files-found: ignore

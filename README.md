@@ -1,107 +1,50 @@
 # SWA（Swarm Anything）
 
-> **[Anything Universe](https://github.com/songconmaisaix31-design#anything-universe)** · *Tools for agents. Room for anything.*
->
-> Agent 组队与执行入口：面向本机异构 CLI Agent 的 Swarm CLI，持续开发中。
->
-> 同系列：[mcpet](https://github.com/songconmaisaix31-design/mcpet) · [blockchain-anything](https://github.com/songconmaisaix31-design/blockchain-anything)
+SWA 是管理本机 Agent 的工作台。把一个目录登记为项目，批准它能用的 Agent 和操作，启动一项任务，再查看 Worker、任务关系、交接和已有成果。任务和权限留在本机服务中；关闭网页不会停止后台任务。
 
-当前统一开发主线为 `integration/unified-candidate-20261108`，执行内核为 `cmd/swa`。本机 Agent 扫描、ACP 握手、角色资产和桌面复用同一主线。Astrocyte 与 Attention Mirror 已拆为独立插件，Morphogenesis 保持独立；本候选仅登记插件连接、固定引用与事件回执，真实传输和六步经验消费者待接入。决定、来源 SHA、证据适用范围和统一候选验收见 [本轮任务](tasks/unified-candidate-20261108.md)。
+| 入口 | 用途 |
+| --- | --- |
+| **Web 工作台** | 在项目侧栏切换项目，管理授权、角色和提示词，在同一个 Run 查看任务图、Worker 与交付。 |
+| **`swa`** | 通过已授权的项目提交、等待、查询或导出 Run。它与 Web 共用执行状态和项目权限。 |
+| **`swarm` / 桌面端** | 发现本机 Agent，核对版本或显式发起 ACP 握手。发现、连接与正式执行分别验证。 |
 
-本机免费额度 Agent 的连接检查、额度来源与执行验收见 [接入说明](tasks/free-agent-integrations-20261117.md)。
-要用本机客户端复验，参见[验收命令](tests/swa-free-agents/README.md)。
+## Windows 和 Linux：先打开工作台
 
-SWA 将已有的 Agent CLI 组织到同一个工作空间。你可以定义角色，指定 Agent 与模型，启动 Worker，并在 CLI 或网页中查看任务、交接和成果。
-
-## 产品范围
-
-网页提供任务、交付、项目和权限管理。服务入口为 `cmd/swa-server`，命令入口为 `cmd/swa`。项目可配置 Pi、Codex、Claude 和 OpenCode；实际使用需要安装对应 CLI、配置账号和模型，并在项目中授权。
-
-当前 Worker 由用户或外部调用者启动。模型会收到角色职责和任务上下文；自主调用子 Agent 的工具尚未开放。各 CLI 支持的版本、模型和工具权限见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。
-
-## 完整任务 CLI
-
-安装、私有服务、当前项目 Grant 和具体文件格式见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。以下变量必须来自当前项目与真实回执：
+在源码目录使用 Node **24.16.0**、pnpm **11.27.0**、Go **1.27.2**。Windows 用 PowerShell，Linux 用本机终端。第一次安装项目依赖需要联网；以下工作台启动和清单验证无需 Agent 账号或模型密钥。
 
 ```sh
-swa run --project "$project_id" --workdir "$project_root" \
-  --spec-file "$task_file" --input-file "$input_file" \
-  --agent "$agent" --model "$model" --request-id "$request_id" --strict --json
-swa wait --project "$project_id" --controller "$controller" \
-  --task "$root_task_id" --run "$run_id" --strict --json
-swa export --project "$project_id" --controller "$controller" \
-  --task "$root_task_id" --run "$run_id" --output-dir "$new_output_directory" --json
-```
-
-首次发送前保存稳定 UUID；未知结果保留原请求并查询，不能换 UUID 重复执行。`wait` 只观察准确的原 Run；超时或取消当前等待后，后台任务继续运行。`--strict` 将任一实际递归子任务失败计入失败。执行完成保留 `acceptance: unreviewed`，等待成功与下载不表示人工已经验收。
-
-普通 `export` 和 GUI 下载交付当前已记录的任务结果，运行中也可以取得已有成果，缺失结果明确标记。需要完整原生会话与日志核验时使用 `export --audit`；两种模式都保留权限、来源归属和凭据保护。
-
-GUI 可选择角色、保存讨论，再向 Worker 发送补充要求。发送时检查当前项目许可。
-
-项目设置可明确许可多个 CLI，并选择一个默认客户端。同一 Run 的 Worker 可分别使用获准的 Pi、Codex、Claude 或 OpenCode；旧项目仍只允许原默认客户端。浏览器按项目保存 Run 连接，刷新后继续观察，忘记连接不会停止后台任务。
-
-## 开发环境
-
-使用 Node **24.16.0**、pnpm **11.27.0**、Go **1.27.2**。依赖使用精确版本，见 `pnpm-lock.yaml`、`go.mod`、`go.sum` 和 [依赖清单](dependencies.lock.json)。脚本通过既有 `ASTROCYTE_GO` 工具链覆盖或 PATH 查找 Go；该工具链变量不选择产品数据。
-
-```sh
-node --version
-pnpm --version
-go version
 go mod download
 pnpm --filter swarm-anything --filter @swa/web --filter @swa/orca-runtime --filter @orca/process-host install --frozen-lockfile
-pnpm dev
-```
-
-默认开发页面为 `http://127.0.0.1:5173/swarm`，API 为 `http://127.0.0.1:8787`。用 `SWA_PORT`、`SWA_WEB_PORT` 修改端口。`pnpm dev --ephemeral` 使用独立数据目录；普通开发使用 `.verification/swa-dev-data`，可通过绝对路径 `SWA_DATA_DIR` 指定目录。
-
-PowerShell 配置示例：
-
-```powershell
-$env:SWA_DATA_DIR = Join-Path $env:LOCALAPPDATA 'SWA/development'
-$env:SWA_PORT = '8787'
-$env:SWA_WEB_PORT = '5173'
-pnpm dev
-```
-
-按 Ctrl+C 关闭本次 API 与 Vite；关闭浏览器不停止后台任务。启动 Worker 前，按 [CLI 使用说明](runtime/swa-orca/USAGE.md)安装运行时、配置模型并设置项目许可。
-
-## 检查与构建
-
-```sh
-pnpm generate
-pnpm check:contracts
-pnpm check:architecture
-pnpm check
-pnpm check:race
-pnpm --dir web typecheck
-pnpm --dir web lint
-pnpm test:e2e
 pnpm build
 pnpm start
 ```
 
-`pnpm build` 生成 `dist/swa`、`dist/swa-server`（Windows 带 `.exe`）及 `web/dist`。`pnpm start` 在 API 端口提供网页，默认任务入口为 `http://127.0.0.1:8787/swarm`；数据默认位于 `.verification/swa-local-data`，可用 `SWA_DATA_DIR` 修改，静态目录可用 `SWA_WEB_DIR` 指定。
+打开 [http://127.0.0.1:8787/swarm](http://127.0.0.1:8787/swarm)，用「项目与权限」登记一个本机目录，再回到工作台选择它。没有配置原生执行服务时，仍可打开界面、管理项目和授权；此时任务启动不可用。按 Ctrl+C 关闭本次服务。
 
-`pnpm build:swa` 构建含 Node 和 Orca 原生依赖的安装包，参数见 [CLI 使用说明](runtime/swa-orca/USAGE.md)。Linux 服务要求 `/proc` 挂载在当前 PID namespace 中；容器应使用自己的 proc 挂载。
+- `pnpm build` 生成 `dist/swa-server`、`dist/swa`、`dist/swarm` 和 `web/dist`；Windows 的三个二进制都带 `.exe`。
+- `pnpm start` 默认使用 `.verification/swa-local-data`。用 `SWA_DATA_DIR` 指定独立的绝对数据路径，用 `SWA_PORT` 修改端口。Windows 与 WSL 各自登记目录、保留独立数据。
+- 核对本机客户端清单：Linux 运行 `./dist/swarm agents list --json`；Windows 运行 `./dist/swarm.exe agents list --json`。不带 `--probe` 时只做发现，不启动供应商 CLI。桌面程序的构建和用法见[桌面端说明](desktop/README.md)。
 
-`pnpm check` 检查项目权限、Run/Worker、HTTP、角色与 SQLite 行为；`pnpm check:race` 运行 Go 竞争检测。原生运行时与模型检查使用 CLI 文档中的独立入口。
-
-旧工作台与资料提取脚本见[历史脚本与当前入口](scripts/LEGACY.md)。
-
-浏览器验收使用独立 SWA 服务、SQLite 与端口，默认配置为 `web/e2e/swa-workspace.config.ts`。无截图；失败 trace 与报告保留在 `web/test-results`、`web/playwright-report`。安装浏览器时保留其他项目版本：
+## 不用真实账号验收
 
 ```sh
-PLAYWRIGHT_SKIP_BROWSER_GC=1 pnpm --dir web exec playwright install chromium
+pnpm build
+pnpm test:product
 ```
 
-PowerShell 使用 `$env:PLAYWRIGHT_SKIP_BROWSER_GC = '1'` 后执行相同安装命令。已有 Chromium 可通过绝对路径 `ASTROCYTE_TEST_BROWSER_EXECUTABLE` 显式选择。
+该检查启动刚构建的服务和工作台，验证 HTTP、项目和权限、本机 Agent 清单、无原生执行服务时的拒绝行为，以及临时数据目录中的重启持久性。不会调用模型、登录供应商或签到。Windows 和 Linux 独立运行这些用例及真实浏览器检查，见[产品验收工作流](.github/workflows/product-smoke.yml)；底层规则见[基础检查](.github/workflows/check.yml)。
 
-## 数据与权限
+真正的原生发行包使用 `pnpm build:swa`，与上面的源码预览分开。安装包、私有数据目录、Windows ACL、Linux 进程要求和启动命令见 [CLI 安装与运行说明](runtime/swa-orca/USAGE.md)。
 
-项目登记、许可、Grant、短期 token 与 Run 关联使用 SWA 私有数据根下的 `workspace/state.sqlite`；原生运行记录继续由私有 Orca 管理。不同产品的数据目录独立，不把旧数据库自动迁入新产品或授予新权限。
+## 启动正式任务
 
-浏览器通过同源人类会话访问 API，写命令携带 CSRF 与稳定请求 ID；服务每次核查当前项目、主体、目录、动作和模型。Agent token 只用于对应项目，不能修改人类许可或签发新授权。凭据不写入日志、成果或浏览器持久存储。
+1. 按 [CLI 安装与运行说明](runtime/swa-orca/USAGE.md) 配置私有原生服务，以及当前版本支持的 Agent、账号来源和模型。
+2. 在工作台登记目录，明确批准可访问的文件、动作和模型；提交任务或用原回执连接已启动的 Run。
+3. 用同一个 Run 查看任务图、Worker 和交付。CLI 对应 `swa run`、`swa wait`、`swa export`。等待中断后用原请求或 Run 查询；结果未知时不要用新请求 ID 重新启动。
 
-[OpenAPI](contracts/openapi.yaml) 与 [SWA 契约](contracts/swa-cli.schema.json) 定义公开边界。前端使用生成类型和中立 [HTTP 传输](web/src/api/transport.ts)，任务状态沿原生 Run/Task/Dispatch，不另建调度器或完成状态库。未知发送、缺失成果和未完成资源释放继续显示实际状态。
+Pi、Codex、Claude 与 OpenCode 的受控运行受版本、账号来源和权限限制。[本机适配清单](tasks/adapter-catalog-t3-workbench-20261117.md)里的其他客户端可能只支持发现、ACP 握手或浏览器诊断。模型续接、额度余额和执行完成均需各自的证据；Run 完成不等于用户已经验收交付。
+
+## 维护入口
+
+- [当前验证与缺口](STATUS.md) · [贡献方式](CONTRIBUTING.md) · [开发规格](docs/SPEC.md)
+- [HTTP 契约](contracts/openapi.yaml) · [CLI 契约](contracts/swa-cli.schema.json) · [独立插件边界](docs/PLUGIN_CONTRACTS.md)

@@ -17,6 +17,7 @@
     "check:architecture": "node scripts/check-architecture.mjs --swa",
     "check:dependencies": "node scripts/check-dependencies.mjs",
     "test:e2e": "pnpm --dir web test:e2e",
+    "test:product": "node --test tests/product/smoke.mjs",
     "test:s1": "node --test tests/s1/development-lifecycle.test.mjs",
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",

@@ -84,17 +84,3 @@ jobs:
       - run: pnpm check
       - run: pnpm check:race
         if: runner.os == 'Linux'
-      - run: pnpm build
-      - run: pnpm --dir web exec playwright install --with-deps chromium
-      - run: pnpm --dir web exec playwright test --config e2e/swa-workspace.config.ts --workers=1
-        if: runner.os == 'Windows'
-      - run: pnpm test:e2e
-        if: runner.os != 'Windows'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-${{ matrix.os }}
-          path: |
-            web/playwright-report
-            web/test-results
-          if-no-files-found: ignore

@@ -10,7 +10,7 @@ import { ApiError } from './transport';
 describe('SWA 工作台使用同一生产 Go HTTP 边界', () => {
   let server: S1Server, projectID: string;
   beforeAll(async () => {
-    server = await startS1Server({ product: 'swa' });
+    server = await startS1Server();
     const human = await humanAPI(server.apiURL);
     const space = await human.write('/project-spaces', { title: 'SWA 公开仓库接口核查' }, { status: 201 });
     const registered = await human.write('/local-projects', { root: fileURLToPath(new URL('../../../', import.meta.url)), name: 'swa-browser-boundary', space_id: space.space.id });
