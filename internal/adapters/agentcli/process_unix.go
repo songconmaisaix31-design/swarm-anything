@@ -11,6 +11,7 @@ import (
 
 func ownedCommand(ctx context.Context, path string, args []string) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = agentCLIEnvironment()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second

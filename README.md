@@ -9,6 +9,7 @@
 当前统一开发主线为 `integration/unified-candidate-20261108`，执行内核为 `cmd/swa`。本机 Agent 扫描、ACP 握手、角色资产和桌面复用同一主线。Astrocyte 与 Attention Mirror 已拆为独立插件，Morphogenesis 保持独立；本候选仅登记插件连接、固定引用与事件回执，真实传输和六步经验消费者待接入。决定、来源 SHA、证据适用范围和统一候选验收见 [本轮任务](tasks/unified-candidate-20261108.md)。
 
 本机免费额度 Agent 的连接检查、额度来源与执行验收见 [接入说明](tasks/free-agent-integrations-20261117.md)。
+要用本机客户端复验，参见[验收命令](tests/swa-free-agents/README.md)。
 
 SWA 将已有的 Agent CLI 组织到同一个工作空间。你可以定义角色，指定 Agent 与模型，启动 Worker，并在 CLI 或网页中查看任务、交接和成果。
 

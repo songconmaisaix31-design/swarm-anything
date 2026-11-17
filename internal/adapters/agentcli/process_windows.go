@@ -35,6 +35,7 @@ func ownedCommand(ctx context.Context, path string, args []string) (*exec.Cmd, e
 		cmd = exec.CommandContext(ctx, interpreter)
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CmdLine: fmt.Sprintf(`cmd.exe /d /s /c ""%s" %s"`, path, strings.Join(args, " "))}
 	}
+	cmd.Env = agentCLIEnvironment()
 	cmd.WaitDelay = time.Second
 	return cmd, nil
 }

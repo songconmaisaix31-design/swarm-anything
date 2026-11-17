@@ -28,6 +28,63 @@ func executeAgents(args []string, stdout io.Writer) error {
 	asJSON := flags.Bool("json", false, "输出 JSON")
 	encode := json.NewEncoder(stdout).Encode
 	switch args[0] {
+	case "verify":
+		scratch := flags.String("scratch", "", "Git 仓库外现有测试父目录的绝对路径")
+		reload := flags.Bool("reload", false, "用新进程加载本次创建的空白会话")
+		if len(args) < 2 {
+			return fmt.Errorf("agents verify 需要 Agent ID")
+		}
+		if err := flags.Parse(args[2:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 {
+			return fmt.Errorf("agents verify 不接收多余参数")
+		}
+		id := args[1]
+		if id == "tabbit" || id == "workbuddy" {
+			if *scratch != "" || *reload {
+				return fmt.Errorf("此检查不接收 --scratch 或 --reload")
+			}
+		} else if *scratch == "" {
+			return fmt.Errorf("ACP 会话检查需要 --scratch DIR")
+		}
+		entries, err := agentcli.LoadRegistry()
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.ID != id {
+				continue
+			}
+			var result any
+			var summary string
+			switch id {
+			case "tabbit":
+				check, err := agentcli.VerifyTabbit(ctx, entry)
+				if err != nil {
+					return agentVerificationError(err)
+				}
+				result, summary = check, "已核验 Tabbit 公共测试页和原浏览器请求回执。"
+			case "workbuddy":
+				check, err := agentcli.CheckWorkBuddy(ctx, os.Getenv("SWA_WORKBUDDY_ACCESS_TOKEN"))
+				if err != nil {
+					return agentVerificationError(err)
+				}
+				result, summary = check, "WorkBuddy 桌面状态："+check.State
+			default:
+				check, err := agentcli.VerifyACPSession(ctx, entry, *scratch, *reload)
+				if err != nil {
+					return agentVerificationError(err)
+				}
+				result, summary = check, fmt.Sprintf("%s：空白会话 %s；重新加载 %s。", id, check.SessionNew.State, check.SessionLoad.State)
+			}
+			if *asJSON {
+				return encode(result)
+			}
+			_, err = fmt.Fprintln(stdout, summary)
+			return err
+		}
+		return fmt.Errorf("未登记 Agent %q", id)
 	case "list":
 		probe := flags.Bool("probe", false, "运行已登记 CLI 的版本和帮助探测")
 		if err := flags.Parse(args[1:]); err != nil {
@@ -172,4 +229,8 @@ func executeAgents(args []string, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("未知 agents 命令，请运行 swarm --help")
 	}
+}
+
+func agentVerificationError(err error) error {
+	return &apierrors.ServiceError{Code: apierrors.ProviderUnavailable, Message: err.Error(), RequiredAction: "检查官方客户端、测试环境及所选授权"}
 }
