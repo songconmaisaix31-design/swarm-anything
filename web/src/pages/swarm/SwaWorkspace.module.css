@@ -13,4 +13,8 @@
 .confirm { padding: 12px; border: 1px solid #bc7660; border-radius: 8px; overflow-wrap: anywhere; }
 .identity { overflow-wrap: anywhere; font-size: 12px; }
 .message { padding: 12px; margin-block: 10px; border-left: 3px solid var(--color-accent, #39875b); }
+.promptLibrary { padding: 12px; border: 1px solid var(--color-border-light); border-radius: 8px; }
+.promptLibrary summary { cursor: pointer; font-weight: 600; }
+.promptText { display: grid; gap: 6px; font-size: 13px; }
+.promptText textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--color-border-light); border-radius: 8px; background: var(--color-surface, white); color: inherit; font: inherit; resize: vertical; }
 @media (max-width: 760px) { .columns { grid-template-columns: 1fr; } }
