@@ -1,5 +1,7 @@
 # 当前状态
 
+2026-11-17 [本机适配清单与 T3 式工作台候选](tasks/adapter-catalog-t3-workbench-20261117.md)：扩展本机 ACP 清单，真实 Qwen 0.27.4、Gemini 0.68.0 的 ACP v1 握手通过。Web 增加项目侧栏和工作区分栏，桌面增加搜索、筛选和明确的空白会话／Tabbit 公开页验收。浏览器和新供应商正式 Run 尚未验收。
+
 2026-11-17 [免费额度 Agent 本机验收候选](tasks/free-agent-live-acceptance-20261117.md)：新增空白 ACP 会话、Tabbit 公共页与 WorkBuddy 官方只读在线检查，以及用户显式启用的固定文本模型和正式 SWA Run 验收入口。真实 Qoder 国际版、中国版 1.1.90 和 CodeBuddy 2.184.0 的无账号 ACP 检查均通过初始化，并在创建会话时拒绝未登录调用。真实 Magpie 空配置缓存读取通过，额度未知。未调用模型，供应商会话重连、Tabbit 实机、WorkBuddy OAuth 实机及新 Agent 正式 Run 尚待验证。
 
 2026-11-17 [免费额度 Agent 接入候选](tasks/free-agent-integrations-20261117.md)：沿用桌面与 `swarm` 的本机扫描、ACP 握手和进程回收，加入 Qoder、TRAE CN、CodeBuddy Code 与 Tabbit 浏览器诊断，WorkBuddy 桌面单列。可显式读取 Magpie 本机缓存，不把缓存视为运行预算。Linux 已用官方 Qoder 1.1.90 与 CodeBuddy Code 2.184.0 核实 ACP v1 握手；模型、原会话续接、TRAE 真机、Tabbit Browser 及真实账号额度待验。新条目未启用 `swa run`，签到由官方客户端或已配置的外部工具处理。

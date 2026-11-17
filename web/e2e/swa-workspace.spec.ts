@@ -37,9 +37,10 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
       await expect(page.getByRole('heading', { name: '此页面不属于 SWA', exact: true })).toBeVisible();
     }
     await page.goto(`${server.webURL}/swarm`);
-    // SectionCard 使用语义 section；通过标题定位所属容器，不修改生产可访问性来迁就测试。
-    const workspace = page.locator('section').filter({ has: page.getByRole('heading', { name: 'SWA 执行工作台', exact: true }) }).first();
-    await workspace.getByLabel('SWA 项目').selectOption(project.id);
+    const workspace = page.getByRole('region', { name: 'SWA 执行工作台', exact: true });
+    const projectLink = workspace.getByRole('navigation', { name: '已登记项目' }).getByRole('link', { name: project.name, exact: true });
+    await projectLink.click();
+    await expect(projectLink).toHaveAttribute('aria-current', 'page');
     await expect(workspace.getByRole('alert').first()).toContainText('provider_unavailable');
     await expect(workspace.getByRole('button', { name: '连接已有任务', exact: true })).toBeDisabled();
     await expect(workspace.getByRole('button', { name: '提交完整任务', exact: true })).toBeDisabled();
@@ -61,6 +62,16 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     expect(server.query('SELECT COUNT(*) AS count FROM orca_execution_links')[0].count).toBe(0);
     await workspace.getByLabel('CLI 回执中的 Controller').fill('not-started-controller-input');
     await workspace.getByLabel('同一任务的根 Task ID').fill('not-started-task-input');
+    const taskTab = workspace.getByRole('tab', { name: '任务与运行', exact: true });
+    const rolesTab = workspace.getByRole('tab', { name: '角色与讨论', exact: true });
+    await taskTab.focus();
+    await taskTab.press('ArrowRight');
+    await expect(rolesTab).toBeFocused();
+    await expect(rolesTab).toHaveAttribute('aria-selected', 'true');
+    await taskTab.click();
+    await expect(workspace.getByLabel('CLI 回执中的 Controller')).toHaveValue('not-started-controller-input');
+    await expect(workspace.getByLabel('同一任务的根 Task ID')).toHaveValue('not-started-task-input');
+    expect(commands.filter(command => command.action === 'status')).toHaveLength(1);
     const updated = await human.write(`/local-projects/${project.id}/settings`, { expected_revision: project.settings.revision, settings: { ...project.settings, allowed_actions: ['observe'] } }, { method: 'PUT' }) as S['LocalProjectResultV1'];
     const refreshed = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/local-projects/${project.id}/orca/commands`) && response.request().postDataJSON().action === 'status');
     await workspace.getByRole('button', { name: '刷新项目权限快照', exact: true }).click();
@@ -73,6 +84,7 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     await expect(workspace.getByRole('button', { name: '重新连接完整任务', exact: true })).toBeDisabled();
     expect(commands.filter(command => command.action === 'status')).toHaveLength(2);
     expect(commands.every(command => ['status', 'role.list', 'conversation.list'].includes(command.action) && command.project === `/api/v1/local-projects/${project.id}/orca/commands`)).toBe(true);
+    await rolesTab.click();
     await workspace.getByText('可复用角色与讨论', { exact: true }).click();
     await expect(workspace.getByRole('button', { name: '新建角色', exact: true })).toBeDisabled();
     await expect(workspace.getByRole('button', { name: '创建讨论', exact: true })).toBeDisabled();
@@ -86,11 +98,15 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     const reloadedStatus = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/local-projects/${project.id}/orca/commands`) && response.request().postDataJSON().action === 'status');
     await page.reload();
     await reloadedStatus;
-    await expect(workspace.getByLabel('SWA 项目')).toHaveValue(project.id);
+    await expect(projectLink).toHaveAttribute('aria-current', 'page');
     expect(new URL(page.url()).searchParams.get('project')).toBe(project.id);
     await workspace.getByText('可复用提示词', { exact: true }).click();
     await workspace.getByLabel('已保存的提示词', { exact: true }).selectOption({ label: '复核交付' });
     await expect(workspace.getByLabel('提示词正文', { exact: true })).toHaveValue('先核对验收条件。\n再给出证据。');
+    await page.setViewportSize({ width: 640, height: 720 });
+    await expect(workspace.getByLabel('SWA 项目')).toBeVisible();
+    await expect(workspace.getByLabel('SWA 项目')).toHaveValue(project.id);
+    await expect(projectLink).toBeHidden();
     expect(commands.filter(command => command.action === 'status')).toHaveLength(4);
     expect(commands.every(command => ['status', 'role.list', 'conversation.list'].includes(command.action))).toBe(true);
     expect(apiPaths.some(path => /^\/api\/v1\/(materials|opportunities|cognition|works|missions|proposals)(\/|$)/.test(path))).toBe(false);

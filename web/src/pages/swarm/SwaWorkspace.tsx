@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { components } from '../../api/schema';
 import { workspaceApi as localProjectsApi } from '../../api/workspace';
 import { swaApi, SwaCommandError, SwaCommandNotSubmittedError, SwaRuntimeUnavailableError, type SwaCommand, type SwaEnvelope } from '../../api/swa';
 import { useReadApi, formatError } from '../../hooks/useReadState';
 import { QueryState } from '../../components/QueryState';
-import { SectionCard } from '../../components/SectionCard';
 import { navigate, useRoute } from '../../router';
 import { readSwaFleet, readSwaAgents, readSwaTranscript, readPendingSwaRequest, recoverSwaRequest, observationJSON, swaDelegationBlock, swaDevelopmentBlock, swaStartRequestBlock, canRequestSwaStart, type PendingSwaRequest } from './swaObservation';
 import { SwaAgentCapabilities, SwaDelegationModeField, SwaDevelopmentModeField, SwaQuestionModeField, SwaRunWorkspace } from './SwaRunWorkspace';
@@ -20,18 +19,50 @@ type Project = components['schemas']['LocalProjectV1'];
 export function SwaWorkspace() {
   const projects = useReadApi(signal => localProjectsApi.listProjects({ signal }));
   const route = useRoute(), projectID = route.query.get('project') ?? '';
-  function selectProject(id: string) { const query = new URLSearchParams(route.query); if (id) query.set('project', id); else query.delete('project'); navigate(`${route.path}${query.size ? `?${query}` : ''}`, true); }
+  function projectURL(id: string) { const query = new URLSearchParams(route.query); if (id) query.set('project', id); else query.delete('project'); return `${route.path}${query.size ? `?${query}` : ''}`; }
+  const projectsFresh = !projects.loading && !projects.stale;
   const project = projects.data?.items.find(item => item.id === projectID);
-  return <SectionCard title="SWA 执行工作台" padded>
-    <div className={styles.workspace}>
-      <p className={styles.note}>管理项目任务，也可连接 CLI 创建的任务。关闭页面后，后台任务继续运行。</p>
-      <button className="ac-button secondary compact" type="button" disabled={projects.loading} onClick={projects.retry}>刷新项目权限快照</button>
-      <QueryState state={projects} empty={data => !data.items.length} emptyTitle="尚无已登记项目，请先在共同工作区登记并审阅权限">{data => <label className={styles.form}>选择已登记项目<select aria-label="SWA 项目" value={projectID} disabled={projects.loading || projects.stale} onChange={event => selectProject(event.target.value)}><option value="">请选择项目</option>{projectID && !project && <option value={projectID} disabled>原项目当前不可用</option>}{data.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</QueryState>
-      <a href="/workspace?tab=overview">管理项目与批准范围</a>
-      {project && <ProjectRuntime key={project.id} project={project} disabled={projects.loading || projects.stale} />}
+  return <section className={styles.workbench} aria-labelledby="swa-workbench-title">
+    <aside className={styles.projectRail} aria-label="项目侧栏">
+      <div className={styles.railHeading}><h2>本机项目</h2><a href="/workspace?tab=overview">管理项目</a></div>
+      <QueryState state={projects} empty={data => !data.items.length} emptyTitle="尚无已登记项目">{data => <>
+        <nav className={styles.desktopProjects} aria-label="已登记项目">
+          <ul>{data.items.map(item => <li key={item.id}><a
+            className={styles.projectLink}
+            href={projectsFresh ? projectURL(item.id) : undefined}
+            aria-current={item.id === projectID ? 'page' : undefined}
+            aria-disabled={!projectsFresh || undefined}
+            onClick={event => {
+              if (!projectsFresh) { event.preventDefault(); return; }
+              if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) {
+                event.preventDefault();
+                if (item.id !== projectID) navigate(projectURL(item.id), true);
+              }
+            }}
+          ><span aria-hidden="true">{item.name.trim().slice(0, 1).toUpperCase() || '·'}</span><strong>{item.name}</strong></a></li>)}</ul>
+        </nav>
+        <label className={styles.mobileProjects}>选择已登记项目<select aria-label="SWA 项目" value={projectID} disabled={!projectsFresh} onChange={event => navigate(projectURL(event.target.value), true)}><option value="">请选择项目</option>{projectID && !project && <option value={projectID} disabled>原项目当前不可用</option>}{data.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      </>}</QueryState>
+    </aside>
+    <div className={styles.workbenchMain}>
+      <header className={styles.workbenchHeader}>
+        <div><p className={styles.contextLabel}>工作区 / {project?.name ?? '本机项目'}</p><h1 id="swa-workbench-title">SWA 执行工作台</h1></div>
+        <div className={styles.headerActions}><a href="/workspace?tab=overview">管理项目与批准范围</a><button className="ac-button secondary compact" type="button" disabled={projects.loading} onClick={projects.retry}>刷新项目权限快照</button></div>
+      </header>
+      <div className={styles.workbenchBody}>
+        {project ? <ProjectRuntime key={project.id} project={project} disabled={!projectsFresh} />
+          : projectsFresh && projects.data && <div className={styles.workbenchEmpty}><h2>{projectID ? '原项目当前不可用' : '选择一个项目开始'}</h2><p>{projectID ? '请在侧栏选择当前可见的项目，或前往项目与权限检查登记信息。' : '选择已登记的本机项目，即可新建任务或连接 CLI 已创建的任务。'}</p></div>}
+      </div>
     </div>
-  </SectionCard>;
+  </section>;
 }
+
+const projectPanels = [
+  ['run', '任务与运行'],
+  ['roles', '角色与讨论'],
+  ['agents', 'Agent 状态'],
+] as const;
+type ProjectPanel = typeof projectPanels[number][0];
 
 function ProjectRuntime({ project, disabled }: { project: Project; disabled: boolean }) {
   const snapshotKey = `${project.id}:${project.settings.revision}`;
@@ -42,15 +73,34 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
   const [controller, setController] = useState(attached?.controller ?? ''), [taskID, setTaskID] = useState(attached?.taskID ?? '');
   const [workdir, setWorkdir] = useState(project.root);
   const [selectedRole, setSelectedRole] = useState<SelectedSwaRole | null>(null), [conversationID, setConversationID] = useState('');
+  const [panel, setPanel] = useState<ProjectPanel>('run');
+  function handlePanelKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const count = projectPanels.length;
+    const next = event.key === 'ArrowRight' ? (index + 1) % count : event.key === 'ArrowLeft' ? (index + count - 1) % count : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    const nextID = projectPanels[next][0];
+    setPanel(nextID);
+    document.getElementById(`swa-panel-tab-${nextID}`)?.focus();
+  }
   const open = useSwaCommand(project.id, 'controller.open');
   const submitRun = useSwaCommand(project.id, 'run.submit');
   const available = !disabled && !!status.data && !status.loading && !status.stale && !status.error && !!capabilities.data && !capabilities.loading && !capabilities.stale && !capabilities.error;
   const canStart = available && project.settings.allow_agent_control && project.settings.allowed_actions?.includes('start');
   return <div className={styles.workspace}>
-    <p className={styles.identity}>项目 · {project.name} · {project.id} · 权限版本 {project.settings.revision}</p>
+    <div className={styles.projectSummary}><code className={styles.identity}>{project.root}</code><span>权限版本 {project.settings.revision}</span></div>
     <QueryState state={status}>{reply => <details><summary>执行服务状态</summary><pre className={styles.output}>{observationJSON(reply)}</pre></details>}</QueryState>
+    <div className={styles.panelTabs} role="tablist" aria-label="项目工作区">
+      {projectPanels.map(([id, label], index) => <button key={id} id={`swa-panel-tab-${id}`} role="tab" type="button" aria-selected={panel === id} aria-controls={`swa-panel-${id}`} tabIndex={panel === id ? 0 : -1} onKeyDown={event => handlePanelKey(event, index)} onClick={() => setPanel(id)}>{label}</button>)}
+    </div>
+    <section role="tabpanel" id="swa-panel-agents" aria-labelledby="swa-panel-tab-agents" hidden={panel !== 'agents'} className={styles.panel} tabIndex={0}>
     {!!status.data && <QueryState state={capabilities}>{reply => <><SwaAgentCapabilities reply={reply} /><details><summary>能力详情</summary><pre className={styles.output}>{observationJSON(reply.result)}</pre></details></>}</QueryState>}
+    {!status.data && <p className={styles.note}>等待执行服务状态；服务未连接时无法核实项目的 Agent 能力。</p>}
+    </section>
+    <section role="tabpanel" id="swa-panel-roles" aria-labelledby="swa-panel-tab-roles" hidden={panel !== 'roles'} className={styles.panel} tabIndex={0}>
     <SwaRoles key={project.id} project={project} disabled={disabled} capabilities={capabilities.data} capabilitiesFresh={available} onRoleSelected={setSelectedRole} onConversationSelected={setConversationID} />
+    </section>
+    <section role="tabpanel" id="swa-panel-run" aria-labelledby="swa-panel-tab-run" hidden={panel !== 'run'} className={styles.panel} tabIndex={0}>
     {(selectedRole || conversationID) && <div className={styles.form}>{selectedRole && <button type="button" className="ac-button secondary compact" onClick={() => setSelectedRole(null)}>清除本次角色选择</button>}{conversationID && <button type="button" className="ac-button secondary compact" onClick={() => setConversationID('')}>清除本次讨论关联</button>}</div>}
     <SwaRunWorkspace project={project} capabilities={capabilities.data} disabled={disabled || !status.data || status.loading || status.stale || !!status.error} startDisabled={!available} command={submitRun} useAnswerCommand={useSwaCommand} renderWorker={(selection, dispatchID, onChanged) => <WorkerWorkspace key={`${project.settings.revision}:${dispatchID}`} project={project} controller={selection.controller} runID={selection.runID} dispatchID={dispatchID} onChanged={onChanged} />} role={selectedRole} conversationID={conversationID} onAttached={selection => { setAttachedRun(selection); setController(selection.controller); setTaskID(selection.taskID); setAttached(selection); }} onForgotten={() => { setAttachedRun(null); setAttached(null); setController(''); setTaskID(''); }} />
     <details><summary>新建 Controller 与固定任务</summary><p className={styles.note}>请填写服务机器上的路径。任务规格中的 max_workers 限制 Worker 总名额，释放 Worker 不归还名额。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); void open.run({ action: 'controller.open', project_id: project.id, workdir: workdir.trim() }, reply => { if (!reply.controller) throw new Error('回执缺少 Controller，请查询原请求'); setController(reply.controller); }); }}><label>已批准的服务端工作目录<input required value={workdir} onChange={event => setWorkdir(event.target.value)} /></label><button className="ac-button secondary compact" type="submit" disabled={!canStart || open.pending || open.blocked}>创建 Controller</button></form><OperationState command={open} onRecovered={reply => { if (reply.controller) setController(reply.controller); }} />
@@ -62,6 +112,7 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
       <button className="ac-button compact" disabled={disabled || !status.data || status.loading || status.stale || !controller.trim() || !taskID.trim()} type="submit">连接已有任务</button>
     </form>
     {attached && !disabled && capabilities.data && <TaskWorkspace key={`${attached.controller}:${attached.taskID}`} project={project} capabilities={capabilities.data} startDisabled={!available} runGraphID={attachedRun?.controller === attached.controller ? attachedRun.runID : null} {...attached} />}
+    </section>
   </div>;
 }
 

@@ -1,10 +1,11 @@
-.swa-shell { width: 100%; min-width: 0; }
-.swa-header { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; padding: 20px max(20px, calc((100vw - 1320px) / 2)); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
-.swa-header nav { display: flex; flex-wrap: wrap; gap: 10px; }
-.swa-brand { display: flex; align-items: baseline; gap: 10px; border: 0; padding: 0; background: none; color: var(--color-text); font: 700 24px var(--font-sans); cursor: pointer; }
+.swa-shell { --swa-header-height: 56px; width: 100%; min-width: 0; }
+.swa-header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 20px; min-height: var(--swa-header-height); padding: 8px 24px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.swa-header nav { display: flex; gap: 6px; }
+.swa-brand { display: flex; align-items: baseline; gap: 10px; border: 0; padding: 0; background: none; color: var(--color-text); font: 700 22px var(--font-sans); cursor: pointer; }
 .swa-brand span, .swa-local { color: var(--color-text-secondary); font-size: 12px; font-weight: 400; }
 .swa-local { margin-left: auto; }
 .swa-main { max-width: 1360px; margin: 0 auto; padding: 28px 20px; }
+.swa-main.swa-main-workbench { max-width: none; padding: 0; }
 .swa-main details > summary { cursor: pointer; padding-block: 10px; font-weight: 600; }
 .swa-main section { min-width: 0; }
 .swa-main a { color: var(--color-accent-hover); }
@@ -15,4 +16,4 @@
 .ac-button.compact { padding: 8px 12px; font-size: 13px; }
 .ac-button[aria-current=page], .ac-button[aria-pressed=true] { background: var(--color-accent-subtle); color: var(--color-accent-hover); border-color: var(--color-accent); }
 .ac-button:disabled, button:disabled { cursor: not-allowed; opacity: .55; }
-@media (max-width: 640px) { .swa-header { gap: 12px; padding: 16px; } .swa-local { display: none; } .swa-main { padding: 16px 10px; } }
+@media (max-width: 640px) { .swa-header { gap: 12px; padding: 8px 12px; flex-wrap: wrap; } .swa-local, .swa-brand span { display: none; } .swa-main { padding: 16px 10px; } }
