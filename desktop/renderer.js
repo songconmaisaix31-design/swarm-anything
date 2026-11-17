@@ -12,7 +12,7 @@ let connection = '';
 const observation = (status) => ({ available: '已确认', unavailable: '不可用', unknown: '待验证' }[status] || '待验证');
 
 function discovered(agent) {
-  return agent.installed?.status === 'available';
+  return agent?.installed?.status === 'available';
 }
 
 function discoveryStatus(agent) {
@@ -28,15 +28,17 @@ function showNotice(message, error = false) {
 }
 
 function renderDetails() {
+  const tabbit = selected?.id === 'tabbit' && selected?.adapter === 'browser-cli';
   elements['agent-name'].textContent = selected?.display_name || '选择 Agent';
   elements.installed.textContent = selected ? discoveryStatus(selected) : '—';
   elements.version.textContent = selected?.version || '—';
   elements.configured.textContent = selected ? observation(selected.configured?.status) : '—';
   elements.startable.textContent = selected ? observation(selected.startable?.status) : '—';
-  elements.adapter.textContent = selected?.adapter || '—';
+  elements.adapter.textContent = tabbit ? 'Tabbit 浏览器工具' : selected?.adapter || '—';
   elements['project-path'].textContent = project || '尚未选择目录';
   elements.connection.textContent = connection;
-  elements.connect.disabled = busy || !project || !selected?.adapter || !discovered(selected);
+  elements.connect.textContent = tabbit ? '诊断浏览器工具' : '验证 ACP 连接';
+  elements.connect.disabled = busy || !discovered(selected) || (!tabbit && (!project || selected?.adapter !== 'acp'));
   elements.refresh.disabled = busy;
   elements.probe.disabled = busy;
   elements['choose-project'].disabled = busy;
@@ -116,6 +118,19 @@ elements['choose-project'].addEventListener('click', () => operation(async () =>
   connection = '';
 }));
 elements.connect.addEventListener('click', () => operation(async () => {
+  if (selected.id === 'tabbit' && selected.adapter === 'browser-cli') {
+    connection = '正在运行 Tabbit CLI 诊断…';
+    renderDetails();
+    try {
+      const result = unwrap(await window.swarm.diagnoseTabbit());
+      if (result.agent_id !== 'tabbit' || result.state !== 'diagnose_exit_ok') throw new Error('Tabbit CLI 诊断结果格式无效。');
+      connection = 'Tabbit CLI 诊断成功退出。尚未验证网页任务。';
+    } catch (error) {
+      connection = '';
+      throw error;
+    }
+    return;
+  }
   connection = '正在进行 ACP 握手…';
   renderDetails();
   try {

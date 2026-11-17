@@ -65,7 +65,7 @@ func Connect(ctx context.Context, entry Entry, project string) (Handshake, error
 	if !info.IsDir() {
 		return Handshake{}, errors.New("项目路径必须为目录")
 	}
-	path, err := Resolve(entry.Command)
+	path, err := ResolveEntry(entry)
 	if err != nil {
 		return Handshake{}, fmt.Errorf("无法定位已安装的 Agent %s: %w", entry.ID, err)
 	}

@@ -4,8 +4,6 @@ package agentcli
 import (
 	"context"
 	"errors"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sync"
@@ -52,12 +50,20 @@ func (i *Inventory) discover() []domain.LocalAgent {
 		if filepath.IsAbs(def.Command) {
 			item.Installed.Reason = "registered_cli_not_found"
 		}
-		if _, err := i.lookup(def.Command); err == nil {
+		if def.defaultPaths != nil {
+			item.Installed.Reason = "cli_not_found_in_path_or_known_locations"
+		}
+		if _, err := resolveEntry(def, i.lookup); err == nil {
 			item.Installed.Status, item.Installed.Reason = "available", "cli_entry_found_on_path"
 			if filepath.IsAbs(def.Command) {
 				item.Installed.Reason = "registered_cli_entry_found"
 			}
-		} else if !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, os.ErrNotExist) {
+			if def.defaultPaths != nil {
+				item.Installed.Reason = "cli_entry_found_in_path_or_known_location"
+			}
+		} else if errors.Is(err, errUnverifiedCLI) {
+			item.Installed.Status, item.Installed.Reason = "unknown", "official_cli_unverified"
+		} else if !cliNotFound(err) {
 			item.Installed.Status, item.Installed.Reason = "unknown", "cli_lookup_failed"
 		}
 		items = append(items, item)
@@ -73,7 +79,7 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 	defer i.refresh.Unlock()
 	items := i.discover()
 	for n := range items {
-		if items[n].Installed.Status == "available" {
+		if items[n].Installed.Status == "available" && !i.entries[n].skipVersionProbe {
 			items[n].Installed.Reason = "cli_entry_found_probe_not_run"
 		}
 	}
@@ -82,7 +88,10 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 		if ctx.Err() != nil {
 			break
 		}
-		path, err := i.lookup(def.Command)
+		if def.skipVersionProbe {
+			continue
+		}
+		path, err := resolveEntry(def, i.lookup)
 		if err != nil {
 			continue
 		}
@@ -110,7 +119,7 @@ func (i *Inventory) RefreshCLI(ctx context.Context) error {
 		if items[n].Version == nil {
 			continue
 		}
-		path, err := i.lookup(def.Command)
+		path, err := resolveEntry(def, i.lookup)
 		if err != nil {
 			continue
 		}
