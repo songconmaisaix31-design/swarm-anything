@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { components } from '../../api/schema';
 import { swaApi, type SwaCommand, type SwaEnvelope } from '../../api/swa';
 import { useReadApi, formatError } from '../../hooks/useReadState';
@@ -7,6 +7,8 @@ import { canRequestSwaStart, readSwaAgents, readSwaCapabilityDetails, observatio
 import { readSwaRun, submittedRun, type SwaQuestionReadState, type SwaRunSelection } from './swaRunView';
 import { modelCLIAllowed } from '../workspace/modelCLIPermission';
 import { readRunConnection, saveRunConnection } from './swaRunConnection';
+import { SwaNativeRunGraph } from './SwaNativeRunGraph';
+import { SwaPromptLibrary } from './SwaPromptLibrary';
 import styles from './SwaWorkspace.module.css';
 
 type Project = components['schemas']['LocalProjectV1'];
@@ -18,6 +20,7 @@ interface CommandState {
   inspect: (onRecovered?: (reply: SwaEnvelope) => void) => Promise<void>;
 }
 type UseAnswerCommand = (projectID: string, scope: string) => CommandState;
+type RenderWorker = (selection: SwaRunSelection, dispatchID: string, onChanged: () => void) => ReactNode;
 
 const statusLabel: Record<string, string> = { active: '执行中', waiting_input: '等待回答或继续原问题', blocked: '等待依赖或结算', completed: '执行已完成', failed: '任务失败', unknown: '效果尚未确认' };
 
@@ -29,7 +32,7 @@ export function SwaAgentCapabilities({ reply }: { reply: SwaEnvelope }) {
   return <section className={styles.workspace} aria-label="Agent 能力状态"><h3>Agent 状态与能力</h3><ul className={styles.workers}>{agents.map(agent => <li key={agent.id} className={styles.message}><strong>{agent.id}</strong><p>实际 CLI 版本 · {agent.version ?? '尚未取得'}</p>{agent.executable && <p className={styles.identity}>执行文件 · {agent.executable}</p>}{agent.model && <p>配置模型 · {agent.model}</p>}<dl>{agent.stages.map(stage => <div key={stage.label}><dt>{stage.label}</dt><dd>{stage.observation ? stage.observation.status === 'unknown' ? '未知' : stage.observation.status === 'unavailable' ? '不可用' : bases[stage.observation.basis ?? ''] ?? '可用' : '未知'}{stage.observation?.status !== 'available' && stage.observation && <small> · {stage.observation.reason}</small>}</dd></div>)}</dl>{versions[agent.id] && agent.stages.some(stage => ['安装', '配置'].includes(stage.label) && stage.observation?.status !== 'available') && <p className={styles.note}>当前接入要求 {agent.id} {versions[agent.id]}。请在执行服务所在机器安装此版本并加入服务的 PATH，配置此 CLI 的独立 API 密钥来源和模型后刷新项目能力。</p>}{agent.catalog && <details><summary>模型目录 · {agent.catalog.verified ? '已获取' : '尚未验证'} · {agent.catalog.origin === 'configured' ? 'CLI 配置' : agent.catalog.origin === 'probe' ? '实际探测' : agent.catalog.origin === 'live-session' ? '实际会话' : '来源未知'}</summary><ul>{agent.catalog.models.map(model => <li key={`${model.provider}:${model.id}`}>{model.label} · {model.id}{model.provider && ` · ${model.provider}`}</li>)}</ul></details>}</li>)}</ul></section>;
 }
 
-export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled, command, useAnswerCommand, onAttached, onForgotten, role = null, conversationID = '' }: { project: Project; capabilities: SwaEnvelope | null; disabled: boolean; startDisabled: boolean; command: CommandState; useAnswerCommand: UseAnswerCommand; onAttached: (selection: SwaRunSelection) => void; onForgotten: () => void; role?: SwaRunRoleSelection | null; conversationID?: string }) {
+export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled, command, useAnswerCommand, renderWorker, onAttached, onForgotten, role = null, conversationID = '' }: { project: Project; capabilities: SwaEnvelope | null; disabled: boolean; startDisabled: boolean; command: CommandState; useAnswerCommand: UseAnswerCommand; renderWorker: RenderWorker; onAttached: (selection: SwaRunSelection) => void; onForgotten: () => void; role?: SwaRunRoleSelection | null; conversationID?: string }) {
   const [workdir, setWorkdir] = useState(project.root), [specFile, setSpecFile] = useState(''), [inputFile, setInputFile] = useState(''), [name, setName] = useState('lead');
   const [agentChoice, setAgentChoice] = useState({ roleKey: '', value: project.settings.external_model_cli }), [modelChoice, setModelChoice] = useState({ key: '', value: '' });
   const [questionChoice, setQuestionChoice] = useState<{ roleKey: string; value: 'disabled' | 'native' }>({ roleKey: '', value: 'disabled' });
@@ -60,6 +63,7 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
   return <section className={styles.workspace} aria-label="完整任务">
     <h3>提交目标，跟踪到交付</h3>
     <p className={styles.note}>使用服务端的任务规格和输入文件提交目标，在此跟踪进度、子任务和成果。</p>
+    <SwaPromptLibrary key={project.id} projectID={project.id} onDownload={download} />
     {role && <p className={styles.identity}>复用角色 · {role.id} · 版本 {role.revision}</p>}{conversationID && <p className={styles.identity}>关联讨论会话 · {conversationID}</p>}
     <form className={styles.form} onSubmit={event => { event.preventDefault(); if (!canSubmit || !agent) return; void command.run({ action: 'run.submit', project_id: project.id, workdir: workdir.trim(), spec_file: specFile.trim(), input_file: inputFile.trim(), agent: agent.id, model: model.trim(), question_mode: questionMode, delegation_mode: delegationMode, development_mode: developmentMode, name: name.trim(), ...(role ? { role_id: role.id, revision: role.revision } : {}), ...(conversationID ? { conversation_id: conversationID } : {}) }, reply => attach(submittedRun(reply))); }}>
       <label>任务工作目录<input required value={workdir} onChange={event => setWorkdir(event.target.value)} /></label>
@@ -84,13 +88,14 @@ export function SwaRunWorkspace({ project, capabilities, disabled, startDisabled
     </form>
     {connection.warning && <p role="status">{connection.warning}</p>}
     {selected && <button type="button" className="ac-button secondary compact" onClick={() => { setConnection({ selection: null, warning: saveRunConnection(project.id, null) }); setController(''); setTaskID(''); setRunID(''); onForgotten(); }}>忘记此项目的运行连接（任务继续运行）</button>}
-    {selected && <RunProgress key={`${selected.controller}:${selected.runID}:${selected.taskID}`} project={project} selected={selected} disabled={disabled} useAnswerCommand={useAnswerCommand} />}
+    {selected && <RunProgress key={`${project.id}:${selected.controller}:${selected.runID}:${selected.taskID}`} project={project} selected={selected} disabled={disabled} useAnswerCommand={useAnswerCommand} renderWorker={renderWorker} />}
   </section>;
 }
 
-function RunProgress({ project, selected, disabled, useAnswerCommand }: { project: Project; selected: SwaRunSelection; disabled: boolean; useAnswerCommand: UseAnswerCommand }) {
+function RunProgress({ project, selected, disabled, useAnswerCommand, renderWorker }: { project: Project; selected: SwaRunSelection; disabled: boolean; useAnswerCommand: UseAnswerCommand; renderWorker: RenderWorker }) {
   const [following, setFollowing] = useState(true), [exporting, setExporting] = useState(false), [exportError, setExportError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [selectedDispatch, setSelectedDispatch] = useState('');
   const [questionAction, setQuestionAction] = useState<'question.answer' | 'question.resume'>('question.answer');
   const answer = useAnswerCommand(project.id, `question.answer:${selected.controller}:${selected.runID}:${selected.taskID}`);
   const active = useRef(false), exportAbort = useRef<AbortController | null>(null);
@@ -123,6 +128,8 @@ function RunProgress({ project, selected, disabled, useAnswerCommand }: { projec
       {data.questions.length > 0 && <section aria-label="需要回答"><h4>需要用户回答</h4>{data.questions.map(question => <SwaQuestionAnswerForm key={question.id} question={question} text={answers[question.id] ?? ''} disabled={disabled || view.stale || view.loading || answer.pending || answer.blocked || !project.settings.allow_agent_control || !project.settings.allowed_actions.includes('send')} onChange={text => setAnswers(previous => ({ ...previous, [question.id]: text }))} onSubmit={() => { setQuestionAction('question.answer'); void answer.run({ action: 'question.answer', controller: selected.controller, run_id: selected.runID, task_id: selected.taskID, dispatch_id: question.dispatchID, question_id: question.id, text: answers[question.id] }, view.retry); }} />)}</section>}
       {data.answeredQuestions.length > 0 && <section aria-label="原问题与回答"><h4>已保存的回答</h4>{data.answeredQuestions.map(question => <SwaQuestionHistory key={question.id} question={question} disabled={disabled || view.stale || view.loading || answer.pending || answer.blocked || !project.settings.allow_agent_control || !project.settings.allowed_actions.includes('send')} onResume={() => { setQuestionAction('question.resume'); void answer.run({ action: 'question.resume', controller: selected.controller, run_id: selected.runID, task_id: selected.taskID, dispatch_id: question.dispatchID, question_id: question.id }, view.retry); }} />)}</section>}
       <section aria-label="交接记录"><h4>交接与返回</h4><p className={styles.note}>下方已读状态指接收 Agent 是否读取消息。</p>{data.handoffs.length ? <ul className={styles.workers}>{data.handoffs.map(handoff => <li key={handoff.id} className={styles.message}><p className={styles.identity}>{handoff.from} → {handoff.to} · {handoff.read ? '已读取' : '尚未确认读取'}</p>{handoff.text && <pre className={styles.output}>{handoff.text}</pre>}<details><summary>交接详情</summary><pre className={styles.output}>{JSON.stringify(handoff.record, null, 2)}</pre></details></li>)}</ul> : <p className={styles.note}>暂无交接消息。</p>}</section>
+      <SwaNativeRunGraph view={data} renderControls={dispatches => dispatches.map(dispatch => <button key={dispatch.id} className="ac-button secondary compact" type="button" disabled={disabled || view.stale} aria-pressed={selectedDispatch === dispatch.id} onClick={() => setSelectedDispatch(previous => previous === dispatch.id ? '' : dispatch.id)}>查看和操作 Worker {dispatch.id}</button>)} />
+      {selectedDispatch && !disabled && !view.stale && data.dispatches.some(dispatch => dispatch.id === selectedDispatch) && renderWorker(selected, selectedDispatch, view.retry)}
       <section aria-label="完整递归任务"><h4>全部任务与交接</h4><ul className={styles.workers}>{data.tasks.map(task => <li key={task.id} className={styles.message}><strong>{task.title || task.id}</strong><p>{task.status} · {task.parentID ? `父任务 ${task.parentID}` : '根任务'}</p><p className={styles.identity}>Task {task.id}{task.dependencies.length > 0 && ` · 等待 ${task.dependencies.join('、')}`}</p>{data.dispatches.filter(dispatch => dispatch.taskID === task.id).map(dispatch => <p className={styles.identity} key={dispatch.id}>Dispatch {dispatch.id} · 业务 {dispatch.status} · Worker {dispatch.workerState ?? '未知'} · 资源 {dispatch.releaseState ?? '未知'}{dispatch.parentDispatch && ` · 交接来源 ${dispatch.parentDispatch}`}{dispatch.sessionID && ` · 会话 ${dispatch.sessionID}`}</p>)}{task.result !== null && <details><summary>任务成果</summary><pre className={styles.output}>{task.result}</pre><button type="button" className="ac-button secondary compact" disabled={view.stale || view.loading} onClick={() => download(`swa-task-${task.id}.txt`, task.result!, 'text/plain')}>下载此任务成果文本</button></details>}</li>)}</ul></section>
       {data.failures.length > 0 && <details open><summary>失败记录</summary><ul>{data.failures.map((failure, index) => <li key={`${failure.taskID}:${index}`}>{failure.taskID} · {failure.reason}{failure.dispatchID && ` · ${failure.dispatchID}`}</li>)}</ul></details>}
       <button type="button" className="ac-button compact" disabled={disabled || view.stale || view.loading || exporting} onClick={() => { void exportRun(); }}>{exporting ? '正在导出已有结果…' : '下载已有任务结果'}</button>

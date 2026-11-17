@@ -10,7 +10,7 @@ import { readSwaFleet, readSwaAgents, readSwaTranscript, readPendingSwaRequest, 
 import { SwaAgentCapabilities, SwaDelegationModeField, SwaDevelopmentModeField, SwaQuestionModeField, SwaRunWorkspace } from './SwaRunWorkspace';
 import { SwaRoles, type SelectedSwaRole } from './SwaRolesPanel';
 import { SwaExecutionDetails } from './SwaExecutionDetails';
-import { inspectSwaRunSubmission } from './swaRunView';
+import { inspectSwaRunSubmission, type SwaRunSelection } from './swaRunView';
 import { modelCLIAllowed } from '../workspace/modelCLIPermission';
 import { readRunConnection } from './swaRunConnection';
 import styles from './SwaWorkspace.module.css';
@@ -37,7 +37,8 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
   const snapshotKey = `${project.id}:${project.settings.revision}`;
   const status = useReadApi(signal => swaApi.command(project.id, { action: 'status' }, signal), { key: snapshotKey, enabled: !disabled });
   const capabilities = useReadApi(signal => swaApi.command(project.id, { action: 'capabilities' }, signal), { key: snapshotKey, enabled: !disabled && !!status.data && !status.error });
-  const [attached, setAttached] = useState<{ controller: string; taskID: string } | null>(() => readRunConnection(project.id).selection);
+  const [attachedRun, setAttachedRun] = useState<SwaRunSelection | null>(() => readRunConnection(project.id).selection);
+  const [attached, setAttached] = useState<{ controller: string; taskID: string } | null>(attachedRun);
   const [controller, setController] = useState(attached?.controller ?? ''), [taskID, setTaskID] = useState(attached?.taskID ?? '');
   const [workdir, setWorkdir] = useState(project.root);
   const [selectedRole, setSelectedRole] = useState<SelectedSwaRole | null>(null), [conversationID, setConversationID] = useState('');
@@ -51,7 +52,7 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
     {!!status.data && <QueryState state={capabilities}>{reply => <><SwaAgentCapabilities reply={reply} /><details><summary>能力详情</summary><pre className={styles.output}>{observationJSON(reply.result)}</pre></details></>}</QueryState>}
     <SwaRoles key={project.id} project={project} disabled={disabled} capabilities={capabilities.data} capabilitiesFresh={available} onRoleSelected={setSelectedRole} onConversationSelected={setConversationID} />
     {(selectedRole || conversationID) && <div className={styles.form}>{selectedRole && <button type="button" className="ac-button secondary compact" onClick={() => setSelectedRole(null)}>清除本次角色选择</button>}{conversationID && <button type="button" className="ac-button secondary compact" onClick={() => setConversationID('')}>清除本次讨论关联</button>}</div>}
-    <SwaRunWorkspace project={project} capabilities={capabilities.data} disabled={disabled || !status.data || status.loading || status.stale || !!status.error} startDisabled={!available} command={submitRun} useAnswerCommand={useSwaCommand} role={selectedRole} conversationID={conversationID} onAttached={selection => { setController(selection.controller); setTaskID(selection.taskID); setAttached({ controller: selection.controller, taskID: selection.taskID }); }} onForgotten={() => { setAttached(null); setController(''); setTaskID(''); }} />
+    <SwaRunWorkspace project={project} capabilities={capabilities.data} disabled={disabled || !status.data || status.loading || status.stale || !!status.error} startDisabled={!available} command={submitRun} useAnswerCommand={useSwaCommand} renderWorker={(selection, dispatchID, onChanged) => <WorkerWorkspace key={`${project.settings.revision}:${dispatchID}`} project={project} controller={selection.controller} runID={selection.runID} dispatchID={dispatchID} onChanged={onChanged} />} role={selectedRole} conversationID={conversationID} onAttached={selection => { setAttachedRun(selection); setController(selection.controller); setTaskID(selection.taskID); setAttached(selection); }} onForgotten={() => { setAttachedRun(null); setAttached(null); setController(''); setTaskID(''); }} />
     <details><summary>新建 Controller 与固定任务</summary><p className={styles.note}>请填写服务机器上的路径。任务规格中的 max_workers 限制 Worker 总名额，释放 Worker 不归还名额。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); void open.run({ action: 'controller.open', project_id: project.id, workdir: workdir.trim() }, reply => { if (!reply.controller) throw new Error('回执缺少 Controller，请查询原请求'); setController(reply.controller); }); }}><label>已批准的服务端工作目录<input required value={workdir} onChange={event => setWorkdir(event.target.value)} /></label><button className="ac-button secondary compact" type="submit" disabled={!canStart || open.pending || open.blocked}>创建 Controller</button></form><OperationState command={open} onRecovered={reply => { if (reply.controller) setController(reply.controller); }} />
       {controller.trim() && <TaskCreateForm key={controller.trim()} projectID={project.id} controller={controller.trim()} disabled={!canStart} onCreated={id => { setTaskID(id); setAttached({ controller: controller.trim(), taskID: id }); }} />}
     </details>
@@ -60,7 +61,7 @@ function ProjectRuntime({ project, disabled }: { project: Project; disabled: boo
       <label>同一任务的根 Task ID<input required value={taskID} onChange={event => setTaskID(event.target.value)} /></label>
       <button className="ac-button compact" disabled={disabled || !status.data || status.loading || status.stale || !controller.trim() || !taskID.trim()} type="submit">连接已有任务</button>
     </form>
-    {attached && !disabled && capabilities.data && <TaskWorkspace key={`${attached.controller}:${attached.taskID}`} project={project} capabilities={capabilities.data} startDisabled={!available} {...attached} />}
+    {attached && !disabled && capabilities.data && <TaskWorkspace key={`${attached.controller}:${attached.taskID}`} project={project} capabilities={capabilities.data} startDisabled={!available} runGraphID={attachedRun?.controller === attached.controller ? attachedRun.runID : null} {...attached} />}
   </div>;
 }
 
@@ -70,7 +71,7 @@ function TaskCreateForm({ projectID, controller, disabled, onCreated }: { projec
   return <><form className={styles.form} onSubmit={event => { event.preventDefault(); void create.run({ action: 'task.create', controller, spec_file: specFile.trim() }, reply => { if (!reply.task_id) throw new Error('回执缺少根 Task ID，请查询原请求'); onCreated(reply.task_id); }); }}><label>已批准的服务端任务规格文件<input required value={specFile} onChange={event => setSpecFile(event.target.value)} /></label><button className="ac-button secondary compact" type="submit" disabled={disabled || !specFile.trim() || create.pending || create.blocked}>在当前 Controller 建立任务</button></form><OperationState command={create} controller={controller} onRecovered={reply => { if (reply.task_id) onCreated(reply.task_id); }} /></>;
 }
 
-function TaskWorkspace({ project, controller, taskID, capabilities, startDisabled }: { project: Project; controller: string; taskID: string; capabilities: SwaEnvelope; startDisabled: boolean }) {
+function TaskWorkspace({ project, controller, taskID, capabilities, startDisabled, runGraphID }: { project: Project; controller: string; taskID: string; capabilities: SwaEnvelope; startDisabled: boolean; runGraphID: string | null }) {
   const fleet = useReadApi(async signal => readSwaFleet(await swaApi.command(project.id, { action: 'worker.list', controller, task_id: taskID }, signal), project.id, controller, taskID), { key: `${project.id}:${controller}:${taskID}` });
   const [dispatchID, setDispatchID] = useState('');
   const selected = fleet.data?.workers.find(worker => worker.dispatchID === dispatchID);
@@ -82,10 +83,10 @@ function TaskWorkspace({ project, controller, taskID, capabilities, startDisable
       <p className={styles.identity}>Run · {data.runID} · 根任务 {taskID}</p>
       {!fleet.stale && <WorkerStartForm key={`${project.id}:${controller}:${taskID}`} project={project} controller={controller} taskID={taskID} capabilities={capabilities} disabled={startDisabled || fleet.loading} onStarted={fleet.retry} />}
       <p className={styles.note}>已加载 {data.workers.length} / {data.total} 个 Worker。{data.hasMore && '还有未加载的 Worker，请使用 CLI 查看完整列表。'}</p>
-      <div className={styles.columns}>
+      {data.runID === runGraphID ? <p className={styles.note}>此 Run 的 Worker 会话与操作位于上方的任务关系图。</p> : <div className={styles.columns}>
         <ul className={styles.workers} aria-label="Worker 列表">{data.workers.map(worker => <li key={worker.dispatchID}><button className={styles.worker} aria-pressed={worker.dispatchID === selected?.dispatchID} type="button" disabled={fleet.stale || fleet.loading} onClick={() => setDispatchID(worker.dispatchID)}><strong>{worker.dispatchID}</strong><small>Task · {worker.taskID}</small><span>业务 · {worker.dispatchStatus}</span><span>Worker · {worker.workerState}</span><span>资源 · {worker.terminalState ?? '未知'}</span></button></li>)}</ul>
         {selected && !fleet.stale ? <WorkerWorkspace key={selected.dispatchID} project={project} controller={controller} runID={data.runID} dispatchID={selected.dispatchID} onChanged={fleet.retry} /> : <p className={styles.note}>{data.workers.length ? '选择 Worker 查看输出和操作。' : '暂无 Worker。'}</p>}
-      </div>
+      </div>}
     </>}</QueryState>
     <details><summary>查询完整成果</summary><p className={styles.note}>此处显示查询结果；下载请使用上方任务下载，或用 CLI 导出到新目录。</p><form className={styles.form} onSubmit={event => { event.preventDefault(); void exportCommand.run({ action: 'task.result', controller, task_id: taskID, output_dir: outputDir.trim() }); }}><label>服务端新的绝对输出目录<input required value={outputDir} onChange={event => setOutputDir(event.target.value)} /></label><button className="ac-button secondary compact" type="submit" disabled={fleet.loading || fleet.stale || !fleet.data || exportCommand.pending || exportCommand.blocked || !outputDir.trim()}>查询完整成果</button></form><OperationState command={exportCommand} controller={controller} /></details>
   </div>;

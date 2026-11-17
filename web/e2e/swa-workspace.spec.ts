@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { test as base, expect } from '@playwright/test';
 import { startS1Server } from '../../tests/s1/server.mjs';
 import type { S1Server } from '../../tests/s1/server.mjs';
@@ -43,6 +44,17 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     await expect(workspace.getByRole('button', { name: '连接已有任务', exact: true })).toBeDisabled();
     await expect(workspace.getByRole('button', { name: '提交完整任务', exact: true })).toBeDisabled();
     await expect(workspace.getByRole('button', { name: '重新连接完整任务', exact: true })).toBeDisabled();
+    await workspace.getByText('可复用提示词', { exact: true }).click();
+    await workspace.getByLabel('模板名称', { exact: true }).fill('复核交付');
+    await workspace.getByLabel('提示词正文', { exact: true }).fill('先核对验收条件。\n再给出证据。');
+    await workspace.getByRole('button', { name: '保存为提示词模板', exact: true }).click();
+    await workspace.getByRole('button', { name: '套用到本次输入', exact: true }).click();
+    await workspace.getByLabel('本次输入预览', { exact: true }).fill('本次只核对集成证据。\n');
+    const pendingDownload = page.waitForEvent('download');
+    await workspace.getByRole('button', { name: '下载本次输入', exact: true }).click();
+    const input = await pendingDownload;
+    expect(input.suggestedFilename()).toBe('swa-prompt.md');
+    expect(await readFile(await input.path(), 'utf8')).toBe('本次只核对集成证据。\n');
     await workspace.getByText('新建 Controller 与固定任务', { exact: true }).click();
     await expect(workspace.getByRole('button', { name: '创建 Controller', exact: true })).toBeDisabled();
     expect(commands).toEqual([{ project: `/api/v1/local-projects/${project.id}/orca/commands`, action: 'status' }]);
@@ -76,6 +88,9 @@ test('真实服务未配置原生运行时时显示错误并阻止创建和附�
     await reloadedStatus;
     await expect(workspace.getByLabel('SWA 项目')).toHaveValue(project.id);
     expect(new URL(page.url()).searchParams.get('project')).toBe(project.id);
+    await workspace.getByText('可复用提示词', { exact: true }).click();
+    await workspace.getByLabel('已保存的提示词', { exact: true }).selectOption({ label: '复核交付' });
+    await expect(workspace.getByLabel('提示词正文', { exact: true })).toHaveValue('先核对验收条件。\n再给出证据。');
     expect(commands.filter(command => command.action === 'status')).toHaveLength(4);
     expect(commands.every(command => ['status', 'role.list', 'conversation.list'].includes(command.action))).toBe(true);
     expect(apiPaths.some(path => /^\/api\/v1\/(materials|opportunities|cognition|works|missions|proposals)(\/|$)/.test(path))).toBe(false);
