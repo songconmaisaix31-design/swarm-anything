@@ -82,10 +82,17 @@ func outsideGitWorkspace(dir string) bool {
 	}
 }
 
-func prepareACPVerification(entry Entry, scratch string) (Entry, string, error) {
+// SupportsACPVerification 表示已登记空白会话验收，不表示客户端或模型可用。
+func SupportsACPVerification(entry Entry) bool {
 	switch entry.ID {
 	case "qoder", "qoder-cn", "trae", "codebuddy":
-	default:
+		return entry.ACPArgs != nil
+	}
+	return false
+}
+
+func prepareACPVerification(entry Entry, scratch string) (Entry, string, error) {
+	if !SupportsACPVerification(entry) {
 		return Entry{}, "", errors.New("该 Agent 不支持空白会话诊断")
 	}
 	if !filepath.IsAbs(scratch) {

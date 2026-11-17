@@ -31,24 +31,33 @@ func LegacyEntries() []Entry {
 		{ID: "opencode", DisplayName: "OpenCode", Command: "opencode", ACPArgs: []string{"acp"}},
 		{ID: "pi", DisplayName: "Pi", Command: "pi"},
 		{ID: "grok", DisplayName: "Grok", Command: "grok", ACPArgs: []string{"--no-auto-update", "agent", "stdio"}},
-		{ID: "kimi", DisplayName: "Kimi Code", Command: "kimi"},
-		{ID: "qwen", DisplayName: "Qwen Code", Command: "qwen"},
+		{ID: "kimi", DisplayName: "Kimi CLI / Kimi Code", Command: "kimi", ACPArgs: []string{"acp"}},
+		{ID: "qwen", DisplayName: "Qwen Code", Command: "qwen", ACPArgs: []string{"--acp"}},
 		{ID: "cursor", DisplayName: "Cursor", Command: "cursor"},
-		{ID: "gemini", DisplayName: "Gemini CLI", Command: "gemini"},
-		{ID: "cursor-agent", DisplayName: "Cursor Agent", Command: "cursor-agent"},
+		{ID: "gemini", DisplayName: "Gemini CLI", Command: "gemini", ACPArgs: []string{"--acp"}},
+		{ID: "cursor-agent", DisplayName: "Cursor Agent", Command: "cursor-agent", ACPArgs: []string{"acp"}},
 	}
 }
 
 func builtinEntries() []Entry {
 	return append(LegacyEntries(),
 		Entry{ID: "dsh", DisplayName: "DeepSeek Harness", Command: "dsh", ACPArgs: []string{"--profile", "acp"}},
-		Entry{ID: "muse", DisplayName: "Muse Code", Command: "muse"},
+		Entry{ID: "muse", DisplayName: "Muse Code", Command: "muse", ACPArgs: []string{"acp"}},
 		Entry{ID: "qoder", DisplayName: "Qoder", Command: "qodercli", ACPArgs: []string{"--acp"}, aliases: []string{"qoder"}},
 		Entry{ID: "qoder-cn", DisplayName: "Qoder CN", Command: "qoderclicn", ACPArgs: []string{"--acp"}, aliases: []string{"qodercn"}},
 		Entry{ID: "trae", DisplayName: "TRAE CN", Command: "traecli", ACPArgs: []string{"acp", "serve"}},
 		Entry{ID: "codebuddy", DisplayName: "CodeBuddy Code", Command: "codebuddy", ACPArgs: []string{"--acp"}},
 		Entry{ID: "workbuddy", DisplayName: "WorkBuddy"},
 		Entry{ID: "tabbit", DisplayName: "Tabbit", Command: "tabbit-cli", defaultPaths: tabbitDefaultPaths, skipVersionProbe: true},
+		Entry{ID: "kiro", DisplayName: "Kiro CLI", Command: "kiro-cli", ACPArgs: []string{"acp", "--agent-engine=v3"}},
+		Entry{ID: "goose", DisplayName: "Goose", Command: "goose", ACPArgs: []string{"acp"}},
+		Entry{ID: "copilot", DisplayName: "GitHub Copilot CLI", Command: "copilot", ACPArgs: []string{"--acp"}},
+		Entry{ID: "cline", DisplayName: "Cline CLI", Command: "cline", ACPArgs: []string{"--acp"}},
+		Entry{ID: "mistral-vibe", DisplayName: "Mistral Vibe", Command: "vibe-acp", ACPArgs: []string{}},
+		Entry{ID: "autohand", DisplayName: "Autohand", Command: "autohand", ACPArgs: []string{"--acp"}},
+		Entry{ID: "junie", DisplayName: "Junie CLI", Command: "junie", ACPArgs: []string{"--acp=true"}},
+		Entry{ID: "minimax", DisplayName: "MiniMax Code", Command: "mcode", ACPArgs: []string{"acp"}},
+		Entry{ID: "antigravity", DisplayName: "Antigravity CLI", Command: "agy", ACPArgs: []string{"acp"}},
 	)
 }
 

@@ -22,6 +22,43 @@ func builtinEntry(t *testing.T, id string) Entry {
 	return Entry{}
 }
 
+func TestBuiltinACPProfilesMatchProviderLaunchers(t *testing.T) {
+	seen := map[string]struct{}{}
+	for _, entry := range builtinEntries() {
+		if _, exists := seen[entry.ID]; exists {
+			t.Fatalf("duplicate built-in Agent ID %q", entry.ID)
+		}
+		seen[entry.ID] = struct{}{}
+	}
+	for _, expected := range []struct {
+		id, command string
+		args        []string
+	}{
+		{"kimi", "kimi", []string{"acp"}},
+		{"qwen", "qwen", []string{"--acp"}},
+		{"gemini", "gemini", []string{"--acp"}},
+		{"cursor-agent", "cursor-agent", []string{"acp"}},
+		{"muse", "muse", []string{"acp"}},
+		{"kiro", "kiro-cli", []string{"acp", "--agent-engine=v3"}},
+		{"goose", "goose", []string{"acp"}},
+		{"copilot", "copilot", []string{"--acp"}},
+		{"cline", "cline", []string{"--acp"}},
+		{"mistral-vibe", "vibe-acp", []string{}},
+		{"autohand", "autohand", []string{"--acp"}},
+		{"junie", "junie", []string{"--acp=true"}},
+		{"minimax", "mcode", []string{"acp"}},
+		{"antigravity", "agy", []string{"acp"}},
+	} {
+		entry := builtinEntry(t, expected.id)
+		if entry.Command != expected.command || entry.ACPArgs == nil || !slices.Equal(entry.ACPArgs, expected.args) {
+			t.Errorf("%s must use its own local executable and exact ACP arguments; got %s %q", expected.id, entry.Command, entry.ACPArgs)
+		}
+	}
+	if entry := builtinEntry(t, "cursor"); entry.ACPArgs != nil || entry.Command != "cursor" {
+		t.Fatal("Cursor editor must remain independent of the Cursor Agent ACP launcher")
+	}
+}
+
 func TestResolveEntryKeepsQoderRegionsSeparate(t *testing.T) {
 	t.Run("uses same region alias after missing primary", func(t *testing.T) {
 		for _, tc := range []struct{ id, primary, alias string }{

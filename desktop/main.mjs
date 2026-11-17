@@ -14,7 +14,7 @@ const builtCLI = fileURLToPath(new URL(`../dist/${executable}`, import.meta.url)
 let window;
 let projectPath;
 
-async function callSwarm(args) {
+async function callSwarm(args, timeout = 30000) {
   const cli = app.isPackaged ? join(process.resourcesPath, executable) : process.env.SWA_CLI_PATH || builtCLI;
   if (!isAbsolute(cli)) throw new Error('SWA_CLI_PATH 必须指向绝对路径。');
   try {
@@ -24,7 +24,7 @@ async function callSwarm(args) {
   }
   let stdout;
   try {
-    ({ stdout } = await execute(cli, args, { shell: false, windowsHide: true, timeout: 30000, maxBuffer: 512 * 1024 }));
+    ({ stdout } = await execute(cli, args, { shell: false, windowsHide: true, timeout, maxBuffer: 512 * 1024 }));
   } catch (error) {
     let detail;
     try {
@@ -99,6 +99,22 @@ app.whenReady().then(() => {
     return callSwarm(['agents', 'connect', id, '--project', projectPath, '--json']);
   });
   handle('swarm:diagnose-tabbit', () => callSwarm(['agents', 'diagnose', 'tabbit', '--json']));
+  handle('swarm:verify', async (id) => {
+    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,47}$/.test(id) || id === 'workbuddy') throw new Error('此 Agent 不支持桌面验收。');
+    const owner = window;
+    if (id === 'tabbit') {
+      const decision = await dialog.showMessageBox(owner, {
+        type: 'question', title: 'Tabbit 浏览器验收', message: '在 Tabbit 中打开官方公开演练页？',
+        detail: '验收会新建一个标签页，检查网页结果和原请求回执，结束后清理本次标签页。',
+        buttons: ['取消', '开始验收'], defaultId: 0, cancelId: 0,
+      });
+      return window === owner && decision.response === 1 ? callSwarm(['agents', 'verify', 'tabbit', '--json'], 100000) : null;
+    }
+    const result = await dialog.showOpenDialog(owner, { title: '选择仓库外的空白会话测试父目录', properties: ['openDirectory'] });
+    const scratch = result.filePaths[0];
+    if (result.canceled || window !== owner || !scratch || !isAbsolute(scratch)) return null;
+    return callSwarm(['agents', 'verify', id, '--scratch', scratch, '--reload', '--json'], 40000);
+  });
 
   createWindow();
   app.on('activate', () => {

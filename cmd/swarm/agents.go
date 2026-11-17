@@ -17,7 +17,8 @@ import (
 
 type agentListItem struct {
 	domain.LocalAgent
-	Adapter string `json:"adapter,omitempty"`
+	Adapter      string `json:"adapter,omitempty"`
+	Verification string `json:"verification,omitempty"`
 }
 
 func executeAgents(args []string, stdout io.Writer) error {
@@ -115,6 +116,10 @@ func executeAgents(args []string, stdout io.Writer) error {
 				item.NativeAdapterRegistered = true
 			} else if entries[i].ID == "tabbit" {
 				item.Adapter = "browser-cli"
+				item.Verification = "browser_fixture"
+			}
+			if agentcli.SupportsACPVerification(entries[i]) {
+				item.Verification = "acp_session"
 			}
 			items = append(items, item)
 		}
