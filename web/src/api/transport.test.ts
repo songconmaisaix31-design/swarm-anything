@@ -5,7 +5,7 @@ import { recordedClient } from './realHttpTest';
 
 describe('独立 SWA 服务的真实 HTTP 传输', () => {
   let server: S1Server;
-  beforeAll(async () => { server = await startS1Server({ product: 'swa' }); }, 120_000);
+  beforeAll(async () => { server = await startS1Server(); }, 120_000);
   afterAll(async () => { if (server) await server.close({ preserveData: true }); });
 
   it('受保护读取建立实际会话并保留真实 SQLite 空集合', async () => {

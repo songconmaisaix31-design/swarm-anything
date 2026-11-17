@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import styles from './SwaWorkspace.module.css';
 
 type Prompt = { id: string; title: string; text: string };
@@ -21,6 +21,7 @@ function readPrompts(projectID: string): Prompt[] {
 }
 
 export function SwaPromptLibrary({ projectID, onDownload }: { projectID: string; onDownload: (name: string, text: string, type: string) => void }) {
+  const formID = useId();
   const [prompts, setPrompts] = useState(() => { try { return readPrompts(projectID); } catch { return null; } });
   const [templateID, setTemplateID] = useState('');
   const [title, setTitle] = useState(''), [text, setText] = useState('');
@@ -59,14 +60,14 @@ export function SwaPromptLibrary({ projectID, onDownload }: { projectID: string;
       <p className={styles.note}>模板仅保存在此设备的浏览器中，按项目隔开。套用后可单独修改本次输入。</p>
       {prompts === null && <p role="alert">未能读取本项目的模板。可继续编辑并下载本次输入。</p>}
       <div className={styles.form}>
-        <label>已保存的提示词<select value={selected?.id ?? ''} onChange={event => select(event.target.value)}><option value="">新建模板</option>{prompts?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+        <label><span id={`${formID}-saved`}>已保存的提示词</span><select aria-labelledby={`${formID}-saved`} value={selected?.id ?? ''} onChange={event => select(event.target.value)}><option value="">新建模板</option>{prompts?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
         <label>模板名称<input value={title} maxLength={maxTitle} onChange={event => setTitle(event.target.value)} /></label>
         <button type="button" className="ac-button secondary compact" onClick={() => {
           try { setPrompts(readPrompts(projectID)); setConfirmDelete(false); setStatus({ error: false, text: '已重新读取模板。' }); }
           catch { setStatus({ error: true, text: '未能读取模板，当前草稿仍保留。' }); }
         }}>重新读取模板</button>
       </div>
-      <label className={styles.promptText}>提示词正文<textarea rows={6} value={text} onChange={event => setText(event.target.value)} /></label>
+      <label className={styles.promptText}><span id={`${formID}-body`}>提示词正文</span><textarea aria-labelledby={`${formID}-body`} rows={6} value={text} onChange={event => setText(event.target.value)} /></label>
       <div className={styles.form}>
         <button type="button" className="ac-button secondary compact" disabled={!prompts || !title.trim() || !validText(text)} onClick={() => update('save')}>{selected ? '保存模板修改' : '保存为提示词模板'}</button>
         <button type="button" className="ac-button compact" disabled={!validText(text)} onClick={() => setOutput(text)}>套用到本次输入</button>
@@ -75,7 +76,7 @@ export function SwaPromptLibrary({ projectID, onDownload }: { projectID: string;
       </div>
       {status && <p role={status.error ? 'alert' : 'status'}>{status.text}</p>}
       {output !== null && <div className={styles.workspace}>
-        <label className={styles.promptText}>本次输入预览<textarea rows={6} value={output} onChange={event => setOutput(event.target.value)} /></label>
+        <label className={styles.promptText}><span id={`${formID}-preview`}>本次输入预览</span><textarea aria-labelledby={`${formID}-preview`} rows={6} value={output} onChange={event => setOutput(event.target.value)} /></label>
         <p className={styles.note}>{byteCount(output)}/{maxBytes} UTF-8 字节。下载后把文件放到执行服务机器上的项目许可目录，在下方选择其路径并提交。套用和下载都不会启动任务。</p>
         <div><button type="button" className="ac-button secondary compact" disabled={!validText(output)} onClick={() => onDownload('swa-prompt.md', output, 'text/plain')}>下载本次输入</button></div>
       </div>}

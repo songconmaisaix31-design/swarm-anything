@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { ReadApiState } from '../hooks/useReadApi';
+import type { ReadApiState } from '../hooks/useReadState';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
 

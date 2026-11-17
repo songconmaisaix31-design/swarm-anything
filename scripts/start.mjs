@@ -4,6 +4,7 @@ import { root, requireFile, start, stop } from './process.mjs';
 const filename = process.platform === 'win32' ? 'dist/swa-server.exe' : 'dist/swa-server';
 await requireFile(filename);
 const env = { ...process.env, SWA_DATA_DIR: process.env.SWA_DATA_DIR ?? join(root, '.verification', 'swa-local-data'), SWA_WEB_DIR: process.env.SWA_WEB_DIR ?? join(root, 'web', 'dist') };
+if (!env.SWA_PORT && !env.ASTROCYTE_PORT) env.SWA_PORT = '8787';
 for (const name of ['ASTROCYTE_DATA_DIR', 'ASTROCYTE_WEB_DIR']) delete env[name];
 const child = start(join(root, filename), [], {
   detached: process.platform !== 'win32',
