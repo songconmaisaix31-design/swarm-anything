@@ -166,6 +166,18 @@ func cliNotFound(err error) bool {
 	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist)
 }
 
+func agentCLIEnvironment() []string {
+	values := os.Environ()
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		key, _, _ := strings.Cut(value, "=")
+		if !strings.HasPrefix(strings.ToUpper(key), "SWA_") {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 func tabbitDefaultPaths() []string {
 	if runtime.GOOS == "windows" {
 		if root := os.Getenv("LOCALAPPDATA"); filepath.IsAbs(root) {

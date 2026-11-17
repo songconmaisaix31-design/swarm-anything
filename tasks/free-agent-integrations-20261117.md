@@ -2,6 +2,8 @@
 
 基线：工作台草稿 PR [#18](https://github.com/songconmaisaix31-design/swarm-anything/pull/18) 的 `a790ba51cf501332fe90952e467602f09433c252`。范围为 `internal/adapters/agentcli`、`cmd/swarm`、现有桌面清单及本文；运行仍由 `cmd/swa` 负责。
 
+后继：[本机真实验收](free-agent-live-acceptance-20261117.md)新增空白会话、Tabbit 公共页和 WorkBuddy 官方在线测试，并记录官方 TRAE CLI 的账号要求。
+
 ## 当前入口
 
 | 本机接入 | 命令 | 额度边界 |

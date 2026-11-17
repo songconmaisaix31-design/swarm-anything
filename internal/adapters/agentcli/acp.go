@@ -52,6 +52,15 @@ func (handshakeClient) Handle(ctx context.Context, conn *jsonrpc2.Conn, request 
 }
 
 func Connect(ctx context.Context, entry Entry, project string) (Handshake, error) {
+	return useACP(ctx, entry, project, nil)
+}
+
+// useACP 复用同一有界连接及属主进程管理；诊断客户端不会批准工具权限。
+func useACP(ctx context.Context, entry Entry, project string, visit func(context.Context, *jsonrpc2.Conn, Handshake)) (Handshake, error) {
+	return useACPWithHandler(ctx, entry, project, 15*time.Second, handshakeClient{}, visit)
+}
+
+func useACPWithHandler(ctx context.Context, entry Entry, project string, budget time.Duration, handler jsonrpc2.Handler, visit func(context.Context, *jsonrpc2.Conn, Handshake)) (Handshake, error) {
 	if entry.ACPArgs == nil {
 		return Handshake{}, errors.New("该 Agent 尚无 ACP 适配器")
 	}
@@ -69,7 +78,7 @@ func Connect(ctx context.Context, entry Entry, project string) (Handshake, error
 	if err != nil {
 		return Handshake{}, fmt.Errorf("无法定位已安装的 Agent %s: %w", entry.ID, err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	cmd, err := ownedCommand(ctx, path, entry.ACPArgs)
 	if err != nil {
@@ -93,7 +102,7 @@ func Connect(ctx context.Context, entry Entry, project string) (Handshake, error
 	}
 	defer cleanup()
 	pipe := &acpPipe{Reader: io.LimitReader(stdout, 1<<20), WriteCloser: stdin, output: stdout}
-	conn := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(pipe), handshakeClient{}, jsonrpc2.SetLogger(log.New(io.Discard, "", 0)))
+	conn := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(pipe), handler, jsonrpc2.SetLogger(log.New(io.Discard, "", 0)))
 	defer func() {
 		_ = conn.Close()
 		// 给收到 EOF 的 Agent 留出退出时间，再按所属进程组回收。
@@ -123,8 +132,12 @@ func Connect(ctx context.Context, entry Entry, project string) (Handshake, error
 	if response.ProtocolVersion != 1 {
 		return Handshake{}, fmt.Errorf("Agent %s 返回不支持的 ACP 协议版本 %d", entry.ID, response.ProtocolVersion)
 	}
-	return Handshake{
+	handshake := Handshake{
 		SchemaVersion: 1, AgentID: entry.ID, ProtocolVersion: response.ProtocolVersion,
 		AgentInfo: response.AgentInfo, AgentCapabilities: response.AgentCapabilities,
-	}, nil
+	}
+	if visit != nil {
+		visit(ctx, conn, handshake)
+	}
+	return handshake, nil
 }

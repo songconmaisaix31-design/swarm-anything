@@ -20,6 +20,9 @@ var version = "development"
 
 const usage = `swarm agents list [--probe] [--json]
 swarm agents connect ID --project DIR [--json]
+swarm agents verify ID --scratch DIR [--reload] [--json]
+swarm agents verify tabbit [--json]
+swarm agents verify workbuddy [--json]
 swarm agents diagnose tabbit [--json]
 swarm agents quota ID --magpie-port PORT [--json]
 swarm roles list [--roles-dir DIR] [--json]
